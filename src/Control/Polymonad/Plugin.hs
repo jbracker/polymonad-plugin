@@ -60,7 +60,7 @@ import PrelNames
 import Outputable 
   ( Outputable( ppr )
   , text, parens, (<>)
-  , showSDocSimple )
+  , showSDocUnsafe )
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -338,7 +338,7 @@ printM :: String -> TcPluginM ()
 printM = tcPluginIO . putStrLn
 
 pprToStr :: Outputable o => o -> String
-pprToStr = showSDocSimple . ppr
+pprToStr = showSDocUnsafe . ppr
 
 isPolymonadConstraint :: Class -> Ct -> Bool
 isPolymonadConstraint polymonadCls ct 
