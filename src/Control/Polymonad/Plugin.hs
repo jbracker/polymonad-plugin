@@ -61,7 +61,8 @@ import Outputable
   , showSDocUnsafe )
 
 import Control.Polymonad.Plugin.Utils
-  ( importedPolymonadModule, getPolymonadClass
+  ( getPolymonadModule, getPolymonadClass
+  , printM, printppr, pprToStr
   )
 
 -- -----------------------------------------------------------------------------
@@ -90,26 +91,23 @@ polymonadInit :: TcPluginM PolymonadState
 polymonadInit = do
   printM ">>> Plugin Init..."
   printM ""
-  
   return ()
 
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve s given derived wanted = do
+  mCls <- getPolymonadClass
+  printppr mCls
   printM ">>> Plugin Solve..."
   printppr given
   printppr derived
   printppr wanted
   printM ">>>>>>>>>>>>>>>>>>>"
   if not $ null wanted then do
-    mPolymonadMdl <- importedPolymonadModule
-    case mPolymonadMdl of
-      Just mdl -> do
-        mPolymonadCls <- getPolymonadClass mdl
-        case mPolymonadCls of
-          Just cls -> do
-            printM ">>> Polymonad in scope, wanted constraints not empty, invoke solver..."
-            polymonadSolve' s cls (given, derived, wanted)
-          _ -> returnNoResult
+    mPolymonadCls <- getPolymonadClass
+    case mPolymonadCls of
+      Just cls -> do
+        printM ">>> Polymonad in scope, wanted constraints not empty, invoke solver..."
+        polymonadSolve' s cls (given, derived, wanted)
       _ -> returnNoResult
   else do
     returnNoResult
@@ -254,15 +252,6 @@ mkEqCtsFromSubst wantedCt subst = do
 
 returnNoResult :: TcPluginM TcPluginResult
 returnNoResult = return $ TcPluginOk [] []
-
-printppr :: Outputable o => o -> TcPluginM ()
-printppr = tcPluginIO . putStrLn . pprToStr
-
-printM :: String -> TcPluginM ()
-printM = tcPluginIO . putStrLn
-
-pprToStr :: Outputable o => o -> String
-pprToStr = showSDocUnsafe . ppr
 
 isPolymonadConstraint :: Class -> Ct -> Bool
 isPolymonadConstraint polymonadCls ct 

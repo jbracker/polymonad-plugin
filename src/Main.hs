@@ -31,6 +31,7 @@ import qualified Prelude as P
 
 import Control.Polymonad
 
+
 --f :: (Num a) => a -> a
 --f x = x + 1
 
@@ -124,10 +125,10 @@ testSession2 =
   (return () :: SessionM End End ())
 -} 
 
-{-
+
 idOp :: a -> Identity ()
 idOp _ = return ()
-
+{-
 testId :: Identity ()
 testId = do
   idOp True -- :: Identity ()
