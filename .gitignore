@@ -17,3 +17,7 @@
 *.dyn_hi
 *.dyn_o
 /dist/
+
+# Cabal Sandbox
+/.cabal-sandbox
+/cabal.sandbox.config
