@@ -10,15 +10,19 @@ module Control.Polymonad.Plugin.Utils (
   , isPolymonadClass
   , getPolymonadClass
   , getPolymonadInstancesInScope
+  , getAllPolymonadTypeConstructors
   -- * Constraint and type inspection
   , isClassConstraint
-  , argumentTyCon, argumentTyVar
+  , pmInstanceTyCons, pmInstanceTyCon
+  , pmInstanceTcVars, pmInstanceTcVar
+  , argumentTyCon
+  , argumentTcVar
   , collectTyVars
   -- * General Utilities
   , atIndex
   ) where
 
-import Data.Maybe ( listToMaybe )
+import Data.Maybe ( listToMaybe, catMaybes )
 import Data.Set ( Set )
 import qualified Data.Set as S
 import Control.Monad ( filterM )
@@ -45,6 +49,7 @@ import Class
 import InstEnv 
   ( ClsInst(..)
   , instEnvElts
+  , instanceHead
   , classInstances )
 import Type 
   ( Type, TyVar
@@ -135,6 +140,11 @@ getPolymonadInstancesInScope = do
       return $ classInstances instEnvs polymonadClass
     Nothing -> return []
 
+getAllPolymonadTypeConstructors :: TcPluginM (Set TyCon)
+getAllPolymonadTypeConstructors = do
+  pmInsts <- getPolymonadInstancesInScope
+  return $ S.unions $ fmap pmInstanceTyCons pmInsts
+
 -- -----------------------------------------------------------------------------
 -- Constraint and type inspection
 -- -----------------------------------------------------------------------------
@@ -145,6 +155,26 @@ isClassConstraint wantedClass ct =
   case isCDictCan_Maybe ct of
     Just cls -> cls == wantedClass && isWantedCt ct
     Nothing -> False
+
+pmInstanceTyCons :: ClsInst -> Set TyCon
+pmInstanceTyCons inst = S.fromList 
+                      $ catMaybes [pmInstanceTyCon i inst | i <- [0..2]]
+
+pmInstanceTyCon :: Int -> ClsInst -> Maybe TyCon
+pmInstanceTyCon n inst = do
+  let (_tvs, _cls, args) = instanceHead inst
+  tyArg <- args `atIndex` n
+  tyConAppTyCon_maybe tyArg
+
+pmInstanceTcVars :: ClsInst -> Set TyVar
+pmInstanceTcVars inst = S.fromList 
+                      $ catMaybes [pmInstanceTcVar i inst | i <- [0..2]]
+
+pmInstanceTcVar :: Int -> ClsInst -> Maybe TyVar
+pmInstanceTcVar n inst = do
+  let (_tvs, _cls, args) = instanceHead inst
+  tyArg <- args `atIndex` n
+  getTyVar_maybe tyArg
 
 -- | @argumentTyCon n ct@ gets the type constructor of the n-th argument 
 --   in the constraint (If an n-th argument exists and actually is a type 
@@ -161,8 +191,8 @@ argumentTyCon n ct = do
 --   in the constraint (If an n-th argument exists and actually is a type 
 --   variable). Only works if the given constraint is a type class 
 --   constraint.
-argumentTyVar :: Int -> Ct -> Maybe TyVar
-argumentTyVar n ct = do
+argumentTcVar :: Int -> Ct -> Maybe TyVar
+argumentTcVar n ct = do
   _ <- isCDictCan_Maybe ct
   let tyArgs = cc_tyargs ct
   tyArg <- tyArgs `atIndex` n
