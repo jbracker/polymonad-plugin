@@ -28,6 +28,7 @@ import Prelude
   , putStrLn
   , undefined )
 import qualified Prelude as P
+import Data.Functor.Identity ( Identity( Identity, runIdentity ) )
 
 import Control.Polymonad
 
