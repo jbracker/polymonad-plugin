@@ -8,8 +8,7 @@
 -- -----------------------------------------------------------------------------
 
 module Control.Polymonad
-  ( Identity(..)
-  , Polymonad(..)
+  ( Polymonad(..)
   , fail
   , return
   ) where
