@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules: Control.Polymonad
                  , Control.Polymonad.Plugin
+                 , Control.Polymonad.Plugin.Types
   other-modules:       
   other-extensions:    
   build-depends:       base >=4.7 && <5,

@@ -2,9 +2,9 @@
 module Control.Polymonad.Plugin
   ( plugin ) where
 
-import Data.Maybe ( isNothing, catMaybes )
+import Data.Maybe ( catMaybes )
 
-import Control.Monad ( when, filterM, guard, MonadPlus(..) )
+import Control.Monad ( filterM, guard, MonadPlus(..) )
 
 import Debug.Trace ( trace )
 
@@ -13,7 +13,7 @@ import Plugins ( Plugin(tcPlugin), defaultPlugin )
 import TcRnTypes
 import TcPluginM
 
-import Unique ( getUnique )
+--import Unique ( getUnique, mkTcOccUnique )
 import Name 
   ( Name
   , nameModule
@@ -21,45 +21,46 @@ import Name
 import Type
   ( Type, TvSubst
   , EqRel(..)
-  , eqType
-  , isTyVarTy, isAlgType
+  --, eqType
+  --, isTyVarTy, isAlgType
   , substTys )
 import Module 
   ( Module(..)
-  , mkModule, mkModuleName, mainPackageKey
-  , moduleEnvToList, moduleEnvKeys
+  , mainPackageKey
+  --, moduleEnvToList
+  , moduleEnvKeys
   , moduleNameString )
 import Class {-
   ( Class
   , className, classMethods, classArity
   , classTyVars, classTyCon ) -}
-import Unique ( mkTcOccUnique )
-import FastString ( mkFastString )
-import OccName ( mkClsOcc, occNameString )
-import SrcLoc ( noSrcSpan )
-import HscTypes ( typeEnvTyCons )
+--import FastString ( mkFastString )
+import OccName ( occNameString )
+--import SrcLoc ( noSrcSpan )
+--import HscTypes ( typeEnvTyCons )
 import TcType 
-  ( isClassPred, isDictLikeTy
+  ( isClassPred
+  --, isDictLikeTy
   , tcTyConAppTyCon, tcTyConAppArgs
   , tcGetTyVar_maybe, tcSplitDFunTy
   , topTcLevel
-  , TvSubst
+  --, TvSubst
   , substTyVar, notElemTvSubst
   , TcTyVar, TcType )
-import TcEvidence ( EvTerm(..) )
+--import TcEvidence ( EvTerm(..) )
 import InstEnv 
   ( ClsInst(..)
-  , InstEnvs(..)
+  --, InstEnvs(..)
   , DFunId
   , instEnvElts
   , classInstances
-  , instanceSig, instanceBindFun, instanceDFunId )
+  --, instanceSig
+  , instanceBindFun, instanceDFunId )
 import Unify ( tcUnifyTys )
-import PrelNames 
-  ( monadClassName )
+--import PrelNames ( monadClassName )
 import Outputable 
   ( Outputable( ppr )
-  , text, parens, (<>)
+  --, text, parens, (<>)
   , showSDocUnsafe )
 
 -- -----------------------------------------------------------------------------
@@ -68,7 +69,7 @@ import Outputable
 
 plugin :: Plugin
 plugin = defaultPlugin 
-  { tcPlugin = \clos -> Just polymonadPlugin
+  { tcPlugin = \_clos -> Just polymonadPlugin
   }
 
 -- -----------------------------------------------------------------------------
@@ -113,7 +114,7 @@ polymonadSolve s given derived wanted = do
     returnNoResult
 
 polymonadStop :: PolymonadState -> TcPluginM ()
-polymonadStop s = do
+polymonadStop _state = do
   printM ">>> Plugin Stop..."
   printM ""
   
@@ -124,7 +125,7 @@ polymonadStop s = do
 -- -----------------------------------------------------------------------------
 
 polymonadSolve' :: PolymonadState -> Class -> ([Ct], [Ct], [Ct]) -> TcPluginM TcPluginResult
-polymonadSolve' s cls (given, derived, wanted) = do
+polymonadSolve' _s cls (_given, _derived, wanted) = do
   {-
   instEnv <- fmap (tcg_inst_env . fst) getEnvs
   let pmInsts = flip filter (instEnvElts instEnv) $ \inst -> is_cls inst == cls
@@ -177,8 +178,8 @@ polymonadSolve' s cls (given, derived, wanted) = do
   derivedList <- fmap concat $ flip mapM ctMatches $ \(pmCt, ctSolutions) -> do
     case ctSolutions of
       [(clsInst, subst)] -> do
-        let ts = substTys subst (is_tys clsInst) :: [Type]
-        let instId = instanceDFunId clsInst :: DFunId
+        let _ts = substTys subst (is_tys clsInst) :: [Type]
+        let _instId = instanceDFunId clsInst :: DFunId
         -- [(EvTerm, Ct)]
         -- return [(EvDFunApp instId {-ts-} [] [], pmCt)]
         
@@ -201,51 +202,6 @@ findMatchingInstances insts ct = do
     Just subst -> do
       return (inst, subst)
     Nothing -> mzero
-
--- -----------------------------------------------------------------------------
--- Solver Types
--- -----------------------------------------------------------------------------
-
-data PolymonadInst = PolymonadInst
-  { pmiSignature :: [SigPart]
-  , pmiTcInstance :: ClsInst
-  }
-
-instance Outputable PolymonadInst where
-  ppr pmi = ppr $ pmiSignature pmi
-
-data SigPart
-  = SPVar Type
-  | SPGround Type
-
-instance Eq SigPart where
-  (SPVar    t1) == (SPVar    t2) = eqType t1 t2
-  (SPGround t1) == (SPGround t2) = eqType t1 t2
-  _ == _ = False
-
-instance Outputable SigPart where
-  ppr (SPVar t)    = text "V " <> ppr t
-  ppr (SPGround t) = text "G " <> parens (ppr t)
-
-mkPolymonadInst :: ClsInst -> Maybe PolymonadInst
-mkPolymonadInst inst = 
-  let (_, _, _, sig) = instanceSig inst
-  in case mapM typeToSigPart sig of
-    Just sig -> Just $ PolymonadInst
-      { pmiSignature = sig
-      , pmiTcInstance = inst
-      }
-    Nothing -> Nothing
-  
-
-typeToSigPart :: Type -> Maybe SigPart
-typeToSigPart t = 
-  -- For now a type is ground if it is algebraic.
-  -- We might have to refine this at some point.
-  case (isTyVarTy t, isAlgType t) of
-    (True, _) -> Just $ SPVar t
-    (_, True) -> Just $ SPGround t
-    _ -> Nothing
 
 -- -----------------------------------------------------------------------------
 -- Utility Functions
