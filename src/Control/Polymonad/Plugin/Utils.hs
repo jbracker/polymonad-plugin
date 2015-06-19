@@ -116,6 +116,7 @@ getPolymonadInstancesInScope = do
       return $ classInstances instEnvs polymonadClass
     Nothing -> return []
 
+-- | Check if the given constraint is a class constraint of the given class.
 isClassConstraint :: Class -> Ct -> Bool
 isClassConstraint wantedClass ct = 
   case isCDictCan_Maybe ct of
