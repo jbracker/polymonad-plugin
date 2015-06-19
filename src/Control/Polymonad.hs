@@ -3,10 +3,10 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
---{-# LANGUAGE UndecidableInstances #-}
 
 -- -----------------------------------------------------------------------------
 
+-- | Representation of polymonads in Haskell.
 module Control.Polymonad
   ( Polymonad(..)
   , fail
@@ -21,6 +21,7 @@ import qualified Prelude as P
 
 import Data.Functor.Identity ( Identity( Identity, runIdentity ) )
 
+-- | Synonym for error.
 fail :: String -> m a
 fail = error
 
@@ -28,6 +29,28 @@ fail = error
 -- Polymonad Type Class
 -- -----------------------------------------------------------------------------
 
+-- | The polymonad type class. Instances implement a single bind-operation of
+--   a polymonad.
+--   
+--   Say the polymonad you want to implement consists of /__(M , Σ)__/, where 
+--   /__M__/ is the set of type constructor involved and /__Σ__/ is the set of
+--   bind-operations. Then remember that the following laws need to hold:
+--     
+--     [Functor] TODO
+--     [Paired Morphism] For all @m@, @n@ in __M__:
+--         
+--         > Polymonad m Identity n ==> Polymonad Identity m n
+--         > Polymonad Identity m n ==> Polymonad m Identity n
+--         
+--         and
+--         
+--         > FORALL >>=1 : Polymonad m Identity m AND >>=2 : Polymonad Identity m n .
+--         > (f v) >>=1 (\y -> y) = v >>=2 f
+--         
+--     [Diamond] TODO
+--     [Associativity] TODO
+--     [Closure] TODO
+--     
 class Polymonad m n p where
   (>>=) :: m a -> (a -> n b) -> p b
   (>>) :: m a -> n b -> p b
@@ -37,6 +60,7 @@ class Polymonad m n p where
 -- Identity Instance
 -- -----------------------------------------------------------------------------
 
+-- | The identity polymonad.
 instance Polymonad Identity Identity Identity where
   (Identity a) >>= f = f a
 
