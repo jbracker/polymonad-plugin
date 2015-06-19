@@ -23,6 +23,7 @@ module Main where
 import Prelude 
   ( Num(..)
   , IO, Int, Bool(..)
+  , Eq(..), Ord(..)
   , ($), (.)
   , putStrLn
   , undefined )
@@ -33,15 +34,16 @@ import Control.Polymonad
 --f :: (Num a) => a -> a
 --f x = x + 1
 
-eq :: (P.Ord a) => a -> a -> Bool
-eq x y = x P.== y
+eq :: (Ord a) => a -> a -> Bool
+eq x y = x == y
 
 main :: IO ()
-main = do
+main = P.return () {- do
   -- _ <- return $ f (3 :: Int)
   return $ eq True False -- putStrLn "A Test"
   return ()
   where ((>>=), return) = ((P.>>=) :: IO a -> (a -> IO b) -> IO b, P.return)
+  -}
 
 -- -----------------------------------------------------------------------------
 -- IST-Polymonad
@@ -79,7 +81,7 @@ instance Unit (SessionM p p) where
 instance Apply (SessionM p q) (SessionM p q) where
   app a f = f a
 -}
-
+{-
 instance Polymonad IO IO IO where
   (>>=) = (P.>>=)
 
@@ -91,7 +93,7 @@ instance Polymonad IO Identity IO where
 
 instance Polymonad Identity IO IO where
   (Identity a) >>= f = f a
-
+-}
 
 {-
 instance Polymonad (SessionM p q) (SessionM q r) (SessionM p r) where
@@ -122,7 +124,7 @@ testSession2 =
   (return () :: SessionM End End ())
 -} 
 
-
+{-
 idOp :: a -> Identity ()
 idOp _ = return ()
 
@@ -131,7 +133,7 @@ testId = do
   idOp True -- :: Identity ()
   _ <- return 'a'-- :: Identity P.Char
   return () -- :: Identity ()
-
+  -}
 {-
 test :: Identity Bool
 test = do

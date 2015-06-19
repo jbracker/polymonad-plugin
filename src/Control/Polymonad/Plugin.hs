@@ -4,7 +4,7 @@ module Control.Polymonad.Plugin
 
 import Data.Maybe ( catMaybes )
 
-import Control.Monad ( filterM, guard, MonadPlus(..) )
+import Control.Monad ( guard, MonadPlus(..) )
 
 import Debug.Trace ( trace )
 
@@ -16,26 +16,24 @@ import TcPluginM
 --import Unique ( getUnique, mkTcOccUnique )
 import Name 
   ( Name
-  , nameModule
-  , getOccName, getName )
+  , getName )
 import Type
   ( Type, TvSubst
   , EqRel(..)
   --, eqType
   --, isTyVarTy, isAlgType
   , substTys )
-import Module 
+{-import Module 
   ( Module(..)
   , mainPackageKey
   --, moduleEnvToList
   , moduleEnvKeys
-  , moduleNameString )
+  , moduleNameString )-}
 import Class {-
   ( Class
   , className, classMethods, classArity
   , classTyVars, classTyCon ) -}
 --import FastString ( mkFastString )
-import OccName ( occNameString )
 --import SrcLoc ( noSrcSpan )
 --import HscTypes ( typeEnvTyCons )
 import TcType 
@@ -52,7 +50,6 @@ import InstEnv
   ( ClsInst(..)
   --, InstEnvs(..)
   , DFunId
-  , instEnvElts
   , classInstances
   --, instanceSig
   , instanceBindFun, instanceDFunId )
@@ -62,6 +59,10 @@ import Outputable
   ( Outputable( ppr )
   --, text, parens, (<>)
   , showSDocUnsafe )
+
+import Control.Polymonad.Plugin.Utils
+  ( importedPolymonadModule, getPolymonadClass
+  )
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -207,33 +208,6 @@ findMatchingInstances insts ct = do
 -- Utility Functions
 -- -----------------------------------------------------------------------------
 
-importedPolymonadModule :: TcPluginM (Maybe Module)
-importedPolymonadModule = do
-  impMdls <- fmap (moduleEnvKeys . imp_mods . tcg_imports . fst) getEnvs
-  foundMdls <- (flip filterM) impMdls $ \m -> do
-    let pkgKey = modulePackageKey m
-    let mdlName = moduleNameString $ moduleName m
-    return $ pkgKey == mainPackageKey && mdlName == polymonadModuleName
-  return $ case foundMdls of
-    [m] -> Just m
-    _ -> Nothing
-
-getPolymonadClass :: Module -> TcPluginM (Maybe Class)
-getPolymonadClass mdl = do
-  visibleInsts <- fmap (instEnvElts . tcg_inst_env . fst) getEnvs
-  foundInsts <- (flip filterM) visibleInsts $ \inst -> do
-    let cls = is_cls inst
-    let clsName = className cls
-    let clsMdl = nameModule clsName
-    let clsNameStr = occNameString $ getOccName clsName
-    let clsArity = classArity cls
-    return $ clsMdl == mdl 
-          && clsNameStr == polymonadClassName
-          && clsArity == 3
-  return $ case foundInsts of
-    (inst : _) -> Just $ is_cls inst
-    [] -> Nothing
-
 mkDerivedTypeEqCt :: TcTyVar -> TcType -> TcPluginM Ct
 mkDerivedTypeEqCt tyVar ty = do
   (_, lclEnv) <- getEnvs
@@ -277,12 +251,6 @@ mkEqCtsFromSubst wantedCt subst = do
       printppr inScopeVars
       flip mapM inScopeVars $ \var -> do -- type variables in
         mkDerivedTypeEqCt var $ substTyVar subst var
-
-polymonadModuleName :: String
-polymonadModuleName = "Polymonad"
-
-polymonadClassName :: String
-polymonadClassName = "Polymonad"
 
 returnNoResult :: TcPluginM TcPluginResult
 returnNoResult = return $ TcPluginOk [] []
