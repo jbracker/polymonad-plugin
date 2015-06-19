@@ -50,18 +50,16 @@ import InstEnv
   ( ClsInst(..)
   --, InstEnvs(..)
   , DFunId
-  , classInstances
   --, instanceSig
   , instanceBindFun, instanceDFunId )
 import Unify ( tcUnifyTys )
 --import PrelNames ( monadClassName )
-import Outputable 
-  ( Outputable( ppr )
-  --, text, parens, (<>)
-  , showSDocUnsafe )
+import Outputable ( Outputable )
 
 import Control.Polymonad.Plugin.Utils
-  ( getPolymonadModule, getPolymonadClass
+  ( getPolymonadClass
+  , getPolymonadInstancesInScope
+  , isClassConstraint
   , printM, printppr, pprToStr
   )
 
@@ -95,8 +93,8 @@ polymonadInit = do
 
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve s given derived wanted = do
-  mCls <- getPolymonadClass
-  printppr mCls
+  insts <- getPolymonadInstancesInScope
+  printppr insts
   printM ">>> Plugin Solve..."
   printppr given
   printppr derived
@@ -105,9 +103,9 @@ polymonadSolve s given derived wanted = do
   if not $ null wanted then do
     mPolymonadCls <- getPolymonadClass
     case mPolymonadCls of
-      Just cls -> do
+      Just polymonadCls -> do
         printM ">>> Polymonad in scope, wanted constraints not empty, invoke solver..."
-        polymonadSolve' s cls (given, derived, wanted)
+        polymonadSolve' s polymonadCls (given, derived, wanted)
       _ -> returnNoResult
   else do
     returnNoResult
@@ -124,10 +122,10 @@ polymonadStop _state = do
 -- -----------------------------------------------------------------------------
 
 polymonadSolve' :: PolymonadState -> Class -> ([Ct], [Ct], [Ct]) -> TcPluginM TcPluginResult
-polymonadSolve' _s cls (_given, _derived, wanted) = do
+polymonadSolve' _s polymonadCls (_given, _derived, wanted) = do
   {-
   instEnv <- fmap (tcg_inst_env . fst) getEnvs
-  let pmInsts = flip filter (instEnvElts instEnv) $ \inst -> is_cls inst == cls
+  let pmInsts = flip filter (instEnvElts instEnv) $ \inst -> is_cls inst == polymonadCls
   printppr instEnv
   -}
   {-
@@ -144,8 +142,7 @@ polymonadSolve' _s cls (_given, _derived, wanted) = do
   return $ TcPluginOk [] []
   -}
   --printM "> Available Polymonad instances"
-  instEnvs <- getInstEnvs
-  let pmInsts = classInstances instEnvs cls
+  pmInsts <- getPolymonadInstancesInScope
   --printppr $ mapM mkPolymonadInst $ pmInsts
   
   --printM "> Wanted Constraints"
@@ -153,12 +150,12 @@ polymonadSolve' _s cls (_given, _derived, wanted) = do
   
   --printM "> Polymonad Constraints"
   -- [Ct]
-  let pmCts = filter (isPolymonadConstraint cls) wanted
+  let pmCts = filter (isClassConstraint polymonadCls) wanted
   --printppr pmCts
   {-
   printM "> SOME INFO"
   sequence_ $ flip fmap pmCts $ \ct -> case ct of
-    (CDictCan ev cls tya) -> do
+    (CDictCan ev polymonadCls tya) -> do
       printM "CDictCan"
     (CNonCanonical (CtWanted pred evar loc)) -> do
       printM "CNonCanonical (Wanted)"
@@ -252,11 +249,6 @@ mkEqCtsFromSubst wantedCt subst = do
 
 returnNoResult :: TcPluginM TcPluginResult
 returnNoResult = return $ TcPluginOk [] []
-
-isPolymonadConstraint :: Class -> Ct -> Bool
-isPolymonadConstraint polymonadCls ct 
-  =  ctName ct== className polymonadCls 
-  && isWanted (cc_ev ct)
 
 ctName :: Ct -> Name
 ctName ct = case ct of
