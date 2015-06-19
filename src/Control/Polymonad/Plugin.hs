@@ -1,4 +1,4 @@
- 
+-- | Provides the polymonad plugin for GHC.
 module Control.Polymonad.Plugin
   ( plugin ) where
 
@@ -67,6 +67,7 @@ import Control.Polymonad.Plugin.Utils
 -- The Plugin
 -- -----------------------------------------------------------------------------
 
+-- | The polymonad type checker plugin for GHC.
 plugin :: Plugin
 plugin = defaultPlugin 
   { tcPlugin = \_clos -> Just polymonadPlugin
