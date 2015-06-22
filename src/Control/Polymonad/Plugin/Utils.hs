@@ -32,11 +32,9 @@ import qualified Data.Set as S
 import Control.Monad ( filterM )
 import Control.Monad ( guard, MonadPlus(..) )
 
-import Var (varUnique)
 import TcRnTypes
   ( Ct(..), CtEvidence(..)
   , isCDictCan_Maybe
-  , isCNonCanonical
   , isWantedCt
   , imp_mods
   , ctev_pred
@@ -44,7 +42,7 @@ import TcRnTypes
 import TcPluginM
 import Name 
   ( nameModule
-  , getOccName, getName )
+  , getOccName )
 import OccName ( occNameString )
 import Module 
   ( Module(..)
@@ -60,14 +58,12 @@ import InstEnv
   , instanceHead
   , classInstances
   , lookupInstEnv
-  , instanceSig
   , instanceBindFun )
 import Unify ( tcUnifyTys )
 import Type 
   ( Type, TyVar, TvSubst
   , getTyVar_maybe
   , tyConAppTyCon_maybe
-  , tyConAppArgs
   , splitTyConApp_maybe
   , splitAppTys
   , mkTyConTy
