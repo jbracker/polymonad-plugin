@@ -4,7 +4,7 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
--- | Provides a generalized monad that models hoare triples. This is well 
+-- | Provides a generalized monad that models Hoare triples. This is well 
 --   known from the indexed monads presented by Edward Kmett in his package 
 --   <https://hackage.haskell.org/package/indexed indexed> (@Control.Monad.Indexed@).
 --   
@@ -27,6 +27,10 @@ import Data.Functor.Identity ( Identity( runIdentity ) )
 import Control.Polymonad
 
 -- | A generalized monad that models hoare triples.
+--   The laws that a Hoare monad needs to abide are very similar
+--   to those of standard 'Monad's:
+--
+--   __TODO__
 --   
 --   Also see the module description.
 class HoareMonad m where
