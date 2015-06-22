@@ -31,6 +31,7 @@ import qualified Prelude as P
 import Data.Functor.Identity ( Identity( Identity, runIdentity ) )
 
 import Control.Polymonad
+import Control.Polymonad.Hoare
 
 
 --f :: (Num a) => a -> a
@@ -59,7 +60,7 @@ instance Polymonad (IST p1 l1) (IST p2 l2) (IST p3 l3) where
 -- -----------------------------------------------------------------------------
 -- Session-Polymonad
 -- -----------------------------------------------------------------------------
-{-
+
 data SessionM (p :: SessionT) (q :: SessionT) a = SessionM a
 
 data SessionT where
@@ -72,17 +73,11 @@ send _ = SessionM ()
 
 recv :: SessionM (Recv a q) q a
 recv = SessionM undefined
--}
-{-
-instance Functor (SessionM p q) where
-  fmap f (SessionM a) = SessionM (f a)
 
-instance Unit (SessionM p p) where
-  return = SessionM
+instance HoareMonad SessionM where
+  hoareBind (SessionM a) f = f a
+  hoareRet a = SessionM a
 
-instance Apply (SessionM p q) (SessionM p q) where
-  app a f = f a
--}
 {-
 instance Polymonad IO IO IO where
   (>>=) = (P.>>=)
@@ -129,13 +124,13 @@ testSession2 =
 
 idOp :: a -> Identity ()
 idOp _ = return ()
-{-
-testId :: Identity ()
+
+testId :: P.Maybe ()
 testId = do
   idOp True -- :: Identity ()
   _ <- return 'a'-- :: Identity P.Char
   return () -- :: Identity ()
-  -}
+
 {-
 test :: Identity Bool
 test = do
