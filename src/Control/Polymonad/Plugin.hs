@@ -61,7 +61,7 @@ import Control.Polymonad.Plugin.Utils
   , getPolymonadInstancesInScope
   , getAllPolymonadTypeConstructors
   , isClassConstraint
-  , pmInstanceTcVars
+  , instanceTcVars
   , printM, printppr, pprToStr
   )
 
@@ -96,8 +96,12 @@ polymonadInit = do
 
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve s given derived wanted = do
-  insts <- getAllPolymonadTypeConstructors
-  printppr insts
+  pmTCs <- getAllPolymonadTypeConstructors
+  printppr pmTCs
+  
+  pmInsts <- getPolymonadInstancesInScope
+  printppr $ fmap instanceTcVars pmInsts
+  
   printM ">>> Plugin Solve..."
   printppr given
   printppr derived

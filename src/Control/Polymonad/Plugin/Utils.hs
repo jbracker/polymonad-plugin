@@ -13,8 +13,8 @@ module Control.Polymonad.Plugin.Utils (
   , getAllPolymonadTypeConstructors
   -- * Constraint and type inspection
   , isClassConstraint
-  , pmInstanceTyCons, pmInstanceTyCon
-  , pmInstanceTcVars, pmInstanceTcVar
+  , instanceTyCons
+  , instanceTcVars
   , argumentTyCon
   , argumentTcVar
   , collectTyVars
@@ -56,6 +56,7 @@ import Type
   , getTyVar_maybe
   , tyConAppTyCon_maybe
   , splitTyConApp_maybe
+  , splitAppTys
   )
 import TyCon ( TyCon )
 import Outputable 
@@ -143,7 +144,7 @@ getPolymonadInstancesInScope = do
 getAllPolymonadTypeConstructors :: TcPluginM (Set TyCon)
 getAllPolymonadTypeConstructors = do
   pmInsts <- getPolymonadInstancesInScope
-  return $ S.unions $ fmap pmInstanceTyCons pmInsts
+  return $ S.unions $ fmap instanceTyCons pmInsts
 
 -- -----------------------------------------------------------------------------
 -- Constraint and type inspection
@@ -156,25 +157,33 @@ isClassConstraint wantedClass ct =
     Just cls -> cls == wantedClass && isWantedCt ct
     Nothing -> False
 
-pmInstanceTyCons :: ClsInst -> Set TyCon
-pmInstanceTyCons inst = S.fromList 
-                      $ catMaybes [pmInstanceTyCon i inst | i <- [0..2]]
-
-pmInstanceTyCon :: Int -> ClsInst -> Maybe TyCon
-pmInstanceTyCon n inst = do
+-- | Retrieve the type constructors involved in the instance head of the 
+--   given instance. This only selects the top level type constructors.
+--   If there are nested type constructors they are ignored.
+--   /Example:/
+--   
+--   > instance Polymonad Identity m Identity where
+--   > > { Identity }
+instanceTyCons :: ClsInst -> Set TyCon
+instanceTyCons inst = 
   let (_tvs, _cls, args) = instanceHead inst
-  tyArg <- args `atIndex` n
-  tyConAppTyCon_maybe tyArg
+      mTyCons = fmap tyConAppTyCon_maybe args
+  in S.fromList $ catMaybes mTyCons
 
-pmInstanceTcVars :: ClsInst -> Set TyVar
-pmInstanceTcVars inst = S.fromList 
-                      $ catMaybes [pmInstanceTcVar i inst | i <- [0..2]]
-
-pmInstanceTcVar :: Int -> ClsInst -> Maybe TyVar
-pmInstanceTcVar n inst = do
+-- | Retrieve the type constructor variables involved in the instance head of the 
+--   given instance. This only selects the top level type variables.
+--   If there are nested type variables they are ignored. 
+--   There is no actual check if the returned type variables are actually type
+--   constructor variables.
+--   /Example:/
+--   
+--   > instance Polymonad (m a b) n Identity where
+--   > > { m , n }
+instanceTcVars :: ClsInst -> Set TyVar
+instanceTcVars inst = 
   let (_tvs, _cls, args) = instanceHead inst
-  tyArg <- args `atIndex` n
-  getTyVar_maybe tyArg
+      mTcVars = fmap (getTyVar_maybe . fst . splitAppTys) args
+  in S.fromList $ catMaybes mTcVars
 
 -- | @argumentTyCon n ct@ gets the type constructor of the n-th argument 
 --   in the constraint (If an n-th argument exists and actually is a type 
