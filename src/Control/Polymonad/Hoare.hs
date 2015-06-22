@@ -1,6 +1,7 @@
 
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE PolyKinds #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -12,9 +13,8 @@
 --   There are orphan instances that this modules provides:
 --   
 --     * __@'HoareMonad' m => 'Polymonad' (m i j)  (m j k)  (m i k)@__ - Monadic bind
---     * __@'HoareMonad' m => 'Polymonad' (m i j)  'Identity' (m i j)@__ - Functor bind
---     * __@'HoareMonad' m => 'Polymonad' 'Identity' (m i j)  (m i j)@__ - Apply bind
 --     * __@'HoareMonad' m => 'Polymonad' 'Identity' 'Identity' (m i i)@__ - Return bind
+--     * __@'HoareMonad' m => 'Functor' (m i j)@__ - Functor and apply bind
 --   
 --   These will provide a suitable polymonad for any given 'HoareMonad'
 --   instance.
@@ -33,7 +33,7 @@ import Control.Polymonad
 --   __TODO__
 --   
 --   Also see the module description.
-class HoareMonad m where
+class HoareMonad (m :: s -> s -> * -> *) where
   -- | Bind operation (Composition).
   hoareBind :: m i j a -> (a -> m j k b) -> m i k b
   -- | Return operation (Skip)
@@ -43,14 +43,12 @@ class HoareMonad m where
 instance HoareMonad m => Polymonad (m i j) (m j k) (m i k) where
   (>>=) = hoareBind
 
--- | Functor bind instance.
-instance HoareMonad m => Polymonad (m i j) Identity (m i j) where
-  (>>=) ma f = hoareBind ma (hoareRet . runIdentity . f)
-
--- | Apply bind instance.
-instance HoareMonad m => Polymonad Identity (m i j) (m i j) where
-  (>>=) ma f = hoareBind (hoareRet $ runIdentity ma) f
-
 -- | Return bind instance.
 instance HoareMonad m => Polymonad Identity Identity (m i i) where
   (>>=) ma f = hoareRet $ runIdentity . f $ runIdentity ma
+
+-- | Implies the functor and apply bind instance.
+instance HoareMonad m => Functor (m i j) where
+  fmap f ma = hoareBind ma (hoareRet . f)
+
+
