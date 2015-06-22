@@ -10,33 +10,41 @@ module Control.Polymonad.Plugin.Utils (
   , isPolymonadClass
   , getPolymonadClass
   , getPolymonadInstancesInScope
-  , getAllPolymonadTypeConstructors
+  , getRelevantPolymonadTyCons
   -- * Constraint and type inspection
   , isClassConstraint
   , instanceTyCons
   , instanceTcVars
-  , argumentTyCon
-  , argumentTcVar
+  , constraintTyCons
+  , constraintTcVars
+  , constraintClassTyCon
   , collectTyVars
+  , mkTcVarSubst
+  , findMatchingInstances
   -- * General Utilities
   , atIndex
+  , associations
   ) where
 
 import Data.Maybe ( listToMaybe, catMaybes )
 import Data.Set ( Set )
 import qualified Data.Set as S
 import Control.Monad ( filterM )
+import Control.Monad ( guard, MonadPlus(..) )
 
+import Var (varUnique)
 import TcRnTypes
-  ( Ct(..)
+  ( Ct(..), CtEvidence(..)
   , isCDictCan_Maybe
+  , isCNonCanonical
   , isWantedCt
   , imp_mods
+  , ctev_pred
   , tcg_imports, tcg_inst_env )
 import TcPluginM
 import Name 
   ( nameModule
-  , getOccName )
+  , getOccName, getName )
 import OccName ( occNameString )
 import Module 
   ( Module(..)
@@ -47,16 +55,24 @@ import Class
   ( Class(..)
   , className, classArity )
 import InstEnv 
-  ( ClsInst(..)
+  ( ClsInst(..), ClsInstLookupResult
   , instEnvElts
   , instanceHead
-  , classInstances )
+  , classInstances
+  , lookupInstEnv
+  , instanceSig
+  , instanceBindFun )
+import Unify ( tcUnifyTys )
 import Type 
-  ( Type, TyVar
+  ( Type, TyVar, TvSubst
   , getTyVar_maybe
   , tyConAppTyCon_maybe
+  , tyConAppArgs
   , splitTyConApp_maybe
   , splitAppTys
+  , mkTyConTy
+  , mkTopTvSubst
+  , substTys
   )
 import TyCon ( TyCon )
 import Outputable 
@@ -141,10 +157,24 @@ getPolymonadInstancesInScope = do
       return $ classInstances instEnvs polymonadClass
     Nothing -> return []
 
-getAllPolymonadTypeConstructors :: TcPluginM (Set TyCon)
-getAllPolymonadTypeConstructors = do
+-- | TODO
+getRelevantPolymonadTyCons :: [Ct] -> TcPluginM (Set TyCon)
+getRelevantPolymonadTyCons cts = do
   pmInsts <- getPolymonadInstancesInScope
-  return $ S.unions $ fmap instanceTyCons pmInsts
+  return $ S.unions $ fmap constraintTyCons cts
+
+-- | Find all instances that could possible be applied for a given constraint.
+--   Returns the applicable instance together with the necessary substitution
+--   for unification.
+findMatchingInstancesForConstraint :: [ClsInst] -> Ct -> [(ClsInst, TvSubst)]
+findMatchingInstancesForConstraint insts ct = do
+  inst <- insts
+  let ctTys = constraintTyParams ct
+  guard $ classTyCon (is_cls inst) == constraintClassTyCon ct
+  case tcUnifyTys instanceBindFun (is_tys inst) ctTys of
+    Just subst -> do
+      return (inst, subst)
+    Nothing -> mzero
 
 -- -----------------------------------------------------------------------------
 -- Constraint and type inspection
@@ -157,24 +187,74 @@ isClassConstraint wantedClass ct =
     Just cls -> cls == wantedClass && isWantedCt ct
     Nothing -> False
 
+-- | Retrieves the arguments of the given type class constraints.
+--   Unclear what happens if the given evidence does not contain a type 
+--   application.
+constraintEvidenceTyParams :: CtEvidence -> [Type]
+constraintEvidenceTyParams evdnc = case splitTyConApp_maybe $ ctev_pred evdnc of
+  Just (_tc, args) -> args
+  Nothing -> missingCaseError "constraintEvidenceTyParams" $ Just (ctev_pred evdnc)
+
+-- | Retrieves the arguments of the given constraints.
+--   Only works if the constraint is a type class constraint.
+--   Emits and error in case the constraint is not supported.
+constraintTyParams :: Ct -> [Type]
+constraintTyParams ct = case ct of
+  CDictCan _ _ _ -> cc_tyargs ct
+  CNonCanonical evdnc -> constraintEvidenceTyParams evdnc
+  v -> missingCaseError "constraintTyParams" $ Just v
+
+-- | Retrieves the type constructor of the given type class constraint.
+--   Only works if the constraint is a type class constraint.
+--   Emits and error in case the constraint is not supported.
+constraintClassTyCon :: Ct -> TyCon
+constraintClassTyCon ct = case ct of
+  CDictCan _ _ _ -> classTyCon (cc_class ct)
+  CNonCanonical evdnc -> constraintEvidenceClassTyCon evdnc
+  v -> missingCaseError "constraintTyCon" $ Just v
+
+-- | Retrieves the type constructor of the given type class constraints.
+--   Only works if the constraint is a type class constraint.
+--   Emits and error in case the constraint is not supported.
+constraintEvidenceClassTyCon :: CtEvidence -> TyCon
+constraintEvidenceClassTyCon evdnc = case splitTyConApp_maybe $ ctev_pred evdnc of
+  Just (tc, _args) -> tc
+  Nothing -> missingCaseError "constraintEvidenceClassTyCon" $ Just (ctev_pred evdnc)
+
+-- | Retrieve the type constructors at top level involved in the given types.
+--   If there are type constructors nested within the type they are ignored.
+--   /Example:/
+--   
+--   > collectTopTyCons [Maybe (Identity ())]
+--   > > { Maybe }
+collectTopTyCons :: [Type] -> Set TyCon
+collectTopTyCons tys = S.fromList $ catMaybes $ fmap tyConAppTyCon_maybe tys
+
+-- | Retrieve the type constructor variables at the top level involved in the 
+--   given types. If there are nested type variables they are ignored. 
+--   There is no actual check if the returned type variables are actually type
+--   constructor variables.
+--   /Example:/
+--   
+--   > collectTopTcVars [m a b, Identity c, n]
+--   > > { m, n }
+collectTopTcVars :: [Type] -> Set TyVar
+collectTopTcVars tys = S.fromList $ catMaybes $ fmap (getTyVar_maybe . fst . splitAppTys) tys
+
 -- | Retrieve the type constructors involved in the instance head of the 
---   given instance. This only selects the top level type constructors.
---   If there are nested type constructors they are ignored.
+--   given instance. This only selects the top level type constructors 
+--   (See 'collectTopTyCons').
 --   /Example:/
 --   
 --   > instance Polymonad Identity m Identity where
 --   > > { Identity }
 instanceTyCons :: ClsInst -> Set TyCon
 instanceTyCons inst = 
-  let (_tvs, _cls, args) = instanceHead inst
-      mTyCons = fmap tyConAppTyCon_maybe args
-  in S.fromList $ catMaybes mTyCons
+  let (_tvs, _cls, args) = instanceHead inst 
+  in collectTopTyCons args
 
 -- | Retrieve the type constructor variables involved in the instance head of the 
---   given instance. This only selects the top level type variables.
---   If there are nested type variables they are ignored. 
---   There is no actual check if the returned type variables are actually type
---   constructor variables.
+--   given instance. This only selects the top level type variables (See 'collectTopTcVars').
 --   /Example:/
 --   
 --   > instance Polymonad (m a b) n Identity where
@@ -182,30 +262,20 @@ instanceTyCons inst =
 instanceTcVars :: ClsInst -> Set TyVar
 instanceTcVars inst = 
   let (_tvs, _cls, args) = instanceHead inst
-      mTcVars = fmap (getTyVar_maybe . fst . splitAppTys) args
-  in S.fromList $ catMaybes mTcVars
+  in collectTopTcVars args
 
--- | @argumentTyCon n ct@ gets the type constructor of the n-th argument 
---   in the constraint (If an n-th argument exists and actually is a type 
---   constructor). Only works if the given constraint is a type class 
---   constraint.
-argumentTyCon :: Int -> Ct -> Maybe TyCon
-argumentTyCon n ct = do
-  _ <- isCDictCan_Maybe ct
-  let tyArgs = cc_tyargs ct
-  tyArg <- tyArgs `atIndex` n
-  tyConAppTyCon_maybe tyArg
+-- | Collects the type constructors in the arguments of the constraint. 
+--   Only works if the given constraint is a type class constraint. 
+--   Only collects those on the top level (See 'collectTopTyCons').
+constraintTyCons :: Ct -> Set TyCon
+constraintTyCons ct = collectTopTyCons $ constraintTyParams ct
+  
 
--- | @argumentTyVar n ct@ gets the type variable of the n-th argument 
---   in the constraint (If an n-th argument exists and actually is a type 
---   variable). Only works if the given constraint is a type class 
---   constraint.
-argumentTcVar :: Int -> Ct -> Maybe TyVar
-argumentTcVar n ct = do
-  _ <- isCDictCan_Maybe ct
-  let tyArgs = cc_tyargs ct
-  tyArg <- tyArgs `atIndex` n
-  getTyVar_maybe tyArg
+-- | Collects the type variables in the arguments of the constraint. 
+--   Only works if the given constraint is a type class constraint.
+--   Only collects those on the top level (See 'collectTopTcVars').
+constraintTcVars :: Ct -> Set TyVar
+constraintTcVars ct = collectTopTcVars $ constraintTyParams ct
 
 -- | Try to collect all type variables in a given expression.
 --   Only works for nested type constructor applications and type variables.
@@ -218,6 +288,21 @@ collectTyVars t =
       Just (_tc, args) -> S.unions $ fmap collectTyVars args
       Nothing -> S.empty
 
+-- | Create a substitution that replaces the given type variables with their
+--   associated type constructors.
+mkTcVarSubst :: [(TyVar, TyCon)] -> TvSubst
+mkTcVarSubst substs = mkTopTvSubst $ fmap (\(tv, tc) -> (tv, mkTyConTy tc)) substs
+
+-- | Substitute some type variables in the head of the given instance and 
+--   look if you can find instances that provide and implementation for the 
+--   substituted type.
+findMatchingInstances :: TvSubst -> ClsInst -> TcPluginM ClsInstLookupResult
+findMatchingInstances subst clsInst = do
+  instEnvs <- getInstEnvs
+  let cls = is_cls clsInst
+  let tys = substTys subst $ is_tys clsInst
+  return $ lookupInstEnv instEnvs cls tys
+
 -- -----------------------------------------------------------------------------
 -- General utilities
 -- -----------------------------------------------------------------------------
@@ -226,3 +311,19 @@ collectTyVars t =
 atIndex :: [a] -> Int -> Maybe a
 atIndex xs i = listToMaybe $ drop i xs
 
+-- | Takes a list of keys and all of their possible values and returns a list
+--   of all possible associations between keys and values
+--   /Example:/
+--   
+--   > associations [('a', [1,2,3]), ('b', [4,5])]
+--   > > [ [('a', 1), ('b', 4)], [('a', 1), ('b', 5)]
+--   > > , [('a', 2), ('b', 4)], [('a', 2), ('b', 5)]
+--   > > , [('a', 3), ('b', 4)], [('a', 3), ('b', 5)] ]
+associations :: [(key , [value])] -> [[(key, value)]]
+associations [] = [[]]
+associations ((_x, []) : _xys) = []
+associations ((x, (y : ys)) : xys) = (fmap ((x, y) :) (associations xys)) ++ associations ((x, ys) : xys)
+
+missingCaseError :: (Outputable o) => String -> Maybe o -> a
+missingCaseError funName (Just val) = error $ "Missing case in '" ++ funName ++ "' for " ++ pprToStr val
+missingCaseError funName Nothing    = error $ "Missing case in '" ++ funName ++ "'"

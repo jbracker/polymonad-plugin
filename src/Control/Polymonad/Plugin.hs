@@ -3,6 +3,8 @@ module Control.Polymonad.Plugin
   ( plugin ) where
 
 import Data.Maybe ( catMaybes )
+import Data.Set ( Set )
+import qualified Data.Set as S
 
 import Control.Monad ( guard, MonadPlus(..) )
 
@@ -59,9 +61,10 @@ import Outputable ( Outputable )
 import Control.Polymonad.Plugin.Utils
   ( getPolymonadClass
   , getPolymonadInstancesInScope
-  , getAllPolymonadTypeConstructors
+  , getRelevantPolymonadTyCons
   , isClassConstraint
   , instanceTcVars
+  , mkTcVarSubst, findMatchingInstances
   , printM, printppr, pprToStr
   )
 
@@ -96,12 +99,17 @@ polymonadInit = do
 
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve s given derived wanted = do
-  pmTCs <- getAllPolymonadTypeConstructors
-  printppr pmTCs
-  
   pmInsts <- getPolymonadInstancesInScope
-  printppr $ fmap instanceTcVars pmInsts
-  
+  tyCons <- getRelevantPolymonadTyCons wanted
+  printppr tyCons {-
+  case (pmInsts, S.toList $ tyCons) of
+    (inst : _, tc : _) -> do
+      printppr inst
+      printppr tc
+      let tcVars = fmap (\tv -> (tv , tc)) $ S.toList $ instanceTcVars inst
+      found <- findMatchingInstances (mkTcVarSubst tcVars) inst
+      printppr $ found
+      _ -> return () -}
   printM ">>> Plugin Solve..."
   printppr given
   printppr derived
@@ -175,7 +183,7 @@ polymonadSolve' _s polymonadCls (_given, _derived, wanted) = do
     --printM "> Matching Instances for..."
     --printppr pmCt
     --printppr $ findMatchingInstances pmInsts pmCt
-    return (pmCt, findMatchingInstances pmInsts pmCt)
+    return (pmCt, findMatchingInstances' pmInsts pmCt)
   
   -- [Ct]
   derivedList <- fmap concat $ flip mapM ctMatches $ \(pmCt, ctSolutions) -> do
@@ -196,8 +204,8 @@ polymonadSolve' _s polymonadCls (_given, _derived, wanted) = do
   return $ TcPluginOk evidenceList derivedList
   
 
-findMatchingInstances :: [ClsInst] -> Ct -> [(ClsInst, TvSubst)]
-findMatchingInstances insts ct = do
+findMatchingInstances' :: [ClsInst] -> Ct -> [(ClsInst, TvSubst)]
+findMatchingInstances' insts ct = do
   inst <- insts
   let ctTys = ctTyParams ct
   guard $ is_cls_nm inst == ctName ct
