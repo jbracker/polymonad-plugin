@@ -59,17 +59,13 @@ import Unify ( tcUnifyTys )
 import Outputable ( Outputable )
 
 import Control.Polymonad.Plugin.Utils
-  ( mkTcVarSubst
-  , printM, printppr, pprToStr
-  )
+  ( printM, printppr, pprToStr )
 import Control.Polymonad.Plugin.Detect
   ( getPolymonadClass )
 import Control.Polymonad.Plugin.Constraint
   ( isClassConstraint )
-import Control.Polymonad.Plugin.Instance
-  ( instanceTcVars, findInstanceTyCons, findMatchingInstances )
 import Control.Polymonad.Plugin.Core
-  ( getPolymonadInstancesInScope, getRelevantPolymonadTyCons )
+  ( getPolymonadInstancesInScope, getPolymonadTyConsInScope )
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -103,12 +99,8 @@ polymonadInit = do
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve s given derived wanted = do
   pmInsts <- getPolymonadInstancesInScope
-  tyCons <- getRelevantPolymonadTyCons wanted
-  _ <- (flip mapM) pmInsts $ \pmInst -> do
-    printppr pmInst
-    tyCons <- findInstanceTyCons pmInst
-    printppr tyCons
-    return ()
+  tyCons <- getPolymonadTyConsInScope
+  printppr tyCons
   printM ">>> Plugin Solve..."
   printppr given
   printppr derived

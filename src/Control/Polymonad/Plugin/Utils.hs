@@ -113,6 +113,9 @@ associations [] = [[]]
 associations ((_x, []) : _xys) = []
 associations ((x, (y : ys)) : xys) = (fmap ((x, y) :) (associations xys)) ++ associations ((x, ys) : xys)
 
+-- | Used to emit an error with a message describing the missing case.
+--   The string is the function that misses the case and the 'Outputable'
+--   is the object being matched.
 missingCaseError :: (Outputable o) => String -> Maybe o -> a
 missingCaseError funName (Just val) = error $ "Missing case in '" ++ funName ++ "' for " ++ pprToStr val
 missingCaseError funName Nothing    = error $ "Missing case in '" ++ funName ++ "'"

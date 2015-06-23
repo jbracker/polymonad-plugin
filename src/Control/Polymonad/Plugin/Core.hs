@@ -2,7 +2,7 @@
 -- | Core functions the plugin relies on to interact with GHCs API.
 module Control.Polymonad.Plugin.Core
   ( getPolymonadInstancesInScope
-  , getRelevantPolymonadTyCons
+  , getPolymonadTyConsInScope
   , findMatchingInstancesForConstraint
   ) where
 
@@ -22,13 +22,12 @@ import TcRnTypes ( Ct(..) )
 import TcPluginM
 
 import Control.Polymonad.Plugin.Constraint
-  ( constraintTyCons
-  , constraintTyParams
-  , constraintClassTyCon
-  )
+  ( constraintTyParams
+  , constraintClassTyCon )
+import Control.Polymonad.Plugin.Instance
+  ( findInstanceTopTyCons )
 import Control.Polymonad.Plugin.Detect
-  ( getPolymonadClass
-  )
+  ( getPolymonadClass )
 
 -- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.
 getPolymonadInstancesInScope :: TcPluginM [ClsInst]
@@ -41,10 +40,10 @@ getPolymonadInstancesInScope = do
     Nothing -> return []
 
 -- | TODO
-getRelevantPolymonadTyCons :: [Ct] -> TcPluginM (Set TyCon)
-getRelevantPolymonadTyCons cts = do
-  _pmInsts <- getPolymonadInstancesInScope
-  return $ S.unions $ fmap constraintTyCons cts
+getPolymonadTyConsInScope :: TcPluginM (Set TyCon)
+getPolymonadTyConsInScope = do
+  pmInsts <- getPolymonadInstancesInScope
+  fmap S.unions $ mapM findInstanceTopTyCons pmInsts
 
 -- | Find all instances that could possible be applied for a given constraint.
 --   Returns the applicable instance together with the necessary substitution
