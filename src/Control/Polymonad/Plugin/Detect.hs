@@ -34,8 +34,8 @@ polymonadModuleName = "Control.Polymonad"
 polymonadClassName :: String
 polymonadClassName = "Polymonad"
 
--- | Checks of the module containing the 'Control.Polymonad' type class 
---   is imported and, if so, return the module.
+-- | Checks if the module containing the 'Control.Polymonad' type class 
+--   is imported and, if so, returns the module.
 getPolymonadModule :: TcPluginM (Maybe Module)
 getPolymonadModule = do
   impMdls <- fmap (moduleEnvKeys . imp_mods . tcg_imports . fst) getEnvs
