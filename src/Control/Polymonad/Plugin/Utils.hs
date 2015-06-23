@@ -5,14 +5,11 @@ module Control.Polymonad.Plugin.Utils (
     printppr
   , printM
   , pprToStr
-  -- * Constraint and type inspection
+  -- * Type inspection
   , collectTopTyCons
   , collectTopTcVars
-  , instanceTyCons
-  , instanceTcVars
   , collectTyVars
   , mkTcVarSubst
-  , findMatchingInstances
   -- * General Utilities
   , atIndex
   , associations
@@ -24,10 +21,6 @@ import Data.Set ( Set )
 import qualified Data.Set as S
 
 import TcPluginM
-import InstEnv 
-  ( ClsInst(..), ClsInstLookupResult
-  , instanceHead
-  , lookupInstEnv )
 import Type 
   ( Type, TyVar, TvSubst
   , getTyVar_maybe
@@ -36,7 +29,6 @@ import Type
   , splitAppTys
   , mkTyConTy
   , mkTopTvSubst
-  , substTys
   )
 import TyCon ( TyCon )
 import Outputable 
@@ -84,29 +76,6 @@ collectTopTyCons tys = S.fromList $ catMaybes $ fmap tyConAppTyCon_maybe tys
 collectTopTcVars :: [Type] -> Set TyVar
 collectTopTcVars tys = S.fromList $ catMaybes $ fmap (getTyVar_maybe . fst . splitAppTys) tys
 
--- | Retrieve the type constructors involved in the instance head of the 
---   given instance. This only selects the top level type constructors 
---   (See 'collectTopTyCons').
---   /Example:/
---   
---   > instance Polymonad Identity m Identity where
---   > > { Identity }
-instanceTyCons :: ClsInst -> Set TyCon
-instanceTyCons inst = 
-  let (_tvs, _cls, args) = instanceHead inst 
-  in collectTopTyCons args
-
--- | Retrieve the type constructor variables involved in the instance head of the 
---   given instance. This only selects the top level type variables (See 'collectTopTcVars').
---   /Example:/
---   
---   > instance Polymonad (m a b) n Identity where
---   > > { m , n }
-instanceTcVars :: ClsInst -> Set TyVar
-instanceTcVars inst = 
-  let (_tvs, _cls, args) = instanceHead inst
-  in collectTopTcVars args
-
 -- | Try to collect all type variables in a given expression.
 --   Only works for nested type constructor applications and type variables.
 --   If the given type is not supported an empty set is returned.
@@ -122,16 +91,6 @@ collectTyVars t =
 --   associated type constructors.
 mkTcVarSubst :: [(TyVar, TyCon)] -> TvSubst
 mkTcVarSubst substs = mkTopTvSubst $ fmap (\(tv, tc) -> (tv, mkTyConTy tc)) substs
-
--- | Substitute some type variables in the head of the given instance and 
---   look if you can find instances that provide and implementation for the 
---   substituted type.
-findMatchingInstances :: TvSubst -> ClsInst -> TcPluginM ClsInstLookupResult
-findMatchingInstances subst clsInst = do
-  instEnvs <- getInstEnvs
-  let cls = is_cls clsInst
-  let tys = substTys subst $ is_tys clsInst
-  return $ lookupInstEnv instEnvs cls tys
 
 -- -----------------------------------------------------------------------------
 -- General utilities
