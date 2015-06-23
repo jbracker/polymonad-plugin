@@ -4,6 +4,7 @@ module Control.Polymonad.Plugin.Core
   ( getPolymonadInstancesInScope
   , getPolymonadTyConsInScope
   , findMatchingInstancesForConstraint
+  , selectPolymonadSubset
   ) where
 
 import Data.Set ( Set )
@@ -39,7 +40,9 @@ getPolymonadInstancesInScope = do
       return $ classInstances instEnvs polymonadClass
     Nothing -> return []
 
--- | TODO
+-- | Returns the set of all type constructors in the current scope 
+--   that are part of a polymonad in Haskell. Uses the polymonad
+--   instances to search for type constructors.
 getPolymonadTyConsInScope :: TcPluginM (Set TyCon)
 getPolymonadTyConsInScope = do
   pmInsts <- getPolymonadInstancesInScope
@@ -57,3 +60,18 @@ findMatchingInstancesForConstraint insts ct = do
     Just subst -> do
       return (inst, subst)
     Nothing -> mzero
+
+-- | Subset selection algorithm to select the correct subset of 
+--   type constructor and bind instances that belong to the polymonad
+--   being worked with in the list of constraints.
+--   
+--   /Preconditions:/ For the algorithm to work correctly,
+--   certain preconditions have to be meet:
+--   
+--     * TODO
+--   
+--   __TODO: Work in Progress / Unfinished__
+selectPolymonadSubset :: [Ct] -> TcPluginM (Set TyCon, [ClsInst])
+selectPolymonadSubset cts = do
+  -- TODO
+  return $ undefined
