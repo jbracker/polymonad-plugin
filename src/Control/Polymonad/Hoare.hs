@@ -12,9 +12,10 @@
 --   __Note:__
 --   There are orphan instances that this modules provides:
 --   
---     * __@'HoareMonad' m => 'Polymonad' (m i j)  (m j k)  (m i k)@__ - Monadic bind
---     * __@'HoareMonad' m => 'Polymonad' 'Identity' 'Identity' (m i i)@__ - Return bind
---     * __@'HoareMonad' m => 'Functor' (m i j)@__ - Functor and apply bind
+--     * __@'HoareMonad' m => 'Polymonad' (m i j)  (m j k)  (m i k)@__ - Monadic bind instance.
+--     * __@'HoareMonad' m => 'Polymonad' 'Identity' 'Identity' (m i i)@__ - Return bind instance.
+--     * __@'HoareMonad' m => 'Polymonad' (m i j) 'Identity' (m i j)@__ - Functor bind instance.
+--     * __@'HoareMonad' m => 'Polymonad' 'Identity' (m i j) (m i j)@__ - Apply bind instance.
 --   
 --   These will provide a suitable polymonad for any given 'HoareMonad'
 --   instance.
@@ -47,8 +48,12 @@ instance HoareMonad m => Polymonad (m i j) (m j k) (m i k) where
 instance HoareMonad m => Polymonad Identity Identity (m i i) where
   (>>=) ma f = hoareRet $ runIdentity . f $ runIdentity ma
 
--- | Implies the functor and apply bind instance.
-instance HoareMonad m => Functor (m i j) where
-  fmap f ma = hoareBind ma (hoareRet . f)
+-- | Functor bind instance.
+instance HoareMonad m => Polymonad (m i j) Identity (m i j) where
+  (>>=) ma f = hoareBind ma (hoareRet . runIdentity . f)
+
+-- | Apply bind instance.
+instance HoareMonad m => Polymonad Identity (m i j) (m i j) where
+  (>>=) ma f = hoareBind (hoareRet $ runIdentity ma) f
 
 
