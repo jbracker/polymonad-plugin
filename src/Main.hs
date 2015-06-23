@@ -77,7 +77,7 @@ recv = SessionM undefined
 instance HoareMonad SessionM where
   hoareBind (SessionM a) f = f a
   hoareRet a = SessionM a
-
+  
 {-
 instance Polymonad IO IO IO where
   (>>=) = (P.>>=)

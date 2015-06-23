@@ -15,7 +15,8 @@ module Control.Polymonad
 
 import Prelude 
   ( Functor(..), String
-  , (.), error
+  , (.), ($)
+  , error
   )
 import qualified Prelude as P
 
@@ -65,28 +66,24 @@ instance Polymonad Identity Identity Identity where
   (Identity a) >>= f = f a
 
 -- -----------------------------------------------------------------------------
--- Functor Instances
--- -----------------------------------------------------------------------------
-
--- | Standard functor instance
-instance Functor f => Polymonad f Identity f where
-  m >>= f = fmap (runIdentity . f) m
-
--- | Apply instance. Technically does not need the functor prerequisite
-instance Functor f => Polymonad Identity f f where
-  (Identity a) >>= f = f a
-  
--- -----------------------------------------------------------------------------
 -- Monad Instances
 -- -----------------------------------------------------------------------------
 
--- | Standard monadic bind
+-- | Functor bind instance.
+instance P.Monad f => Polymonad f Identity f where
+  m >>= f = m P.>>= (P.return . runIdentity . f)
+
+-- | Apply bind instance.
+instance P.Monad f => Polymonad Identity f f where
+  (Identity a) >>= f = f a
+
+-- | Monadic bind instance.
 instance P.Monad m => Polymonad m m m where
   m >>= f = m P.>>= f
 
--- | Standard monadic return
+-- | Return bind instance.
 instance P.Monad m => Polymonad Identity Identity m where
-  (Identity a) >>= f = let Identity b = f a in P.return b
+  (Identity a) >>= f = P.return $ runIdentity $ f a
 
 -- -----------------------------------------------------------------------------
 -- Units / Returns

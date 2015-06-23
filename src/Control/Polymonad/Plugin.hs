@@ -67,7 +67,7 @@ import Control.Polymonad.Plugin.Detect
 import Control.Polymonad.Plugin.Constraint
   ( isClassConstraint )
 import Control.Polymonad.Plugin.Instance
-  ( instanceTcVars, findMatchingInstances )
+  ( instanceTcVars, findInstanceTyCons, findMatchingInstances )
 import Control.Polymonad.Plugin.Core
   ( getPolymonadInstancesInScope, getRelevantPolymonadTyCons )
 
@@ -104,15 +104,11 @@ polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginRe
 polymonadSolve s given derived wanted = do
   pmInsts <- getPolymonadInstancesInScope
   tyCons <- getRelevantPolymonadTyCons wanted
-  printppr tyCons {-
-  case (pmInsts, S.toList $ tyCons) of
-    (inst : _, tc : _) -> do
-      printppr inst
-      printppr tc
-      let tcVars = fmap (\tv -> (tv , tc)) $ S.toList $ instanceTcVars inst
-      found <- findMatchingInstances (mkTcVarSubst tcVars) inst
-      printppr $ found
-      _ -> return () -}
+  _ <- (flip mapM) pmInsts $ \pmInst -> do
+    printppr pmInst
+    tyCons <- findInstanceTyCons pmInst
+    printppr tyCons
+    return ()
   printM ">>> Plugin Solve..."
   printppr given
   printppr derived
