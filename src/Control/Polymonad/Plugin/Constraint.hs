@@ -3,13 +3,16 @@
 --   of the GHC API.
 module Control.Polymonad.Plugin.Constraint
   ( isClassConstraint
-  , constraintTyParams
+  , constraintClassType
+  , constraintClassTyArgs
   , constraintClassTyCon
   , constraintTyCons
   , constraintTcVars
+  , findConstraintTopTyCons
   ) where
 
 import Data.Set ( Set )
+import qualified Data.Set as S
 
 import TcRnTypes
   ( Ct(..), CtEvidence(..)
@@ -22,11 +25,12 @@ import Type
   , splitTyConApp_maybe
   )
 import TyCon ( TyCon )
+import TcPluginM
 
 import Control.Polymonad.Plugin.Utils
-  ( missingCaseError
-  , collectTopTyCons
-  , collectTopTcVars )
+  ( collectTopTyCons
+  , collectTopTcVars
+  , findConstraintOrInstanceTyCons )
 
 -- | Check if the given constraint is a class constraint of the given class.
 isClassConstraint :: Class -> Ct -> Bool
@@ -35,48 +39,46 @@ isClassConstraint wantedClass ct =
     Just cls -> cls == wantedClass && isWantedCt ct
     Nothing -> False
 
--- | Retrieves the arguments of the given type class constraints.
---   Unclear what happens if the given evidence does not contain a type 
---   application.
-constraintEvidenceTyParams :: CtEvidence -> [Type]
-constraintEvidenceTyParams evdnc = case splitTyConApp_maybe $ ctev_pred evdnc of
-  Just (_tc, args) -> args
-  Nothing -> missingCaseError "constraintEvidenceTyParams" $ Just (ctev_pred evdnc)
+-- | Retrieves the type constructor and type arguments of the given 
+--   type class constraint.
+--   Only works if the constraint is a type class constraint, otherwise
+--   returns 'Nothing'.
+constraintClassType :: Ct -> Maybe (TyCon, [Type])
+constraintClassType ct = case ct of
+  CDictCan _ _ _ -> Just $ (classTyCon (cc_class ct), cc_tyargs ct)
+  CNonCanonical evdnc -> splitTyConApp_maybe $ ctev_pred evdnc
+  _ -> Nothing
 
 -- | Retrieves the arguments of the given constraints.
---   Only works if the constraint is a type class constraint.
---   Emits and error in case the constraint is not supported.
-constraintTyParams :: Ct -> [Type]
-constraintTyParams ct = case ct of
-  CDictCan _ _ _ -> cc_tyargs ct
-  CNonCanonical evdnc -> constraintEvidenceTyParams evdnc
-  v -> missingCaseError "constraintTyParams" $ Just v
+--   See 'constraintClassType'.
+constraintClassTyArgs :: Ct -> Maybe [Type]
+constraintClassTyArgs = fmap snd . constraintClassType
+
 
 -- | Retrieves the type constructor of the given type class constraint.
---   Only works if the constraint is a type class constraint.
---   Emits and error in case the constraint is not supported.
-constraintClassTyCon :: Ct -> TyCon
-constraintClassTyCon ct = case ct of
-  CDictCan _ _ _ -> classTyCon (cc_class ct)
-  CNonCanonical evdnc -> constraintEvidenceClassTyCon evdnc
-  v -> missingCaseError "constraintTyCon" $ Just v
-
--- | Retrieves the type constructor of the given type class constraints.
---   Only works if the constraint is a type class constraint.
---   Emits and error in case the constraint is not supported.
-constraintEvidenceClassTyCon :: CtEvidence -> TyCon
-constraintEvidenceClassTyCon evdnc = case splitTyConApp_maybe $ ctev_pred evdnc of
-  Just (tc, _args) -> tc
-  Nothing -> missingCaseError "constraintEvidenceClassTyCon" $ Just (ctev_pred evdnc)
+--   See 'constraintClassType'.
+constraintClassTyCon :: Ct -> Maybe TyCon
+constraintClassTyCon = fmap fst . constraintClassType
 
 -- | Collects the type constructors in the arguments of the constraint. 
 --   Only works if the given constraint is a type class constraint. 
 --   Only collects those on the top level (See 'collectTopTyCons').
 constraintTyCons :: Ct -> Set TyCon
-constraintTyCons ct = collectTopTyCons $ constraintTyParams ct
+constraintTyCons ct = maybe S.empty collectTopTyCons $ constraintClassTyArgs ct
   
 -- | Collects the type variables in the arguments of the constraint. 
 --   Only works if the given constraint is a type class constraint.
 --   Only collects those on the top level (See 'collectTopTcVars').
 constraintTcVars :: Ct -> Set TyVar
-constraintTcVars ct = collectTopTcVars $ constraintTyParams ct
+constraintTcVars ct = maybe S.empty collectTopTcVars $ constraintClassTyArgs ct
+
+-- | Search for all possible type constructors that could be 
+--   used in the top-level position of the constraint arguments.
+--   Delivers a set of type constructors.
+findConstraintTopTyCons :: Ct -> TcPluginM (Set TyCon)
+findConstraintTopTyCons ct = case constraintClassType ct of
+  Just (tyCon, tyArgs) -> do
+    let tcs = constraintTyCons ct
+    foundTcs <- findConstraintOrInstanceTyCons (constraintTcVars ct) (tyCon, tyArgs)
+    return $ tcs `S.union` foundTcs
+  Nothing -> return $ S.empty

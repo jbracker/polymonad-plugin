@@ -23,8 +23,7 @@ import TcRnTypes ( Ct(..) )
 import TcPluginM
 
 import Control.Polymonad.Plugin.Constraint
-  ( constraintTyParams
-  , constraintClassTyCon )
+  ( constraintClassType )
 import Control.Polymonad.Plugin.Instance
   ( findInstanceTopTyCons )
 import Control.Polymonad.Plugin.Detect
@@ -54,11 +53,13 @@ getPolymonadTyConsInScope = do
 findMatchingInstancesForConstraint :: [ClsInst] -> Ct -> [(ClsInst, TvSubst)]
 findMatchingInstancesForConstraint insts ct = do
   inst <- insts
-  let ctTys = constraintTyParams ct
-  guard $ classTyCon (is_cls inst) == constraintClassTyCon ct
-  case tcUnifyTys instanceBindFun (is_tys inst) ctTys of
-    Just subst -> do
-      return (inst, subst)
+  case constraintClassType ct of
+    Just (ctTyCon, ctTys) -> do
+      guard $ classTyCon (is_cls inst) == ctTyCon
+      case tcUnifyTys instanceBindFun (is_tys inst) ctTys of
+        Just subst -> do
+          return (inst, subst)
+        Nothing -> mzero
     Nothing -> mzero
 
 -- | Subset selection algorithm to select the correct subset of 
@@ -75,3 +76,9 @@ selectPolymonadSubset :: [Ct] -> TcPluginM (Set TyCon, [ClsInst])
 selectPolymonadSubset cts = do
   -- TODO
   return $ undefined
+  where
+    c_0 :: Set TyCon
+    c_0 = undefined
+
+
+
