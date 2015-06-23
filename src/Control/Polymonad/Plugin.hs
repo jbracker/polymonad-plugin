@@ -59,14 +59,16 @@ import Unify ( tcUnifyTys )
 import Outputable ( Outputable )
 
 import Control.Polymonad.Plugin.Utils
-  ( getPolymonadClass
-  , getPolymonadInstancesInScope
-  , getRelevantPolymonadTyCons
-  , isClassConstraint
-  , instanceTcVars
+  ( instanceTcVars
   , mkTcVarSubst, findMatchingInstances
   , printM, printppr, pprToStr
   )
+import Control.Polymonad.Plugin.Detect
+  ( getPolymonadClass )
+import Control.Polymonad.Plugin.Constraint
+  ( isClassConstraint )
+import Control.Polymonad.Plugin.Core
+  ( getPolymonadInstancesInScope, getRelevantPolymonadTyCons )
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
