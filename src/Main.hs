@@ -5,6 +5,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RebindableSyntax #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- SessionT --------------------------------------------------------------------
 {-# LANGUAGE DataKinds #-}
@@ -75,9 +77,12 @@ recv :: SessionM (Recv a q) q a
 recv = SessionM undefined
 
 instance HoareMonad SessionM where
-  hoareBind (SessionM a) f = f a
+  hoareBind (SessionM a) f = let SessionM b = f a in SessionM b
   hoareRet a = SessionM a
-  
+{-
+sequence3 :: forall m n p' p q a b c d. (Polymonad m n p', Polymonad p' p q) => m a -> n b -> p c -> q c
+sequence3 m n p = ((m >> n){- :: p' b -}) >> p
+-}
 {-
 instance Polymonad IO IO IO where
   (>>=) = (P.>>=)
