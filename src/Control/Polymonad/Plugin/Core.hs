@@ -7,27 +7,31 @@ module Control.Polymonad.Plugin.Core
   , selectPolymonadSubset
   ) where
 
+import Data.Maybe ( isJust )
 import Data.Set ( Set )
 import qualified Data.Set as S
 import Control.Monad ( guard, MonadPlus(..) )
+import Safe ( atMay )
 
 import InstEnv 
   ( ClsInst(..)
   , classInstances
   , instanceBindFun )
 import TyCon ( TyCon )
-import Type ( TvSubst )
+import Type ( TvSubst, TyVar, lookupTyVar )
 import Unify ( tcUnifyTys )
 import Class ( Class(..) )
 import TcRnTypes ( Ct(..) )
 import TcPluginM
 
 import Control.Polymonad.Plugin.Constraint
-  ( constraintClassType )
+  ( constraintClassType, constraintTyCons )
 import Control.Polymonad.Plugin.Instance
-  ( findInstanceTopTyCons )
+  ( findInstanceTopTyCons, instanceTyCons, instanceClassTyCon, instanceTyArgs, instanceTcVars )
 import Control.Polymonad.Plugin.Detect
   ( getPolymonadClass )
+import Control.Polymonad.Plugin.Utils
+  ( findConstraintOrInstanceTyCons )
 
 -- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.
 getPolymonadInstancesInScope :: TcPluginM [ClsInst]
@@ -77,8 +81,37 @@ selectPolymonadSubset cts = do
   -- TODO
   return $ undefined
   where
-    c_0 :: Set TyCon
-    c_0 = undefined
+    c :: Int -> TcPluginM (Set TyCon , [ClsInst])
+    c 0 = do
+      let initialTcs = S.unions $ fmap constraintTyCons cts
+      return (initialTcs, []) 
+    c n = do
+      (initialTcs, initialClsInsts) <- c (n - 1)
+      
+      return (initialTcs `S.union` undefined, undefined)
+      
+    appTC :: Set TyCon -> ClsInst -> TyVar -> TcPluginM (Set TyCon, [ClsInst])
+    appTC tcsCn clsInst tcVarArg = do
+      case instanceTyCons clsInst `S.isSubsetOf` tcsCn of
+        True  -> do
+          let tcVarArgs = S.delete tcVarArg $ instanceTcVars clsInst
+          -- TODO
+          -- Substitute tycons (already collected ones) for the given argument
+          -- Substitute all possible tycons for the rest of the arguments
+          -- Find applicable instances and return the together with all of the substituted tycons
+          return (undefined, undefined)
+        False -> return (S.empty, [])
 
 
+-- | Substitute some type variables in the head of the given instance and 
+--   look if you can find instances that provide an implementation for the 
+--   substituted instance. Also checks if the found instances actually
+--   support evidence.
+findApplicableInstances :: TvSubst -> ClsInst -> TcPluginM [(ClsInst, TvSubst)]
+findApplicableInstances subst clsInst = do
+  let substTcVars = S.filter (isJust . lookupTyVar subst) $ instanceTcVars clsInst
+  applicableTyCons <- findConstraintOrInstanceTyCons substTcVars (instanceClassTyCon clsInst, instanceTyArgs clsInst)
+  --associations 
+  -- TODO
+  return $ undefined
 
