@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules: Control.Polymonad
                  , Control.Polymonad.Hoare
+                 , Control.Polymonad.Functions
                  , Control.Polymonad.Plugin
                  , Control.Polymonad.Plugin.Utils
                  , Control.Polymonad.Plugin.Detect
