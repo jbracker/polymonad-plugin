@@ -14,7 +14,7 @@ module Control.Polymonad
   ) where
 
 import Prelude 
-  ( Functor(..), String
+  ( String
   , (.), ($)
   , error
   )
@@ -62,14 +62,16 @@ class Polymonad m n p where
 -- -----------------------------------------------------------------------------
 
 -- | The identity polymonad.
+{- We can just use the monad based derived forms instead of this.
 instance Polymonad Identity Identity Identity where
   (Identity a) >>= f = f a
-
+-}
 -- -----------------------------------------------------------------------------
 -- Monad Instances
 -- -----------------------------------------------------------------------------
 
 -- | Functor bind instance.
+
 instance P.Monad f => Polymonad f Identity f where
   m >>= f = m P.>>= (P.return . runIdentity . f)
 
