@@ -1,5 +1,5 @@
 
--- General Polymomnads ---------------------------------------------------------
+-- General Polymonads ----------------------------------------------------------
 {-# LANGUAGE MultiParamTypeClasses #-}
 -- {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
