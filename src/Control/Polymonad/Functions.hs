@@ -4,7 +4,7 @@
 -- Needed to use polymonads instead of standard monads.
 {-# LANGUAGE RebindableSyntax #-}
 -- To defer errors of ambiguity in utility function to their use-sight.
-{-# LANGUAGE AllowAmbiguousTypes #-}
+--{-# LANGUAGE AllowAmbiguousTypes #-}
 -- Not sure if this is needed yet. Sometimes useful.
 {-# LANGUAGE ScopedTypeVariables #-}
 
