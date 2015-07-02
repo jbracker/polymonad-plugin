@@ -1,4 +1,8 @@
 
+-- Needed to specify constraint context that contain 'Identity'.
+{-# LANGUAGE FlexibleContexts #-}
+-- Needed to use polymonads instead of standard monads.
+{-# LANGUAGE RebindableSyntax #-}
 -- To defer errors of ambiguity in utility function to their use-sight.
 {-# LANGUAGE AllowAmbiguousTypes #-}
 -- Not sure if this is needed yet. Sometimes useful.
@@ -21,6 +25,7 @@ import Prelude
   , error
   )
 import qualified Prelude as P
+import Data.Functor.Identity ( Identity )
 
 import Control.Polymonad
 
@@ -28,8 +33,8 @@ import Control.Polymonad
 (=<<) :: Polymonad m n p => (a -> n b) -> m a -> p b
 f =<< ma = ma >>= f
 
-mapM :: forall m n a b. (Polymonad m n n) => (a -> m b) -> [a] -> n [b]
+mapM :: forall m n a b. (Polymonad Identity Identity n, Polymonad m n n, Polymonad n n n) => (a -> m b) -> [a] -> n [b]
 mapM f xs = P.foldr k (return []) xs
   where
     k :: a -> n [b] -> n [b]
-    k a r = f a >>= \x -> r >>= \xs -> (return (x : xs) :: n [b])
+    k a r = f a >>= ( \x -> ( ( r >>= \xs -> ( return (x : xs) :: n [b] ) ) :: n [b] ) )
