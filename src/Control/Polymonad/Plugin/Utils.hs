@@ -15,6 +15,7 @@ module Control.Polymonad.Plugin.Utils (
   -- * General Utilities
   , atIndex
   , associations
+  , subsets
   , missingCaseError
   ) where
 
@@ -173,6 +174,14 @@ associations :: [(key , [value])] -> [[(key, value)]]
 associations [] = [[]]
 associations ((_x, []) : _xys) = []
 associations ((x, (y : ys)) : xys) = (fmap ((x, y) :) (associations xys)) ++ associations ((x, ys) : xys)
+
+-- | Generates the set of all subsets of a given set.
+subsets :: (Ord a) => Set a -> Set (Set a)
+subsets s = case S.size s of
+  0 -> S.singleton S.empty
+  _ -> let (x, s') = S.deleteFindMin s
+           subs = subsets s'
+       in S.map (S.insert x) subs `S.union` subs
 
 -- | Used to emit an error with a message describing the missing case.
 --   The string is the function that misses the case and the 'Outputable'
