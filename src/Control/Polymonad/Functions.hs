@@ -18,12 +18,12 @@ module Control.Polymonad.Functions
   ( (=<<)
   , mapM
   ) where
-
+{-
 import Prelude 
   ( String
   , (.), ($)
   , error
-  )
+  )-}
 import qualified Prelude as P
 import Data.Functor.Identity ( Identity )
 
@@ -34,7 +34,7 @@ import Control.Polymonad
 f =<< ma = ma >>= f
 
 mapM :: forall m n a b. (Polymonad Identity Identity n, Polymonad m n n, Polymonad n n n) => (a -> m b) -> [a] -> n [b]
-mapM f xs = P.foldr k (return []) xs
+mapM f ys = P.foldr k (return []) ys
   where
     k :: a -> n [b] -> n [b]
     k a r = f a >>= ( \x -> ( ( r >>= \xs -> ( return (x : xs) :: n [b] ) ) :: n [b] ) )

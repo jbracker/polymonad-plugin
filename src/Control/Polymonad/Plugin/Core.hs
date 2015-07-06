@@ -11,7 +11,6 @@ import Data.Maybe ( isJust )
 import Data.Set ( Set )
 import qualified Data.Set as S
 import Control.Monad ( guard, MonadPlus(..) )
-import Safe ( atMay )
 
 import InstEnv 
   ( ClsInst(..)
@@ -86,7 +85,7 @@ selectPolymonadSubset cts = do
       let initialTcs = S.unions $ fmap constraintTyCons cts
       return (initialTcs, []) 
     c n = do
-      (initialTcs, initialClsInsts) <- c (n - 1)
+      (initialTcs, _initialClsInsts) <- c (n - 1)
       
       return (initialTcs `S.union` undefined, undefined)
       
