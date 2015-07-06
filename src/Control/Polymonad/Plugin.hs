@@ -16,7 +16,7 @@ import TcRnTypes
 import TcPluginM
 
 --import Unique ( getUnique, mkTcOccUnique )
-import Name 
+import Name
   ( Name
   , getName )
 import Type
@@ -25,7 +25,7 @@ import Type
   --, eqType
   --, isTyVarTy, isAlgType
   , substTys )
-{-import Module 
+{-import Module
   ( Module(..)
   , mainPackageKey
   --, moduleEnvToList
@@ -38,7 +38,7 @@ import Class {-
 --import FastString ( mkFastString )
 --import SrcLoc ( noSrcSpan )
 --import HscTypes ( typeEnvTyCons )
-import TcType 
+import TcType
   ( isClassPred
   --, isDictLikeTy
   , tcTyConAppTyCon, tcTyConAppArgs
@@ -48,7 +48,7 @@ import TcType
   , substTyVar, notElemTvSubst
   , TcTyVar, TcType )
 --import TcEvidence ( EvTerm(..) )
-import InstEnv 
+import InstEnv
   ( ClsInst(..)
   --, InstEnvs(..)
   , DFunId
@@ -66,6 +66,8 @@ import Control.Polymonad.Plugin.Constraint
   ( isClassConstraint )
 import Control.Polymonad.Plugin.Core
   ( getPolymonadInstancesInScope, getPolymonadTyConsInScope )
+import Control.Polymonad.Plugin.Graph
+  ( mkGraphView )
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -73,7 +75,7 @@ import Control.Polymonad.Plugin.Core
 
 -- | The polymonad type checker plugin for GHC.
 plugin :: Plugin
-plugin = defaultPlugin 
+plugin = defaultPlugin
   { tcPlugin = \_clos -> Just polymonadPlugin
   }
 
@@ -84,7 +86,7 @@ plugin = defaultPlugin
 type PolymonadState = ()
 
 polymonadPlugin :: TcPlugin
-polymonadPlugin = TcPlugin 
+polymonadPlugin = TcPlugin
   { tcPluginInit  = polymonadInit
   , tcPluginSolve = polymonadSolve
   , tcPluginStop  = polymonadStop
@@ -98,13 +100,14 @@ polymonadInit = do
 
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve s given derived wanted = do
-  pmInsts <- getPolymonadInstancesInScope
-  tyCons <- getPolymonadTyConsInScope
-  printppr tyCons
+  --pmInsts <- getPolymonadInstancesInScope
+  --tyCons <- getPolymonadTyConsInScope
+  --printppr tyCons
   printM ">>> Plugin Solve..."
   printppr given
   printppr derived
   printppr wanted
+  printppr (mkGraphView wanted)
   printM ">>>>>>>>>>>>>>>>>>>"
   if not $ null wanted then do
     mPolymonadCls <- getPolymonadClass
@@ -120,7 +123,7 @@ polymonadStop :: PolymonadState -> TcPluginM ()
 polymonadStop _state = do
   printM ">>> Plugin Stop..."
   printM ""
-  
+
   return ()
 
 -- -----------------------------------------------------------------------------
@@ -150,10 +153,10 @@ polymonadSolve' _s polymonadCls (_given, _derived, wanted) = do
   --printM "> Available Polymonad instances"
   pmInsts <- getPolymonadInstancesInScope
   --printppr $ mapM mkPolymonadInst $ pmInsts
-  
+
   --printM "> Wanted Constraints"
   --printppr wanted
-  
+
   --printM "> Polymonad Constraints"
   -- [Ct]
   let pmCts = filter (isClassConstraint polymonadCls) wanted
@@ -175,7 +178,7 @@ polymonadSolve' _s polymonadCls (_given, _derived, wanted) = do
     --printppr pmCt
     --printppr $ findMatchingInstances pmInsts pmCt
     return (pmCt, findMatchingInstances' pmInsts pmCt)
-  
+
   -- [Ct]
   derivedList <- fmap concat $ flip mapM ctMatches $ \(pmCt, ctSolutions) -> do
     case ctSolutions of
@@ -184,16 +187,16 @@ polymonadSolve' _s polymonadCls (_given, _derived, wanted) = do
         let _instId = instanceDFunId clsInst :: DFunId
         -- [(EvTerm, Ct)]
         -- return [(EvDFunApp instId {-ts-} [] [], pmCt)]
-        
+
         -- [Ct]
         mkEqCtsFromSubst pmCt subst
       _ -> return []
-  
+
   let evidenceList = []
   printppr derivedList
   printM ""
   return $ TcPluginOk evidenceList derivedList
-  
+
 
 findMatchingInstances' :: [ClsInst] -> Ct -> [(ClsInst, TvSubst)]
 findMatchingInstances' insts ct = do
@@ -212,14 +215,14 @@ findMatchingInstances' insts ct = do
 mkDerivedTypeEqCt :: TcTyVar -> TcType -> TcPluginM Ct
 mkDerivedTypeEqCt tyVar ty = do
   (_, lclEnv) <- getEnvs
-  return $ CTyEqCan 
+  return $ CTyEqCan
     { cc_ev = CtDerived -- :: CtEvidence
       { ctev_pred = ty -- :: TcPredType
       -- This matches type-wise, but I have no idea what actually belongs here.
       , ctev_loc = mkGivenLoc topTcLevel (UnifyForAllSkol [tyVar] ty) lclEnv -- :: CtLoc
       -- Again no idea what actually belongs here:
       --   topTcLevel :: TcLevel
-      --     To what does this relate? I guess top level 
+      --     To what does this relate? I guess top level
       --     is ok for equality constraints
       --   (UnifyForAllSkol [tyVar] ty) :: SkolemInfo
       --     Who knows what exactly this is for.
@@ -287,11 +290,11 @@ missingCaseError funName Nothing    = error $ "Missing case in '" ++ funName ++ 
 {-
 
 TcGblEnv.tcg_type_env:
-Only contains type and data constructors (and classes?) 
+Only contains type and data constructors (and classes?)
 from the currently compiled module not the imported data.
 
 TcGblEnv.tcg_inst_env:
-Contains all locally defined and imported instances, 
+Contains all locally defined and imported instances,
 but not any derived instances.
 
 TcGblEnv.tcg_insts:
@@ -318,20 +321,3 @@ Modules directly imported by the current module.
 ]
 
 -}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
