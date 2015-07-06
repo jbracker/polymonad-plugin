@@ -22,7 +22,7 @@
 -- -----------------------------------------------------------------------------
 module Main where
 
-import Prelude 
+import Prelude
   ( Num(..)
   , IO, Int, Bool(..)
   , Eq(..), Ord(..)
@@ -124,9 +124,9 @@ testSession2 =
   (send True :: SessionM (Send Bool (Recv () End)) (Recv () End) ()) >>= \_ ->
   (recv :: SessionM (Recv () End) End ()) >>= \_ ->
   (return () :: SessionM End End ())
--} 
+-}
 
-
+{- TODO: Temporary while writing library -}
 idOp :: a -> Identity ()
 idOp _ = return ()
 
@@ -136,32 +136,10 @@ testId = do
   _ <- return 'a'-- :: Identity P.Char
   return () -- :: Identity ()
 
+
 {-
 test :: Identity Bool
 test = do
   x <- return True
   return x
 -}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
