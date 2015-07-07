@@ -3,6 +3,8 @@
 --   paper (Hicks 2014) used for coherence.
 module Control.Polymonad.Plugin.Graph
   ( GraphView
+  , EdgeType(..)
+  , PiNode(..)
   , vertexAssignment
   , mkGraphView
   ) where
@@ -21,17 +23,28 @@ import qualified Outputable as O
 
 import Control.Polymonad.Plugin.Constraint ( constraintClassTyArgs )
 
+-- | A node in the 'GraphView'.
+--   The arguments refers to the constraint the node was generated for.
 data PiNode a
-  = Pi0 a
-  | Pi1 a
-  | Pi2 a
+  = Pi0 a -- ^ Node for the first argument of a polymonad constraint.
+  | Pi1 a -- ^ Node for the second argument of a polymonad constraint.
+  | Pi2 a -- ^ Node for the third argument of a polymonad constraint.
   deriving ( Eq, Ord, Show )
 
 instance (Show a) => Outputable (PiNode a) where
   ppr = O.text . show
 
-data EdgeType = Unif | Bind deriving ( Eq, Ord, Show )
+-- | Type of an edge in a 'GraphView'.
+data EdgeType
+  = Unif -- ^ Unification edge. This means the connected nodes contain
+         --   the same variable.
+  | Bind -- ^ Bind edge. This means the connected nodes are part of the
+         --   same bind constraints.
+  deriving ( Eq, Ord, Show )
 
+-- | Graph-view of a constraint bag.
+--   See 'mkGraphView' and definition 5 of the paper
+--   "Polymonad Programming" (Hicks 2014).
 data GraphView = GraphView
   { vertexConstraints :: Map Int (Ct, Type, Type, Type)
   , vertices :: Set (PiNode Int)
@@ -48,6 +61,8 @@ instance Outputable GraphView where
          )
          O.$$ O.text "}"
 
+-- | Retrieves the assigned type of the given node in the 'GraphView',
+--   if the node exists.
 vertexAssignment :: GraphView -> PiNode Int -> Maybe Type
 vertexAssignment gv = vertexAssignment' (vertexConstraints gv)
 
@@ -72,6 +87,7 @@ mkEdge p q e = (fst $ vertexToNode p, fst $ vertexToNode q, e)
 mkUnifEdge :: PiNode Int -> PiNode Int -> [LEdge EdgeType]
 mkUnifEdge p q = [ mkEdge p q Unif, mkEdge q p Unif]
 
+-- | Create a 'GraphView' for solving the given constraints.
 mkGraphView :: [Ct] -> GraphView
 mkGraphView cts =
   let vs = fmap (\(ct, Just (p0 : p1 : p2 : _)) -> (ct, p0, p1, p2))
