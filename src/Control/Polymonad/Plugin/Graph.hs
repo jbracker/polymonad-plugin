@@ -41,7 +41,7 @@ data GraphView = GraphView
 
 instance Outputable GraphView where
   ppr gv = O.text "GraphView {" O.$$
-         ( O.nest 2 $ ppr (vertexConstraints gv)
+         O.nest 2 ( ppr (vertexConstraints gv)
            O.$$ ppr (vertices gv)
            O.$$ O.text (show $ graph gv)
            O.$$ O.int (nextVertexIndex gv)
@@ -49,12 +49,12 @@ instance Outputable GraphView where
          O.$$ O.text "}"
 
 vertexAssignment :: GraphView -> PiNode Int -> Maybe Type
-vertexAssignment gv p = vertexAssignment' (vertexConstraints gv) p
+vertexAssignment gv = vertexAssignment' (vertexConstraints gv)
 
 vertexAssignment' :: Map Int (Ct, Type, Type, Type) -> PiNode Int -> Maybe Type
-vertexAssignment' vAssign (Pi0 i) = fmap (\(_, t, _, _) -> t) $ M.lookup i vAssign
-vertexAssignment' vAssign (Pi1 i) = fmap (\(_, _, t, _) -> t) $ M.lookup i vAssign
-vertexAssignment' vAssign (Pi2 i) = fmap (\(_, _, _, t) -> t) $ M.lookup i vAssign
+vertexAssignment' vAssign (Pi0 i) = (\(_, t, _, _) -> t) <$> M.lookup i vAssign
+vertexAssignment' vAssign (Pi1 i) = (\(_, _, t, _) -> t) <$> M.lookup i vAssign
+vertexAssignment' vAssign (Pi2 i) = (\(_, _, _, t) -> t) <$> M.lookup i vAssign
 
 vertexToNode :: PiNode Int -> LNode (PiNode Int)
 vertexToNode (Pi0 i) = ( i * 3 + 0, Pi0 i )
@@ -63,8 +63,8 @@ vertexToNode (Pi2 i) = ( i * 3 + 2, Pi2 i )
 
 isSameTyVar :: Map Int (Ct, Type, Type, Type) -> PiNode Int -> PiNode Int -> Bool
 isSameTyVar vAssign p q = case (vertexAssignment' vAssign p, vertexAssignment' vAssign q) of
-    (Just tp, Just tq) -> isTyVarTy tp && isTyVarTy tq && getTyVar_maybe tp == getTyVar_maybe tq
-    _ -> False
+  (Just tp, Just tq) -> isTyVarTy tp && isTyVarTy tq && getTyVar_maybe tp == getTyVar_maybe tq
+  _ -> False
 
 mkEdge :: PiNode Int -> PiNode Int -> EdgeType -> LEdge EdgeType
 mkEdge p q e = (fst $ vertexToNode p, fst $ vertexToNode q, e)
