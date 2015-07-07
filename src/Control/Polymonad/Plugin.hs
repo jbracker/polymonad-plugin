@@ -63,7 +63,7 @@ import Control.Polymonad.Plugin.Utils
 import Control.Polymonad.Plugin.Detect
   ( getPolymonadClass )
 import Control.Polymonad.Plugin.Constraint
-  ( isClassConstraint )
+  ( isClassConstraint, mkDerivedTypeEqCt )
 import Control.Polymonad.Plugin.Core
   ( getPolymonadInstancesInScope, getPolymonadTyConsInScope )
 import Control.Polymonad.Plugin.Graph
@@ -212,30 +212,6 @@ findMatchingInstances' insts ct = do
 -- Utility Functions
 -- -----------------------------------------------------------------------------
 
-mkDerivedTypeEqCt :: TcTyVar -> TcType -> TcPluginM Ct
-mkDerivedTypeEqCt tyVar ty = do
-  (_, lclEnv) <- getEnvs
-  return $ CTyEqCan
-    { cc_ev = CtDerived -- :: CtEvidence
-      { ctev_pred = ty -- :: TcPredType
-      -- This matches type-wise, but I have no idea what actually belongs here.
-      , ctev_loc = mkGivenLoc topTcLevel (UnifyForAllSkol [tyVar] ty) lclEnv -- :: CtLoc
-      -- Again no idea what actually belongs here:
-      --   topTcLevel :: TcLevel
-      --     To what does this relate? I guess top level
-      --     is ok for equality constraints
-      --   (UnifyForAllSkol [tyVar] ty) :: SkolemInfo
-      --     Who knows what exactly this is for.
-      --     This one matches what we have at disposal.
-      --   lclEnv :: TcLclEnv
-      --     I just use the only one I know.
-      }
-    , cc_tyvar = tyVar -- :: TcTyVar
-    , cc_rhs = ty -- :: TcType
-    , cc_eq_rel = NomEq -- :: EqRel
-    -- Alternative would be ReprEq. Whats the difference?
-    }
-
 mkEqCtsFromSubst :: Ct -> TvSubst -> TcPluginM [Ct]
 mkEqCtsFromSubst wantedCt subst = do
   printM "=== mkEqCtsFromSubst ==="
@@ -254,7 +230,7 @@ mkEqCtsFromSubst wantedCt subst = do
       let inScopeVars = filter (\v -> not $ notElemTvSubst v subst) vars
       printppr inScopeVars
       flip mapM inScopeVars $ \var -> do -- type variables in
-        mkDerivedTypeEqCt var $ substTyVar subst var
+        return $ mkDerivedTypeEqCt wantedCt var (substTyVar subst var)
 
 returnNoResult :: TcPluginM TcPluginResult
 returnNoResult = return $ TcPluginOk [] []
