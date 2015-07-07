@@ -11,6 +11,10 @@ import qualified Data.Set as S
 import Type ( TyVar )
 import TcRnTypes ( Ct )
 
+-- | Try to simplify the type variable in the given bag of constraints
+--   and deliver the additional constraints created by the simplification.
+--   The new constraints will only be type equality constraints with the
+--   given variable on the right hand side.
 simplifyUp :: [Ct] -> TyVar -> [Ct]
 simplifyUp cts tv = undefined
 
