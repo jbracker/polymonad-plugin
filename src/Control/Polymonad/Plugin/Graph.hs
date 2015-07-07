@@ -31,9 +31,6 @@ data PiNode a
   | Pi2 a -- ^ Node for the third argument of a polymonad constraint.
   deriving ( Eq, Ord, Show )
 
-instance (Show a) => Outputable (PiNode a) where
-  ppr = O.text . show
-
 -- | Type of an edge in a 'GraphView'.
 data EdgeType
   = Unif -- ^ Unification edge. This means the connected nodes contain
@@ -52,40 +49,10 @@ data GraphView = GraphView
   , nextVertexIndex :: Int
   }
 
-instance Outputable GraphView where
-  ppr gv = O.text "GraphView {" O.$$
-         O.nest 2 ( ppr (vertexConstraints gv)
-           O.$$ ppr (vertices gv)
-           O.$$ O.text (show $ graph gv)
-           O.$$ O.int (nextVertexIndex gv)
-         )
-         O.$$ O.text "}"
-
 -- | Retrieves the assigned type of the given node in the 'GraphView',
 --   if the node exists.
 vertexAssignment :: GraphView -> PiNode Int -> Maybe Type
 vertexAssignment gv = vertexAssignment' (vertexConstraints gv)
-
-vertexAssignment' :: Map Int (Ct, Type, Type, Type) -> PiNode Int -> Maybe Type
-vertexAssignment' vAssign (Pi0 i) = (\(_, t, _, _) -> t) <$> M.lookup i vAssign
-vertexAssignment' vAssign (Pi1 i) = (\(_, _, t, _) -> t) <$> M.lookup i vAssign
-vertexAssignment' vAssign (Pi2 i) = (\(_, _, _, t) -> t) <$> M.lookup i vAssign
-
-vertexToNode :: PiNode Int -> LNode (PiNode Int)
-vertexToNode (Pi0 i) = ( i * 3 + 0, Pi0 i )
-vertexToNode (Pi1 i) = ( i * 3 + 1, Pi1 i )
-vertexToNode (Pi2 i) = ( i * 3 + 2, Pi2 i )
-
-isSameTyVar :: Map Int (Ct, Type, Type, Type) -> PiNode Int -> PiNode Int -> Bool
-isSameTyVar vAssign p q = case (vertexAssignment' vAssign p, vertexAssignment' vAssign q) of
-  (Just tp, Just tq) -> isTyVarTy tp && isTyVarTy tq && getTyVar_maybe tp == getTyVar_maybe tq
-  _ -> False
-
-mkEdge :: PiNode Int -> PiNode Int -> EdgeType -> LEdge EdgeType
-mkEdge p q e = (fst $ vertexToNode p, fst $ vertexToNode q, e)
-
-mkUnifEdge :: PiNode Int -> PiNode Int -> [LEdge EdgeType]
-mkUnifEdge p q = [ mkEdge p q Unif, mkEdge q p Unif]
 
 -- | Create a 'GraphView' for solving the given constraints.
 mkGraphView :: [Ct] -> GraphView
@@ -113,4 +80,43 @@ mkGraphView cts =
     , nextVertexIndex = length vs
     }
 
--- mkGraph :: [LNode a] -> [LEdge b] -> gr a b
+-- -----------------------------------------------------------------------------
+-- Local Utility Functions
+-- -----------------------------------------------------------------------------
+
+vertexAssignment' :: Map Int (Ct, Type, Type, Type) -> PiNode Int -> Maybe Type
+vertexAssignment' vAssign (Pi0 i) = (\(_, t, _, _) -> t) <$> M.lookup i vAssign
+vertexAssignment' vAssign (Pi1 i) = (\(_, _, t, _) -> t) <$> M.lookup i vAssign
+vertexAssignment' vAssign (Pi2 i) = (\(_, _, _, t) -> t) <$> M.lookup i vAssign
+
+vertexToNode :: PiNode Int -> LNode (PiNode Int)
+vertexToNode (Pi0 i) = ( i * 3 + 0, Pi0 i )
+vertexToNode (Pi1 i) = ( i * 3 + 1, Pi1 i )
+vertexToNode (Pi2 i) = ( i * 3 + 2, Pi2 i )
+
+isSameTyVar :: Map Int (Ct, Type, Type, Type) -> PiNode Int -> PiNode Int -> Bool
+isSameTyVar vAssign p q = case (vertexAssignment' vAssign p, vertexAssignment' vAssign q) of
+  (Just tp, Just tq) -> isTyVarTy tp && isTyVarTy tq && getTyVar_maybe tp == getTyVar_maybe tq
+  _ -> False
+
+mkEdge :: PiNode Int -> PiNode Int -> EdgeType -> LEdge EdgeType
+mkEdge p q e = (fst $ vertexToNode p, fst $ vertexToNode q, e)
+
+mkUnifEdge :: PiNode Int -> PiNode Int -> [LEdge EdgeType]
+mkUnifEdge p q = [ mkEdge p q Unif, mkEdge q p Unif]
+
+-- -----------------------------------------------------------------------------
+-- Unimportant Instances
+-- -----------------------------------------------------------------------------
+
+instance (Show a) => Outputable (PiNode a) where
+  ppr = O.text . show
+
+instance Outputable GraphView where
+  ppr gv = O.text "GraphView {" O.$$
+       O.nest 2 ( ppr (vertexConstraints gv)
+         O.$$ ppr (vertices gv)
+         O.$$ O.text (show $ graph gv)
+         O.$$ O.int (nextVertexIndex gv)
+       )
+       O.$$ O.text "}"
