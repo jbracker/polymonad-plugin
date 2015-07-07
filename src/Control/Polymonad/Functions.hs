@@ -10,16 +10,16 @@
 
 -- Plugin ----------------------------------------------------------------------
 
-{-# OPTIONS_GHC -fplugin Control.Polymonad.Plugin #-}
+--{-# OPTIONS_GHC -fplugin Control.Polymonad.Plugin #-}
 
 -- -----------------------------------------------------------------------------
 -- | Collection of the ported monad-based prelude functions for polymonads.
-module Control.Polymonad.Functions 
+module Control.Polymonad.Functions
   ( (=<<)
   , mapM
   ) where
 {-
-import Prelude 
+import Prelude
   ( String
   , (.), ($)
   , error
