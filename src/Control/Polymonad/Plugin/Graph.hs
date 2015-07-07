@@ -57,11 +57,19 @@ vertexAssignment gv = vertexAssignment' (vertexConstraints gv)
 -- | Create a 'GraphView' for solving the given constraints.
 mkGraphView :: [Ct] -> GraphView
 mkGraphView cts =
-  let vs = fmap (\(ct, Just (p0 : p1 : p2 : _)) -> (ct, p0, p1, p2))
+  let -- Map out the arguments of the given constraints so they are accessible
+      vs :: [(Ct, Type, Type, Type)]
+      vs = fmap (\(ct, Just (p0 : p1 : p2 : _)) -> (ct, p0, p1, p2))
          $ filter (\(_, ts) -> isJust ts)
          $ fmap (\ct -> (ct, constraintClassTyArgs ct)) cts
+      -- The indices associated with the arguments
+      is :: [Int]
       is = [0 .. length vs - 1]
+      -- The graphs nodes based on the indices.
+      verts :: Set (PiNode Int)
       verts = S.unions [ S.fromList [Pi0 i, Pi1 i, Pi2 i] | i <- is ]
+      -- The vertex constraints. Assigment between indices and constraints
+      vertConstr :: Map Int (Ct, Type, Type, Type)
       vertConstr = M.fromList $ zip is vs
       unifEdges = S.toList
                 $ S.fromList
