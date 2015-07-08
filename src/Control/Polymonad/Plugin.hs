@@ -61,7 +61,9 @@ import Outputable ( Outputable )
 import Control.Polymonad.Plugin.Utils
   ( printM, printppr, pprToStr )
 import Control.Polymonad.Plugin.Detect
-  ( getPolymonadClass )
+  ( getPolymonadClass
+  , getIdentityModule
+  , getIdentityTyCon )
 import Control.Polymonad.Plugin.Constraint
   ( isClassConstraint, mkDerivedTypeEqCt )
 import Control.Polymonad.Plugin.Core
@@ -103,11 +105,15 @@ polymonadSolve s given derived wanted = do
   --pmInsts <- getPolymonadInstancesInScope
   --tyCons <- getPolymonadTyConsInScope
   --printppr tyCons
+  mIdMdl <- getIdentityModule
+  printppr mIdMdl
+  mIdTyCon <- getIdentityTyCon
+  printppr mIdTyCon
   printM ">>> Plugin Solve..."
   printppr given
   printppr derived
   printppr wanted
-  printppr (mkGraphView wanted)
+  --printppr (mkGraphView wanted)
   printM ">>>>>>>>>>>>>>>>>>>"
   if not $ null wanted then do
     mPolymonadCls <- getPolymonadClass
