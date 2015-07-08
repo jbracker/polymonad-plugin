@@ -10,12 +10,14 @@ module Control.Polymonad.Plugin.Constraint
   , constraintClassType
   , constraintClassTyArgs
   , constraintClassTyCon
+  , constraintPolymonadTyArgs'
   , constraintPolymonadTyArgs
   , constraintTyCons
   , constraintTcVars
   , findConstraintTopTyCons
   ) where
 
+import Data.Maybe ( isJust )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
@@ -81,11 +83,19 @@ constraintClassTyArgs = fmap snd . constraintClassType
 -- | Extracts the type arguments of the given constraints.
 --   Only keeps those constraints that are type class constraints
 --   and have exactly three arguments.
-constraintPolymonadTyArgs :: [Ct] -> [(Ct, Type, Type, Type)]
-constraintPolymonadTyArgs cts
-  = fmap (\(ct, Just (p0 : p1 : p2 : _)) -> (ct, p0, p1, p2))
-  $ filter (\(_, ts) -> (length <$> ts) == Just 3)
-  $ fmap (\ct -> (ct, constraintClassTyArgs ct)) cts
+constraintPolymonadTyArgs' :: [Ct] -> [(Ct, Type, Type, Type)]
+constraintPolymonadTyArgs' cts
+  = fmap (\(ct, Just (p0, p1, p2)) -> (ct, p0, p1, p2))
+  $ filter (\(_, ts) -> isJust ts)
+  $ fmap (\ct -> (ct, constraintPolymonadTyArgs ct)) cts
+
+-- | Extracts the type arguments of the given constraint.
+--   Only works if the given constraints is a type class constraint
+--   and has exactly three arguments.
+constraintPolymonadTyArgs :: Ct -> Maybe (Type, Type, Type)
+constraintPolymonadTyArgs ct = case constraintClassTyArgs ct of
+    Just [t0, t1, t2] -> Just (t0, t1, t2)
+    _ -> Nothing
 
 
 -- | Retrieves the type constructor of the given type class constraint.
