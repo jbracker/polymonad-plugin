@@ -9,11 +9,14 @@
 -- | Representation of polymonads in Haskell.
 module Control.Polymonad
   ( Polymonad(..)
+    -- Reexporting this is convenient for users, because they don't
+    -- have to remember to import Data.Functor.Identity separatly anymore.
+  , Identity( Identity, runIdentity )
   , fail
   , return
   ) where
 
-import Prelude 
+import Prelude
   ( String
   , (.), ($)
   , error
@@ -32,26 +35,26 @@ fail = error
 
 -- | The polymonad type class. Instances implement a single bind-operation of
 --   a polymonad.
---   
---   Say the polymonad you want to implement consists of /__(M , Σ)__/, where 
+--
+--   Say the polymonad you want to implement consists of /__(M , Σ)__/, where
 --   /__M__/ is the set of type constructor involved and /__Σ__/ is the set of
 --   bind-operations. Then remember that the following laws need to hold:
---     
+--
 --     [Functor] TODO
 --     [Paired Morphism] For all @m@, @n@ in __M__:
---         
+--
 --         > Polymonad m Identity n ==> Polymonad Identity m n
 --         > Polymonad Identity m n ==> Polymonad m Identity n
---         
+--
 --         and
---         
+--
 --         > FORALL >>=1 : Polymonad m Identity m AND >>=2 : Polymonad Identity m n .
 --         > (f v) >>=1 (\y -> y) = v >>=2 f
---         
+--
 --     [Diamond] TODO
 --     [Associativity] TODO
 --     [Closure] TODO
---     
+--
 class Polymonad m n p where
   (>>=) :: m a -> (a -> n b) -> p b
   (>>) :: m a -> n b -> p b
@@ -95,13 +98,13 @@ instance P.Monad m => Polymonad Identity Identity m where
 return :: (Polymonad Identity Identity m) => a -> m a
 return x = Identity x >>= Identity
 
-{- For now remove these additional classes 
+{- For now remove these additional classes
 -- and instances to simplify the plugin.
 class Unit m where
   return :: a -> m a
 
 -- We want the chain of instances for backwards compatability.
--- P.Applicative would be enough for this, once it is an actual 
+-- P.Applicative would be enough for this, once it is an actual
 -- dependency of the P.Monad class.
 instance P.Monad m => Unit m where
   return = P.return
@@ -126,5 +129,3 @@ getFun ff a = ff >>= (\f -> Identity (f a))
 ap :: (Polymonad f Identity f, Polymonad f f f) => f (a -> b) -> f a -> f b
 ap ff fa = fa >>= \a -> getFun ff a
 -}
-
-
