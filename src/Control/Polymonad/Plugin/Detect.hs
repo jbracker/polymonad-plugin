@@ -12,11 +12,11 @@ import TcRnTypes
   ( imp_mods
   , tcg_imports, tcg_inst_env )
 import TcPluginM
-import Name 
+import Name
   ( nameModule
   , getOccName )
 import OccName ( occNameString )
-import Module 
+import Module
   ( Module(..)
   , mainPackageKey
   , moduleEnvKeys
@@ -24,7 +24,7 @@ import Module
 import Class
   ( Class(..)
   , className, classArity )
-import InstEnv 
+import InstEnv
   ( ClsInst(..)
   , instEnvElts )
 
@@ -34,7 +34,13 @@ polymonadModuleName = "Control.Polymonad"
 polymonadClassName :: String
 polymonadClassName = "Polymonad"
 
--- | Checks if the module containing the 'Control.Polymonad' type class 
+identityModuleName :: String
+identityModuleName = "Data.Functor.Identity"
+
+identityTyConName :: String
+identityTyConName = "Identity"
+
+-- | Checks if the module containing the 'Control.Polymonad' type class
 --   is imported and, if so, returns the module.
 getPolymonadModule :: TcPluginM (Maybe Module)
 getPolymonadModule = do
@@ -48,19 +54,19 @@ getPolymonadModule = do
     _ -> Nothing
 
 -- | Checks if the given class matches the shape of the 'Control.Polymonad'
---   type class and is defined in the given module. Usually the given module 
+--   type class and is defined in the given module. Usually the given module
 --   should be the one delivered from 'getPolymonadModule'.
 isPolymonadClass :: Module -> Class -> Bool
-isPolymonadClass polymonadModule cls = 
+isPolymonadClass polymonadModule cls =
   let clsName = className cls
       clsMdl = nameModule clsName
       clsNameStr = occNameString $ getOccName clsName
       clsArity = classArity cls
-  in    clsMdl == polymonadModule 
+  in    clsMdl == polymonadModule
      && clsNameStr == polymonadClassName
      && clsArity == 3
 
--- | Checks if a type class matching the shape and name of the 
+-- | Checks if a type class matching the shape and name of the
 --   'Control.Polymonad' type class is in scope and if it is part of the
 --   polymonad module ('getPolymonadModule'). If so returns the class.
 getPolymonadClass :: TcPluginM (Maybe Class)
