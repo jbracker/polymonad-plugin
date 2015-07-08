@@ -18,7 +18,7 @@ import TcRnTypes ( Ct )
 import Control.Polymonad.Plugin.Utils
   ( eqTyVar' )
 import Control.Polymonad.Plugin.Constraint
-  ( constraintPolymonadTyArgs )
+  ( constraintPolymonadTyArgs, constraintPolymonadTyArgs' )
 
 -- | Try to simplify the type variable in the given bag of constraints
 --   using the S-Up rule. Deliver the additional constraints created by
@@ -27,6 +27,13 @@ import Control.Polymonad.Plugin.Constraint
 --   given variable on the right hand side.
 simplifyUp :: [Ct] -> TyVar -> [Ct]
 simplifyUp cts tv = undefined
+
+simplifyUp' :: Ct -> TyVar -> Maybe Ct
+simplifyUp' ct rho = do
+  (t0, t1, t2) <- constraintPolymonadTyArgs ct
+  guard $ eqTyVar' rho t2 && (undefined || undefined)
+  -- Use: eqTyCon
+  return undefined -- TODO: Implement
 
 simplifyDown :: [Ct] -> TyVar -> [Ct]
 simplifyDown cts tv = undefined
@@ -39,7 +46,7 @@ simplifyJoin cts tv = undefined
 --   with @rho@ as result.
 flowsTo :: [Ct] -> TyVar -> [(Type, Type)]
 flowsTo p rho = do
-  (_ct, t0, t1, t2) <- constraintPolymonadTyArgs p
+  (_ct, t0, t1, t2) <- constraintPolymonadTyArgs' p
   guard $ eqTyVar' rho t2
   return (t0, t1)
 
@@ -48,6 +55,6 @@ flowsTo p rho = do
 --   @rho@ as one of their parameters.
 flowsFrom :: [Ct] -> TyVar -> [Type]
 flowsFrom p rho = do
-  (_ct, t0, t1, t2) <- constraintPolymonadTyArgs p
+  (_ct, t0, t1, t2) <- constraintPolymonadTyArgs' p
   guard $ eqTyVar' rho t0 || eqTyVar' rho t1
   return t2
