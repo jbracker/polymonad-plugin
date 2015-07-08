@@ -30,7 +30,7 @@ import qualified Outputable as O
 
 import Control.Polymonad.Plugin.Utils ( eqTyVar )
 import Control.Polymonad.Plugin.Constraint
-  ( constraintPolymonadTyArgs )
+  ( constraintPolymonadTyArgs' )
 
 type PiNodeId = Int
 
@@ -71,7 +71,7 @@ mkGraphView :: [Ct] -> GraphView
 mkGraphView cts =
   let -- Map out the arguments of the given constraints so they are accessible
       vs :: [(Int, (Ct, Type, Type, Type))]
-      vs = zip [0..] (constraintPolymonadTyArgs cts)
+      vs = zip [0..] (constraintPolymonadTyArgs' cts)
       -- The indices associated with the arguments
       ids :: [Int]
       ids = fst <$> vs
