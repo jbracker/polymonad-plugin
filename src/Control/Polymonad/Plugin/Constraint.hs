@@ -10,6 +10,7 @@ module Control.Polymonad.Plugin.Constraint
   , constraintClassType
   , constraintClassTyArgs
   , constraintClassTyCon
+  , constraintPolymonadTyArgs
   , constraintTyCons
   , constraintTcVars
   , findConstraintTopTyCons
@@ -76,6 +77,15 @@ constraintClassType ct = case ct of
 --   See 'constraintClassType'.
 constraintClassTyArgs :: Ct -> Maybe [Type]
 constraintClassTyArgs = fmap snd . constraintClassType
+
+-- | Extracts the type arguments of the given constraints.
+--   Only keeps those constraints that are type class constraints
+--   and have exactly three arguments.
+constraintPolymonadTyArgs :: [Ct] -> [(Ct, Type, Type, Type)]
+constraintPolymonadTyArgs cts
+  = fmap (\(ct, Just (p0 : p1 : p2 : _)) -> (ct, p0, p1, p2))
+  $ filter (\(_, ts) -> (length <$> ts) == Just 3)
+  $ fmap (\ct -> (ct, constraintClassTyArgs ct)) cts
 
 
 -- | Retrieves the type constructor of the given type class constraint.

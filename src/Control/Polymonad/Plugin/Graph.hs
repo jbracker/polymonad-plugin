@@ -11,7 +11,7 @@ module Control.Polymonad.Plugin.Graph
   , isFlowEdge
   ) where
 
-import Data.Maybe ( isJust, catMaybes, listToMaybe )
+import Data.Maybe ( catMaybes, listToMaybe )
 import Data.List ( sort )
 import Data.Map ( Map )
 import qualified Data.Map as M
@@ -28,7 +28,9 @@ import TcType ( isAmbiguousTyVar )
 import Outputable ( Outputable(..) )
 import qualified Outputable as O
 
-import Control.Polymonad.Plugin.Constraint ( constraintClassTyArgs )
+import Control.Polymonad.Plugin.Utils ( eqTyVar )
+import Control.Polymonad.Plugin.Constraint
+  ( constraintPolymonadTyArgs )
 
 type PiNodeId = Int
 
@@ -69,10 +71,7 @@ mkGraphView :: [Ct] -> GraphView
 mkGraphView cts =
   let -- Map out the arguments of the given constraints so they are accessible
       vs :: [(Int, (Ct, Type, Type, Type))]
-      vs = zip [0..]
-         $ fmap (\(ct, Just (p0 : p1 : p2 : _)) -> (ct, p0, p1, p2))
-         $ filter (\(_, ts) -> isJust ts)
-         $ fmap (\ct -> (ct, constraintClassTyArgs ct)) cts
+      vs = zip [0..] (constraintPolymonadTyArgs cts)
       -- The indices associated with the arguments
       ids :: [Int]
       ids = fst <$> vs
@@ -198,8 +197,8 @@ nodeToPiNode n = case divMod n 3 of
 --   the same type variable in both nodes. Uses the given association map
 --   to lookup the contents of the nodes.
 isSameTyVar :: PiNodeConstraints -> PiNode -> PiNode -> Bool
-isSameTyVar constr p q = case (piNodeTyVar' constr p, piNodeTyVar' constr q) of
-  (Just tp, Just tq) -> tp == tq
+isSameTyVar constr p q = case (piNodeType' constr p, piNodeType' constr q) of
+  (Just tp, Just tq) -> eqTyVar tp tq
   _ -> False
 
 -- | Get the top-level type variable associated with the given node, if

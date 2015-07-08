@@ -1,6 +1,6 @@
 
 -- | Provides all kinds of functions that are needed by the plugin.
-module Control.Polymonad.Plugin.Utils ( 
+module Control.Polymonad.Plugin.Utils (
   -- * Plugin printing and debugging
     printppr
   , printM
@@ -13,6 +13,7 @@ module Control.Polymonad.Plugin.Utils (
   , findConstraintOrInstanceTyCons
   , splitTyConApps
   -- * General Utilities
+  , eqTyVar, eqTyVar'
   , atIndex
   , associations
   , subsets
@@ -24,7 +25,7 @@ import Data.Maybe ( listToMaybe, catMaybes )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
-import Type 
+import Type
   ( Type, TyVar, TvSubst
   , getTyVar_maybe
   , tyConAppTyCon_maybe
@@ -37,18 +38,18 @@ import Type
   , substTy )
 import TyCon ( TyCon )
 import Name ( getName )
-import InstEnv 
+import InstEnv
   ( ClsInst(..)
   , instanceSig
   , lookupInstEnv
   , instanceBindFun )
 import Unify ( tcUnifyTys )
 import TcPluginM
-import Outputable 
+import Outputable
   ( Outputable( ppr )
   --, text, parens, (<>)
   , showSDocUnsafe )
-  
+
 -- -----------------------------------------------------------------------------
 -- Plugin debug primitives
 -- -----------------------------------------------------------------------------
@@ -72,18 +73,18 @@ pprToStr = showSDocUnsafe . ppr
 -- | Retrieve the type constructors at top level involved in the given types.
 --   If there are type constructors nested within the type they are ignored.
 --   /Example:/
---   
+--
 --   > collectTopTyCons [Maybe (Identity ())]
 --   > > { Maybe }
 collectTopTyCons :: [Type] -> Set TyCon
 collectTopTyCons tys = S.fromList $ catMaybes $ fmap tyConAppTyCon_maybe tys
 
--- | Retrieve the type constructor variables at the top level involved in the 
---   given types. If there are nested type variables they are ignored. 
+-- | Retrieve the type constructor variables at the top level involved in the
+--   given types. If there are nested type variables they are ignored.
 --   There is no actual check if the returned type variables are actually type
 --   constructor variables.
 --   /Example:/
---   
+--
 --   > collectTopTcVars [m a b, Identity c, n]
 --   > > { m, n }
 collectTopTcVars :: [Type] -> Set TyVar
@@ -105,15 +106,15 @@ collectTyVars t =
 mkTcVarSubst :: [(TyVar, TyCon)] -> TvSubst
 mkTcVarSubst substs = mkTopTvSubst $ fmap (\(tv, tc) -> (tv, mkTyConTy tc)) substs
 
--- | @findConstraintOrInstanceTyCons tvs ctOrInst@ delivers the set of type 
+-- | @findConstraintOrInstanceTyCons tvs ctOrInst@ delivers the set of type
 --   constructors that can be substituted for the type variables in @tvs@
 --   which are part of the given constraint or instance @ctOrInst@.
---   Only works properly if the given type variables are a subset of 
+--   Only works properly if the given type variables are a subset of
 --   @collectTopTcVars (snd ctOrInst)@.
 findConstraintOrInstanceTyCons :: Set TyVar -> (TyCon, [Type]) -> TcPluginM (Set TyCon)
 findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
   -- There are no relevant type variables to substitute. We are done
-  | S.null tcvs = return $ S.empty 
+  | S.null tcvs = return $ S.empty
   | otherwise = do
     -- Find the type class this constraint is about
     ctCls <- tcLookupClass (getName ctTyCon)
@@ -137,10 +138,10 @@ findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
           -- Get the constraints of this instance
           let (_vars, cts, _cls, _instArgs) = instanceSig foundInst
           -- Search for further instantiations of type constructors in
-          -- the constraints of this instance. Search is restricted to 
+          -- the constraints of this instance. Search is restricted to
           -- variables that are relevant for the original search.
           -- Relevant means that the variables are substitutes for the original ones.
-          collectedTcs <- (flip mapM) (splitTyConApps cts) 
+          collectedTcs <- (flip mapM) (splitTyConApps cts)
                         $ findConstraintOrInstanceTyCons (S.fromList $ fmap (getTyVar "This should never happen") substTvs)
           -- Union everthing we found so far together
           return $ (S.fromList $ fmap tyConAppTyCon substTcs) `S.union` S.unions collectedTcs
@@ -158,6 +159,20 @@ splitTyConApps = catMaybes . fmap splitTyConApp_maybe
 -- General utilities
 -- -----------------------------------------------------------------------------
 
+-- | Check if both types contain type variables and if those type
+--   variables are equal.
+eqTyVar :: Type -> Type -> Bool
+eqTyVar ty ty' = case getTyVar_maybe ty of
+  Just tv -> eqTyVar' tv ty'
+  _ -> False
+
+-- | Check if the given type constrains a type variable and it is equal to
+--   the given type variable.
+eqTyVar' :: TyVar -> Type -> Bool
+eqTyVar' tv ty = case getTyVar_maybe ty of
+  Just tv' -> tv == tv'
+  Nothing  -> False
+
 -- | Get the element of a list at a given index (If that element exists).
 atIndex :: [a] -> Int -> Maybe a
 atIndex xs i = listToMaybe $ drop i xs
@@ -165,7 +180,7 @@ atIndex xs i = listToMaybe $ drop i xs
 -- | Takes a list of keys and all of their possible values and returns a list
 --   of all possible associations between keys and values
 --   /Example:/
---   
+--
 --   > associations [('a', [1,2,3]), ('b', [4,5])]
 --   > > [ [('a', 1), ('b', 4)], [('a', 1), ('b', 5)]
 --   > > , [('a', 2), ('b', 4)], [('a', 2), ('b', 5)]
