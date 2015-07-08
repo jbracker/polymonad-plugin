@@ -14,6 +14,7 @@ module Control.Polymonad.Plugin.Utils (
   , splitTyConApps
   -- * General Utilities
   , eqTyVar, eqTyVar'
+  , eqTyCon
   , atIndex
   , associations
   , subsets
@@ -35,7 +36,8 @@ import Type
   , mkTopTvSubst
   , mkTyVarTy, getTyVar
   , tyConAppTyCon
-  , substTy )
+  , substTy
+  , eqType )
 import TyCon ( TyCon )
 import Name ( getName )
 import InstEnv
@@ -172,6 +174,11 @@ eqTyVar' :: TyVar -> Type -> Bool
 eqTyVar' tv ty = case getTyVar_maybe ty of
   Just tv' -> tv == tv'
   Nothing  -> False
+
+-- | Checks if the given type constructors equals the given type.
+-- TODO: Test!
+eqTyCon :: TyCon -> Type -> Bool
+eqTyCon tc ty = eqType (mkTyConTy tc) ty
 
 -- | Get the element of a list at a given index (If that element exists).
 atIndex :: [a] -> Int -> Maybe a
