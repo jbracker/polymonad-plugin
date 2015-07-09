@@ -26,7 +26,7 @@ import Type
   , mkTopTvSubst, substTys )
 import Unify ( tcUnifyTys )
 import Class ( Class(..) )
-import TcRnTypes ( Ct(..), CtEvidence(..) )
+import TcRnTypes ( Ct(..) )
 import TcEvidence ( EvTerm(..) )
 import TcPluginM
 
@@ -39,9 +39,7 @@ import Control.Polymonad.Plugin.Instance
 import Control.Polymonad.Plugin.Detect
   ( getPolymonadClass )
 import Control.Polymonad.Plugin.Utils
-  ( findConstraintOrInstanceTyCons
-  , collectTyVars
-  , printppr, printM )
+  ( findConstraintOrInstanceTyCons )
 
 -- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.
 getPolymonadInstancesInScope :: TcPluginM [ClsInst]
@@ -59,7 +57,7 @@ getPolymonadInstancesInScope = do
 getPolymonadTyConsInScope :: TcPluginM (Set TyCon)
 getPolymonadTyConsInScope = do
   pmInsts <- getPolymonadInstancesInScope
-  fmap S.unions $ mapM findInstanceTopTyCons pmInsts
+  S.unions <$> mapM findInstanceTopTyCons pmInsts
 
 -- | Find all instances that could possible be applied for a given constraint.
 --   Returns the applicable instance together with the necessary substitution
@@ -71,8 +69,7 @@ findMatchingInstancesForConstraint insts ct = do
     Just (ctTyCon, ctTys) -> do
       guard $ classTyCon (is_cls inst) == ctTyCon
       case tcUnifyTys instanceBindFun (is_tys inst) ctTys of
-        Just subst -> do
-          return (inst, subst)
+        Just subst -> return (inst, subst)
         Nothing -> mzero
     Nothing -> mzero
 
@@ -95,7 +92,7 @@ pickInstanceForAppliedConstraint ct = do
       instEnvs <- getInstEnvs
       -- Find matching instance for our constraint.
       case lookupInstEnv instEnvs pmCls tyArgs of
-        (matches, _, _) -> do
+        (matches, _, _) ->
           -- Only keep those matches that actually found a type for every argument.
           case filter (\(_, args) -> all isJust args) matches of
             -- If we found more then one instance, just use the first.
@@ -151,9 +148,9 @@ pickInstanceForAppliedConstraint ct = do
 --
 --   __TODO: Work in Progress / Unfinished__
 selectPolymonadSubset :: [Ct] -> TcPluginM (Set TyCon, [ClsInst])
-selectPolymonadSubset cts = do
+selectPolymonadSubset cts =
   -- TODO
-  return $ undefined
+  return undefined
   where
     c :: Int -> TcPluginM (Set TyCon , [ClsInst])
     c 0 = do
@@ -165,16 +162,16 @@ selectPolymonadSubset cts = do
       return (initialTcs `S.union` undefined, undefined)
 
     appTC :: Set TyCon -> ClsInst -> TyVar -> TcPluginM (Set TyCon, [ClsInst])
-    appTC tcsCn clsInst tcVarArg = do
-      case instanceTyCons clsInst `S.isSubsetOf` tcsCn of
-        True  -> do
+    appTC tcsCn clsInst tcVarArg =
+      if instanceTyCons clsInst `S.isSubsetOf` tcsCn
+        then do
           let tcVarArgs = S.delete tcVarArg $ instanceTcVars clsInst
           -- TODO
           -- Substitute tycons (already collected ones) for the given argument
           -- Substitute all possible tycons for the rest of the arguments
           -- Find applicable instances and return the together with all of the substituted tycons
           return (undefined, undefined)
-        False -> return (S.empty, [])
+        else return (S.empty, [])
 
 
 -- | Substitute some type variables in the head of the given instance and
@@ -187,4 +184,4 @@ findApplicableInstances subst clsInst = do
   applicableTyCons <- findConstraintOrInstanceTyCons substTcVars (instanceClassTyCon clsInst, instanceTyArgs clsInst)
   --associations
   -- TODO
-  return $ undefined
+  return undefined
