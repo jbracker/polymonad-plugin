@@ -14,10 +14,11 @@ module Control.Polymonad.Plugin.Constraint
   , constraintPolymonadTyArgs
   , constraintTyCons
   , constraintTcVars
+  , constraintTopAmbiguousTyVars
   , findConstraintTopTyCons
   ) where
 
-import Data.Maybe ( isJust )
+import Data.Maybe ( isJust, catMaybes, fromMaybe )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
@@ -32,10 +33,11 @@ import Type
   ( Type, TyVar
   , splitTyConApp_maybe
   , mkTyVarTy
+  , getTyVar_maybe
   )
 import TyCon ( TyCon )
 import TcPluginM
-import TcType ( mkTcEqPred )
+import TcType ( mkTcEqPred, isAmbiguousTyVar )
 
 import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
@@ -114,6 +116,15 @@ constraintTyCons ct = maybe S.empty collectTopTyCons $ constraintClassTyArgs ct
 --   Only collects those on the top level (See 'collectTopTcVars').
 constraintTcVars :: Ct -> Set TyVar
 constraintTcVars ct = maybe S.empty collectTopTcVars $ constraintClassTyArgs ct
+
+-- | Collects the top-level ambiguous type variables in the constraints
+--   arguments. Only returns non-empty sets if the constraint is a class
+--   constraint and actually has arguments.
+constraintTopAmbiguousTyVars :: Ct -> Set TyVar
+constraintTopAmbiguousTyVars ct = ambTvs
+  where tyArgs = fromMaybe [] (constraintClassTyArgs ct)
+        tvArgs = catMaybes $ getTyVar_maybe <$> tyArgs
+        ambTvs = S.fromList $ filter isAmbiguousTyVar tvArgs
 
 -- | Search for all possible type constructors that could be
 --   used in the top-level position of the constraint arguments.
