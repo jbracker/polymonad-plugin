@@ -65,11 +65,13 @@ import Control.Polymonad.Plugin.Detect
   , getIdentityModule
   , getIdentityTyCon )
 import Control.Polymonad.Plugin.Constraint
-  ( isClassConstraint, mkDerivedTypeEqCt )
+  ( isClassConstraint, mkDerivedTypeEqCt, constraintTopAmbiguousTyVars )
 import Control.Polymonad.Plugin.Core
   ( getPolymonadInstancesInScope, getPolymonadTyConsInScope )
 import Control.Polymonad.Plugin.Graph
   ( mkGraphView )
+import Control.Polymonad.Plugin.Simplification
+  ( simplifyAllUpDown , simplifiedTvsToConstraints )
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -105,10 +107,6 @@ polymonadSolve s given derived wanted = do
   --pmInsts <- getPolymonadInstancesInScope
   --tyCons <- getPolymonadTyConsInScope
   --printppr tyCons
-  mIdMdl <- getIdentityModule
-  printppr mIdMdl
-  mIdTyCon <- getIdentityTyCon
-  printppr mIdTyCon
   printM ">>> Plugin Solve..."
   printppr given
   printppr derived
@@ -117,10 +115,15 @@ polymonadSolve s given derived wanted = do
   printM ">>>>>>>>>>>>>>>>>>>"
   if not $ null wanted then do
     mPolymonadCls <- getPolymonadClass
-    case mPolymonadCls of
-      Just polymonadCls -> do
+    mIdTyCon <- getIdentityTyCon
+    case (mPolymonadCls, mIdTyCon) of
+      (Just polymonadCls, Just idTyCon) -> do
         printM ">>> Polymonad in scope, wanted constraints not empty, invoke solver..."
-        polymonadSolve' s polymonadCls (given, derived, wanted)
+        --polymonadSolve' s polymonadCls (given, derived, wanted)
+        let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
+        let eqCts = simplifiedTvsToConstraints $ simplifyAllUpDown idTyCon wanted ambTvs
+        printppr eqCts
+        return $ TcPluginOk [] eqCts
       _ -> returnNoResult
   else do
     returnNoResult
