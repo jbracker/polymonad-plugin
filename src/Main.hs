@@ -3,9 +3,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 -- {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RebindableSyntax #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -- SessionT --------------------------------------------------------------------
@@ -126,7 +124,7 @@ testSession2 =
   (return () :: SessionM End End ())
 -}
 
-{- TODO: Temporary while writing library
+{- TODO: Temporary while writing library -}
 idOp :: a -> Identity ()
 idOp _ = return ()
 
@@ -135,7 +133,7 @@ testId = do
   idOp True -- :: Identity ()
   _ <- return 'a'-- :: Identity P.Char
   return () -- :: Identity ()
--}
+
 
 {-
 test :: Identity Bool
