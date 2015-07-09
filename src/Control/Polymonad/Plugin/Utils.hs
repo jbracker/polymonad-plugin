@@ -22,9 +22,11 @@ module Control.Polymonad.Plugin.Utils (
   ) where
 
 import Data.List ( partition )
-import Data.Maybe ( listToMaybe, catMaybes )
+import Data.Maybe ( listToMaybe, catMaybes, isJust )
 import Data.Set ( Set )
 import qualified Data.Set as S
+
+import Control.Monad ( unless, forM )
 
 import Type
   ( Type, TyVar, TvSubst
@@ -116,7 +118,7 @@ mkTcVarSubst substs = mkTopTvSubst $ fmap (\(tv, tc) -> (tv, mkTyConTy tc)) subs
 findConstraintOrInstanceTyCons :: Set TyVar -> (TyCon, [Type]) -> TcPluginM (Set TyCon)
 findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
   -- There are no relevant type variables to substitute. We are done
-  | S.null tcvs = return $ S.empty
+  | S.null tcvs = return S.empty
   | otherwise = do
     -- Find the type class this constraint is about
     ctCls <- tcLookupClass (getName ctTyCon)
@@ -126,9 +128,9 @@ findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
     let (otherFoundClsInsts, foundClsInsts, _) = lookupInstEnv instEnvs ctCls ctTyConAppArgs
     -- ([(ClsInst, [DFunInstType])], [ClsInst], Bool)
     -- TODO: So far this was always empty. Alert when there actually is something in there:
-    if null otherFoundClsInsts then return () else printppr otherFoundClsInsts
+    unless (null otherFoundClsInsts) $ printppr otherFoundClsInsts
     -- Now look at each found instance and collect the type constructor for the relevant variables
-    collectedTyCons <- (flip mapM) foundClsInsts $ \foundInst -> do
+    collectedTyCons <- forM foundClsInsts $ \foundInst ->
       -- Unify the constraint arguments with the instance arguments.
       case tcUnifyTys instanceBindFun ctTyConAppArgs (is_tys foundInst) of
         -- The instance is applicable
@@ -136,21 +138,21 @@ findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
           -- Get substitutions for variables that we are searching for
           let substTcvs = fmap (substTy subst . mkTyVarTy) (S.toList tcvs)
           -- Sort the substitutions into type constructors and type variables
-          let (substTcs, substTvs) = partition (\t -> maybe False (const True) (splitTyConApp_maybe t)) substTcvs
+          let (substTcs, substTvs) = partition (isJust . splitTyConApp_maybe) substTcvs
           -- Get the constraints of this instance
           let (_vars, cts, _cls, _instArgs) = instanceSig foundInst
           -- Search for further instantiations of type constructors in
           -- the constraints of this instance. Search is restricted to
           -- variables that are relevant for the original search.
           -- Relevant means that the variables are substitutes for the original ones.
-          collectedTcs <- (flip mapM) (splitTyConApps cts)
+          collectedTcs <- forM (splitTyConApps cts)
                         $ findConstraintOrInstanceTyCons (S.fromList $ fmap (getTyVar "This should never happen") substTvs)
           -- Union everthing we found so far together
-          return $ (S.fromList $ fmap tyConAppTyCon substTcs) `S.union` S.unions collectedTcs
+          return $ S.fromList (fmap tyConAppTyCon substTcs) `S.union` S.unions collectedTcs
         -- The instance is not applicable for our constraint. We are done here.
-        Nothing -> return $ S.empty
+        Nothing -> return S.empty
     -- Union all collected type constructors
-    return $ S.unions $ collectedTyCons
+    return $ S.unions collectedTyCons
 
 -- | Split type constructor applications into their type constructor and arguments. Only
 --   keeps those in the result list where this split actually worked.
@@ -178,7 +180,7 @@ eqTyVar' tv ty = case getTyVar_maybe ty of
 -- | Checks if the given type constructors equals the given type.
 -- TODO: Test!
 eqTyCon :: TyCon -> Type -> Bool
-eqTyCon tc ty = eqType (mkTyConTy tc) ty
+eqTyCon tc = eqType (mkTyConTy tc)
 
 -- | Get the element of a list at a given index (If that element exists).
 atIndex :: [a] -> Int -> Maybe a
@@ -195,7 +197,7 @@ atIndex xs i = listToMaybe $ drop i xs
 associations :: [(key , [value])] -> [[(key, value)]]
 associations [] = [[]]
 associations ((_x, []) : _xys) = []
-associations ((x, (y : ys)) : xys) = (fmap ((x, y) :) (associations xys)) ++ associations ((x, ys) : xys)
+associations ((x, y : ys) : xys) = fmap ((x, y) :) (associations xys) ++ associations ((x, ys) : xys)
 
 -- | Generates the set of all subsets of a given set.
 subsets :: (Ord a) => Set a -> Set (Set a)
