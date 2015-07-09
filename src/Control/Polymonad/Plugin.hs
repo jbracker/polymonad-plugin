@@ -3,6 +3,7 @@ module Control.Polymonad.Plugin
   ( plugin ) where
 
 import Data.Maybe ( catMaybes )
+import Data.List ( partition )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
@@ -65,9 +66,12 @@ import Control.Polymonad.Plugin.Detect
   , getIdentityModule
   , getIdentityTyCon )
 import Control.Polymonad.Plugin.Constraint
-  ( isClassConstraint, mkDerivedTypeEqCt, constraintTopAmbiguousTyVars )
+  ( isClassConstraint, isFullyAppliedClassConstraint
+  , mkDerivedTypeEqCt, constraintTopAmbiguousTyVars )
 import Control.Polymonad.Plugin.Core
-  ( getPolymonadInstancesInScope, getPolymonadTyConsInScope )
+  ( getPolymonadInstancesInScope
+  , getPolymonadTyConsInScope
+  , pickInstanceForAppliedConstraint )
 import Control.Polymonad.Plugin.Graph
   ( mkGraphView )
 import Control.Polymonad.Plugin.Simplification
@@ -104,14 +108,10 @@ polymonadInit = do
 
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve s given derived wanted = do
-  --pmInsts <- getPolymonadInstancesInScope
-  --tyCons <- getPolymonadTyConsInScope
-  --printppr tyCons
   printM ">>> Plugin Solve..."
   printppr given
   printppr derived
   printppr wanted
-  --printppr (mkGraphView wanted)
   printM ">>>>>>>>>>>>>>>>>>>"
   if not $ null wanted then do
     mPolymonadCls <- getPolymonadClass
@@ -119,11 +119,19 @@ polymonadSolve s given derived wanted = do
     case (mPolymonadCls, mIdTyCon) of
       (Just polymonadCls, Just idTyCon) -> do
         printM ">>> Polymonad in scope, wanted constraints not empty, invoke solver..."
+        let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
         --polymonadSolve' s polymonadCls (given, derived, wanted)
-        let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
-        let eqCts = simplifiedTvsToConstraints $ simplifyAllUpDown idTyCon wanted ambTvs
+        printM ">>>>> Solve Wanted Incompletes"
+        printppr wantedIncomplete
+        let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wantedIncomplete
+        let eqCts = simplifiedTvsToConstraints $ simplifyAllUpDown idTyCon wantedIncomplete ambTvs
         printppr eqCts
-        return $ TcPluginOk [] eqCts
+
+        printM ">>>>> Solve Wanted Completes"
+        printppr wantedApplied
+        mWantedEvidence <- mapM pickInstanceForAppliedConstraint wantedApplied
+        printppr mWantedEvidence
+        return $ TcPluginOk (catMaybes mWantedEvidence) eqCts
       _ -> returnNoResult
   else do
     returnNoResult
