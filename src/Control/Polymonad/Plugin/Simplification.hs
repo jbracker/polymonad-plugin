@@ -8,6 +8,9 @@ module Control.Polymonad.Plugin.Simplification
   , simplifyJoin
     -- * Application of Simplification Rules
   , simplifyAllUpDown
+    -- * Utility Functions
+  , principalJoin
+  , simplifiedTvsToConstraints
   ) where
 
 import Data.Maybe ( isJust, catMaybes )
@@ -112,14 +115,24 @@ simplifyAllUpDown idTc ps tvs = upSimps ++ downSimps
     tvList' = S.toList $ tvs S.\\ S.fromList (fst <$> upSimps)
     downSimps = catMaybes $ (\rho -> trySimplifyUntil idTc ps rho simplifyDown) <$> tvList'
 
+-- -----------------------------------------------------------------------------
+-- Utility Functions
+-- -----------------------------------------------------------------------------
 
 -- | Calculate the principal join of a set of type constructors.
 --   For this to work properly all of the given types need to be
 --   type constructors or partially applied type constructors.
 --   The principal join is defined in definition 4 of the
 --   "Polymonad Programming" paper.
+--   TODO: UNFINISHED
 principalJoin :: [Type] -> Type
 principalJoin ts = undefined -- TODO: IMPLEMENT - How?
+
+-- | Converts the associations of type variables to their simplifications to
+--   derived type equality constraints that are located at the position of the
+--   constraints that led to the simplification.
+simplifiedTvsToConstraints :: [(TyVar, (Ct, Type))] -> [Ct]
+simplifiedTvsToConstraints tvs = (\(tv, (ct, t)) -> mkDerivedTypeEqCt ct tv t) <$> tvs
 
 -- -----------------------------------------------------------------------------
 -- Local Utility Functions
