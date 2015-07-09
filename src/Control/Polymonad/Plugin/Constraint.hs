@@ -7,6 +7,7 @@ module Control.Polymonad.Plugin.Constraint
   , mkDerivedTypeEqCt'
     -- * Constraint inspection
   , isClassConstraint
+  , isFullyAppliedClassConstraint
   , constraintClassType
   , constraintClassTyArgs
   , constraintClassTyCon
@@ -24,8 +25,6 @@ import qualified Data.Set as S
 
 import TcRnTypes
   ( Ct(..), CtLoc, CtEvidence(..)
-  , isCDictCan_Maybe
-  , isWantedCt
   , ctev_pred
   , mkNonCanonical )
 import Class ( Class(..) )
@@ -34,6 +33,7 @@ import Type
   , splitTyConApp_maybe
   , mkTyVarTy
   , getTyVar_maybe
+  , getClassPredTys_maybe
   )
 import TyCon ( TyCon )
 import TcPluginM
@@ -42,6 +42,7 @@ import TcType ( mkTcEqPred, isAmbiguousTyVar )
 import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
   , collectTopTcVars
+  , collectTyVars
   , findConstraintOrInstanceTyCons )
 
 -- -----------------------------------------------------------------------------
@@ -63,9 +64,20 @@ mkDerivedTypeEqCt' loc tv ty = mkNonCanonical CtDerived
 -- | Check if the given constraint is a class constraint of the given class.
 isClassConstraint :: Class -> Ct -> Bool
 isClassConstraint wantedClass ct =
-  case isCDictCan_Maybe ct of
-    Just cls -> cls == wantedClass && isWantedCt ct
-    Nothing -> False
+  case ct of
+    CDictCan { cc_class = cls } -> cls == wantedClass
+    CNonCanonical { cc_ev = ev } -> case getClassPredTys_maybe (ctev_pred ev) of
+      Just (cls, _args) -> cls == wantedClass
+      _ -> False
+    _ -> False
+
+-- | Check if the given constraint is fully applied, i.e., if the
+--   constraint is a class constraint and the arguments do not contain
+--   any type variables.
+isFullyAppliedClassConstraint :: Ct -> Bool
+isFullyAppliedClassConstraint ct = case constraintClassTyArgs ct of
+  Just tyArgs -> all S.null (collectTyVars <$> tyArgs)
+  Nothing -> False
 
 -- | Retrieves the type constructor and type arguments of the given
 --   type class constraint.
