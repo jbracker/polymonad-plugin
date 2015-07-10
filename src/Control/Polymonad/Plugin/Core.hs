@@ -5,16 +5,17 @@ module Control.Polymonad.Plugin.Core
   , getPolymonadTyConsInScope
   , findMatchingInstancesForConstraint
   , pickInstanceForAppliedConstraint
+  , pickPolymonadInstance
   , selectPolymonadSubset
   ) where
 
 import Data.Maybe ( isJust, isNothing, fromJust, catMaybes )
 import Data.Set ( Set )
 import qualified Data.Set as S
-import Control.Monad ( guard, forM, MonadPlus(..) )
+import Control.Monad ( guard, forM, unless, MonadPlus(..) )
 
 import InstEnv
-  ( ClsInst(..)
+  ( ClsInst(..), InstEnvs
   , classInstances
   , instanceBindFun, instanceSig
   , lookupInstEnv
@@ -39,7 +40,7 @@ import Control.Polymonad.Plugin.Instance
 import Control.Polymonad.Plugin.Detect
   ( getPolymonadClass )
 import Control.Polymonad.Plugin.Utils
-  ( findConstraintOrInstanceTyCons )
+  ( findConstraintOrInstanceTyCons, isGroundUnaryTyCon )
 
 -- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.
 getPolymonadInstancesInScope :: TcPluginM [ClsInst]
@@ -72,6 +73,8 @@ findMatchingInstancesForConstraint insts ct = do
         Just subst -> return (inst, subst)
         Nothing -> mzero
     Nothing -> mzero
+
+
 
 -- | Given a fully applied polymonad constraint it will pick the first instance
 --   that matches it. This is ok to do, because for polymonads it does
@@ -137,6 +140,68 @@ pickInstanceForAppliedConstraint ct = do
         then Nothing
         else Just $ EvDFunApp (is_dfun inst) tys (fromJust <$> ctEvTerms)
 
+
+
+-- | Given a three ground unary type constructors it will pick the first
+--   polymonad instance that matches these arguments. This is ok to do,
+--   because for polymonads it does not make a difference which
+--   bind-operation we pick if the type is equal.
+pickPolymonadInstance :: (Type, Type, Type) -> TcPluginM (Maybe ClsInst)
+pickPolymonadInstance (t0, t1, t2) = do
+  let args = [t0, t1, t2]
+  mPmCls <- getPolymonadClass
+  case mPmCls of
+    Just pmCls -> do
+      -- Get the current instance environment
+      instEnvs <- getInstEnvs
+      -- Make sure that all of the given arguments are ground unary type constructors
+      if all isGroundUnaryTyCon args
+        -- Find matching instance for our arguments.
+        then case lookupInstEnv instEnvs pmCls args of
+            (matches, _, _) ->
+              -- Only keep those matches that actually found a type for every argument.
+              case filter (all isJust . snd) matches of
+                -- If we found more then one instance, just use the first.
+                -- Because we are talking about polymonads we can freely choose.
+                (foundInst, foundInstArgs) : _ -> do
+                  -- Check if the constraints of the instance hold for the given arguments.
+                  instCheck <- checkInstance foundInst (fromJust <$> foundInstArgs)
+                  return $ if instCheck then Just foundInst else Nothing
+                _ -> return Nothing
+            _ -> return Nothing
+        else return Nothing
+    _ -> return Nothing
+  where
+    -- | Apply the given instance dictionary to the given type arguments
+    --   and check if it meets is constraints.
+    checkInstance :: ClsInst -> [Type] -> TcPluginM Bool
+    checkInstance inst tys = do
+      -- Get the instance type variables and constraints (by that we know
+      -- the numner of type arguments)
+      let (tyVars, cts, _cls, _tyArgs) = instanceSig inst -- ([TyVar], [Type], Class, [Type])
+      -- How the instance variables for the current instance are bound.
+      let varSubst = mkTopTvSubst $ zip tyVars tys
+      -- Split the constraints into their class and arguments.
+      -- We ignore constraints where this is not possible.
+      -- Don't know if this is the right thing to do.
+      let instCts = catMaybes $ fmap getClassPredTys_maybe cts
+      -- Now go over each constraint and find a suitable instance.
+      fmap and $ forM instCts $ \(ctCls, ctArgs) -> do
+        -- Substitute the variables to know what instance we are looking for.
+        let substArgs = substTys varSubst ctArgs
+        -- Get the current instance environment
+        instEnvs <- getInstEnvs
+        -- Look for suitable instance. Since we are not necessarily working
+        -- with polymonads anymore we need to find a unique one.
+        case lookupUniqueInstEnv instEnvs ctCls substArgs of
+          -- No instance found, too bad...
+          Left _err -> return False
+          -- We found one: Now we also need to check the found instance for
+          -- its preconditions.
+          Right (clsInst, instArgs) -> checkInstance clsInst instArgs
+
+
+
 -- | Subset selection algorithm to select the correct subset of
 --   type constructor and bind instances that belong to the polymonad
 --   being worked with in the list of constraints.
@@ -172,16 +237,3 @@ selectPolymonadSubset cts =
           -- Find applicable instances and return the together with all of the substituted tycons
           return (undefined, undefined)
         else return (S.empty, [])
-
-
--- | Substitute some type variables in the head of the given instance and
---   look if you can find instances that provide an implementation for the
---   substituted instance. Also checks if the found instances actually
---   support evidence.
-findApplicableInstances :: TvSubst -> ClsInst -> TcPluginM [(ClsInst, TvSubst)]
-findApplicableInstances subst clsInst = do
-  let substTcVars = S.filter (isJust . lookupTyVar subst) $ instanceTcVars clsInst
-  applicableTyCons <- findConstraintOrInstanceTyCons substTcVars (instanceClassTyCon clsInst, instanceTyArgs clsInst)
-  --associations
-  -- TODO
-  return undefined
