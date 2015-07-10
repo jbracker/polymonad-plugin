@@ -84,8 +84,8 @@ simplifyDown idTc (psl, p, psr) rho = do
 simplifyJoin :: [Ct] -> TyVar -> Maybe Ct
 simplifyJoin [] _rho = Nothing
 simplifyJoin ps rho = do
-  let f = concatMap (\(t,s) -> [t,s]) $ flowsTo ps rho
-  guard $ all isConcreteTyConApp f
+  let f = flowsTo ps rho
+  guard $ all (\(t0,t1) -> isConcreteTyConApp t0 && isConcreteTyConApp t1) f
   return $ mkDerivedTypeEqCt (head ps) rho (principalJoin f)
 
 -- -----------------------------------------------------------------------------
