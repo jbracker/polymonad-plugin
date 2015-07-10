@@ -12,6 +12,7 @@ module Control.Polymonad.Plugin.Utils (
   , mkTcVarSubst
   , findConstraintOrInstanceTyCons
   , splitTyConApps
+  , isGroundUnaryTyCon
   -- * General Utilities
   , eqTyVar, eqTyVar'
   , eqTyCon
@@ -40,7 +41,7 @@ import Type
   , tyConAppTyCon
   , substTy
   , eqType )
-import TyCon ( TyCon )
+import TyCon ( TyCon, tyConArity )
 import Name ( getName )
 import InstEnv
   ( ClsInst(..)
@@ -158,6 +159,13 @@ findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
 --   keeps those in the result list where this split actually worked.
 splitTyConApps :: [Type] -> [(TyCon, [Type])]
 splitTyConApps = catMaybes . fmap splitTyConApp_maybe
+
+-- Check if the given type is a type constructor that is partially applied
+-- such that it now is a unary type constructor.
+isGroundUnaryTyCon :: Type -> Bool
+isGroundUnaryTyCon t = case splitTyConApp_maybe t of
+  Just (tc, args) -> tyConArity tc == length args + 1
+  Nothing -> False
 
 -- -----------------------------------------------------------------------------
 -- General utilities
