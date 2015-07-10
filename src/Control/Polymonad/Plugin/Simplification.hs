@@ -31,6 +31,8 @@ import Control.Polymonad.Plugin.Utils
 import Control.Polymonad.Plugin.Constraint
   ( constraintPolymonadTyArgs, constraintPolymonadTyArgs'
   , mkDerivedTypeEqCt )
+import Control.Polymonad.Plugin.PrincipalJoin
+  ( principalJoin )
 
 -- -----------------------------------------------------------------------------
 -- Base Simplification Rules
@@ -118,15 +120,6 @@ simplifyAllUpDown idTc ps tvs = upSimps ++ downSimps
 -- -----------------------------------------------------------------------------
 -- Utility Functions
 -- -----------------------------------------------------------------------------
-
--- | Calculate the principal join of a set of type constructors.
---   For this to work properly all of the given types need to be
---   type constructors or partially applied type constructors.
---   The principal join is defined in definition 4 of the
---   "Polymonad Programming" paper.
---   TODO: UNFINISHED
-principalJoin :: [Type] -> Type
-principalJoin ts = undefined -- TODO: IMPLEMENT - How?
 
 -- | Converts the associations of type variables to their simplifications to
 --   derived type equality constraints that are located at the position of the
