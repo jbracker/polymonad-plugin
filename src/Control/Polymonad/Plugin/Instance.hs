@@ -6,6 +6,7 @@ module Control.Polymonad.Plugin.Instance
   , instanceTyArgs
   , instanceTyCons
   , instanceTcVars
+  , instanceType
   , instancePolymonadTyArgs
   , findInstanceTopTyCons
   ) where
