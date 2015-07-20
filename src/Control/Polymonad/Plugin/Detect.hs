@@ -4,6 +4,8 @@
 module Control.Polymonad.Plugin.Detect
   ( -- * Polymonad Class Detection
     polymonadModule
+  , polymonadModuleName
+  , polymonadClassName
   , findPolymonadModule
   , isPolymonadClass
   , findPolymonadClass
