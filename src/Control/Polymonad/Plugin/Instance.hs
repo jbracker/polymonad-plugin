@@ -29,7 +29,7 @@ import Control.Polymonad.Plugin.Utils
   , findConstraintOrInstanceTyCons
   , splitTyConApps )
 import Control.Polymonad.Plugin.Detect
-  ( polymonadModule, isPolymonadClass )
+  ( isPolymonadClass )
 
 -- | Returns the type constructors of the class is instance instantiates.
 instanceClassTyCon :: ClsInst -> TyCon
@@ -48,7 +48,7 @@ instanceType inst = (cts, cls, instanceClassTyCon inst, args)
 -- | Check if the given instance is a 'Polymonad' instance and
 --   if so return the arguments types of the instance head.
 instancePolymonadTyArgs :: ClsInst -> Maybe (Type, Type, Type)
-instancePolymonadTyArgs inst = if isPolymonadClass polymonadModule instCls
+instancePolymonadTyArgs inst = if isPolymonadClass instCls
   then case instArgs of
     [t0, t1, t2] -> Just (t0, t1, t2)
     _ -> Nothing
