@@ -3,7 +3,6 @@
 module Control.Polymonad.Plugin.Core
   ( getPolymonadInstancesInScope
   , getPolymonadTyConsInScope
-  , findMatchingInstancesForConstraint
   , pickInstanceForAppliedConstraint
   , pickPolymonadInstance
   , selectPolymonadSubset
@@ -38,14 +37,14 @@ import Control.Polymonad.Plugin.Constraint
 import Control.Polymonad.Plugin.Instance
   ( findInstanceTopTyCons, instanceTyCons, instanceClassTyCon, instanceTyArgs, instanceTcVars )
 import Control.Polymonad.Plugin.Detect
-  ( getPolymonadClass )
+  ( findPolymonadClass )
 import Control.Polymonad.Plugin.Utils
   ( findConstraintOrInstanceTyCons, isGroundUnaryTyCon )
 
 -- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.
 getPolymonadInstancesInScope :: TcPluginM [ClsInst]
 getPolymonadInstancesInScope = do
-  mPolymonadClass <- getPolymonadClass
+  mPolymonadClass <- findPolymonadClass
   case mPolymonadClass of
     Just polymonadClass -> do
       instEnvs <- getInstEnvs
@@ -63,6 +62,7 @@ getPolymonadTyConsInScope = do
 -- | Find all instances that could possible be applied for a given constraint.
 --   Returns the applicable instance together with the necessary substitution
 --   for unification.
+--   TODO: Is this function useful?
 findMatchingInstancesForConstraint :: [ClsInst] -> Ct -> [(ClsInst, TvSubst)]
 findMatchingInstancesForConstraint insts ct = do
   inst <- insts
@@ -82,7 +82,7 @@ findMatchingInstancesForConstraint insts ct = do
 pickInstanceForAppliedConstraint :: Ct -> TcPluginM (Maybe (EvTerm, Ct))
 pickInstanceForAppliedConstraint ct = do
   -- Get the polymonad class constructor.
-  mPmCls <- getPolymonadClass
+  mPmCls <- findPolymonadClass
   case (mPmCls, constraintClassTyArgs ct) of
     -- We found the polymonad class constructor and the given constraint
     -- is a instance constraint.
@@ -149,7 +149,7 @@ pickInstanceForAppliedConstraint ct = do
 pickPolymonadInstance :: (Type, Type, Type) -> TcPluginM (Maybe ClsInst)
 pickPolymonadInstance (t0, t1, t2) = do
   let args = [t0, t1, t2]
-  mPmCls <- getPolymonadClass
+  mPmCls <- findPolymonadClass
   case mPmCls of
     Just pmCls -> do
       -- Get the current instance environment
