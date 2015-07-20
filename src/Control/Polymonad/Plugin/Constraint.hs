@@ -36,7 +36,7 @@ import Type
   , getClassPredTys_maybe
   )
 import TyCon ( TyCon )
-import TcPluginM
+import TcPluginM ( TcPluginM )
 import TcType ( mkTcEqPred, isAmbiguousTyVar )
 
 import Control.Polymonad.Plugin.Utils
@@ -44,7 +44,7 @@ import Control.Polymonad.Plugin.Utils
   , collectTopTcVars
   , collectTyVars
   , findConstraintOrInstanceTyCons )
-
+import Control.Polymonad.Plugin.Environment ( PmPluginM )
 -- -----------------------------------------------------------------------------
 -- Constraint Creation
 -- -----------------------------------------------------------------------------
@@ -141,7 +141,7 @@ constraintTopAmbiguousTyVars ct = ambTvs
 -- | Search for all possible type constructors that could be
 --   used in the top-level position of the constraint arguments.
 --   Delivers a set of type constructors.
-findConstraintTopTyCons :: Ct -> TcPluginM (Set TyCon)
+findConstraintTopTyCons :: Ct -> PmPluginM (Set TyCon)
 findConstraintTopTyCons ct = case constraintClassType ct of
   Just (tyCon, tyArgs) -> do
     let tcs = constraintTyCons ct

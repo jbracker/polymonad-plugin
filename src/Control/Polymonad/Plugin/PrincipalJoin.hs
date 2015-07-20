@@ -20,6 +20,9 @@ import TcRnTypes
   , isGivenCt )
 import Unify ( tcUnifyTys )
 
+import Control.Polymonad.Plugin.Environment
+  ( PmPluginM
+  , getIdentityTyCon )
 import Control.Polymonad.Plugin.Utils ( collectTopTyCons )
 import Control.Polymonad.Plugin.Instance
   ( instanceTyCons, instanceTyArgs, instanceType
@@ -40,7 +43,7 @@ import Control.Polymonad.Plugin.Constraint
 --   insts - Available polymonad instances
 --   f     - The set to calculate the join for
 --   ms    - The target constructors.
-principalJoin :: ([ClsInst], [Ct]) -> [(Type, Type)] -> [Type] -> TcPluginM (Maybe Type)
+principalJoin :: ([ClsInst], [Ct]) -> [(Type, Type)] -> [Type] -> PmPluginM (Maybe Type)
 principalJoin (insts, givenCts) f ms = if areGivenCts
   then do
     meetsPrecond <- checkPrincipalPrecondition
@@ -58,7 +61,7 @@ principalJoin (insts, givenCts) f ms = if areGivenCts
     -- Check if the precondition for the existence of a principal join
     -- is met: For all (M, M') in 'f' and Mi in 'ms' there exists a (M, M')> Mi
     -- bind operation.
-    checkPrincipalPrecondition :: TcPluginM Bool
+    checkPrincipalPrecondition :: PmPluginM Bool
     checkPrincipalPrecondition =
       fmap and $ forM f $ \(t0, t1) ->
         fmap and $ forM ms $ \t2 -> do
@@ -66,7 +69,7 @@ principalJoin (insts, givenCts) f ms = if areGivenCts
           return $ isInstBind' || isConstraintBind (t0, t1) t2
 
     -- Look for candidates that could be principal joins.
-    findJoinCandidates :: TcPluginM [Type]
+    findJoinCandidates :: PmPluginM [Type]
     findJoinCandidates = do
       -- Find candidates from instances
       possInstCand <- concat <$> forM f (possiblePolymonadInstBindResults insts)
@@ -77,20 +80,18 @@ principalJoin (insts, givenCts) f ms = if areGivenCts
       return $ fmap (\(x,_,_,_) -> x) possInstCand ++ fmap fst possCtCand
 
     -- Check if the given type is a principal join of f.
-    isPrincipalJoin :: Type -> TcPluginM Bool
+    isPrincipalJoin :: Type -> PmPluginM Bool
     isPrincipalJoin m = do
         hasOutMorphs <- and <$> forM ms (isMorphismBetween m)
         hasInMorphs  <- and <$> forM f (`isInstBind` m)
         return $ hasOutMorphs && hasInMorphs
 
-    isMorphismBetween :: Type -> Type -> TcPluginM Bool
+    isMorphismBetween :: Type -> Type -> PmPluginM Bool
     isMorphismBetween t0 t2 = do
-      mIdTC <- findIdentityTyCon
-      case mIdTC of
-        Just idTC -> isBind (t0, mkTyConTy idTC) t2
-        Nothing -> return False
+      idTC <- getIdentityTyCon
+      isBind (t0, mkTyConTy idTC) t2
 
-    isBind :: (Type, Type) -> Type -> TcPluginM Bool
+    isBind :: (Type, Type) -> Type -> PmPluginM Bool
     isBind (t0, t1) t2 = do
       isInstB <- isInstBind (t0, t1) t2
       return $ isInstB || isConstraintBind (t0, t1) t2
@@ -102,7 +103,7 @@ principalJoin (insts, givenCts) f ms = if areGivenCts
         givenCtArgs = catMaybes $ fmap constraintClassTyArgs givenCts
 
 
-    isInstBind :: (Type, Type) -> Type -> TcPluginM Bool
+    isInstBind :: (Type, Type) -> Type -> PmPluginM Bool
     isInstBind (t0, t1) t2 = isJust <$> pickPolymonadInstance (t0, t1, t2)
 
 -- | Looks at all the given instances and if they are polymonad instance
@@ -110,7 +111,7 @@ principalJoin (insts, givenCts) f ms = if areGivenCts
 --   Returns a list of the resulting thrid argument together with the
 --   constraints this result would imply.
 possiblePolymonadInstBindResults :: [ClsInst] -> (Type, Type)
-                                 -> TcPluginM [(Type, [Type], ClsInst, TvSubst)]
+                                 -> PmPluginM [(Type, [Type], ClsInst, TvSubst)]
 possiblePolymonadInstBindResults insts (t0, t1) = fmap catMaybes $ forM insts $ \inst ->
   case instancePolymonadTyArgs inst of
     Just (m0, m1, m2) -> case tcUnifyTys instanceBindFun [m0, m1] [t0, t1] of

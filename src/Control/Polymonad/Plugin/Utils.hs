@@ -28,6 +28,7 @@ import Data.Set ( Set )
 import qualified Data.Set as S
 
 import Control.Monad ( unless, forM )
+import Control.Monad.Trans.Class ( lift )
 
 import Type
   ( Type, TyVar, TvSubst
@@ -49,23 +50,26 @@ import InstEnv
   , lookupInstEnv
   , instanceBindFun )
 import Unify ( tcUnifyTys )
-import TcPluginM
+import TcPluginM ( TcPluginM, tcPluginIO, tcLookupClass )
 import Outputable
   ( Outputable( ppr )
   --, text, parens, (<>)
   , showSDocUnsafe )
+
+import Control.Polymonad.Plugin.Environment
+  ( PmPluginM, getInstEnvs )
 
 -- -----------------------------------------------------------------------------
 -- Plugin debug primitives
 -- -----------------------------------------------------------------------------
 
 -- | Print some generic outputable from the plugin (Unsafe).
-printppr :: Outputable o => o -> TcPluginM ()
-printppr = tcPluginIO . putStrLn . pprToStr
+printppr :: Outputable o => o -> PmPluginM ()
+printppr = lift . tcPluginIO . putStrLn . pprToStr
 
 -- | Print a message from the plugin.
-printM :: String -> TcPluginM ()
-printM = tcPluginIO . putStrLn
+printM :: String -> PmPluginM ()
+printM = lift . tcPluginIO . putStrLn
 
 -- | Convert some generic outputable to a string (Unsafe).
 pprToStr :: Outputable o => o -> String
@@ -116,13 +120,13 @@ mkTcVarSubst substs = mkTopTvSubst $ fmap (\(tv, tc) -> (tv, mkTyConTy tc)) subs
 --   which are part of the given constraint or instance @ctOrInst@.
 --   Only works properly if the given type variables are a subset of
 --   @collectTopTcVars (snd ctOrInst)@.
-findConstraintOrInstanceTyCons :: Set TyVar -> (TyCon, [Type]) -> TcPluginM (Set TyCon)
+findConstraintOrInstanceTyCons :: Set TyVar -> (TyCon, [Type]) -> PmPluginM (Set TyCon)
 findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
   -- There are no relevant type variables to substitute. We are done
   | S.null tcvs = return S.empty
   | otherwise = do
     -- Find the type class this constraint is about
-    ctCls <- tcLookupClass (getName ctTyCon)
+    ctCls <- lift $ tcLookupClass (getName ctTyCon)
     -- Get our instance environment
     instEnvs <- getInstEnvs
     -- Find all instances that match the given constraint

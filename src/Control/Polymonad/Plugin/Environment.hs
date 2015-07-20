@@ -5,25 +5,25 @@ module Control.Polymonad.Plugin.Environment
   , getPolymonadClass, getPolymonadModule
   , getPolymonadInstances
   , getIdentityTyCon, getIdentityModule
+  , getInstEnvs
   , pmErrMsg, pmDebugMsg
   ) where
 
 import Control.Monad.Trans.Reader ( ReaderT, runReaderT, asks )
+import Control.Monad.Trans.Class ( lift )
 
 import Class ( Class )
 import Module ( Module )
-import InstEnv ( ClsInst )
+import InstEnv ( ClsInst, InstEnvs, classInstances )
 import TyCon ( TyCon )
 import TcPluginM ( TcPluginM )
+import qualified TcPluginM
 
 import Control.Polymonad.Plugin.Detect
   ( polymonadModuleName, polymonadClassName
   , identityModuleName, identityTyConName
   , findPolymonadModule, findPolymonadClass
   , findIdentityModule, findIdentityTyCon )
-
-import Control.Polymonad.Plugin.Core
-  ( getPolymonadInstancesInScope )
 
 type PmPluginM = ReaderT PmPluginEnv TcPluginM
 
@@ -76,6 +76,9 @@ getIdentityModule = asks pmEnvIdentityModule
 getIdentityTyCon :: PmPluginM TyCon
 getIdentityTyCon = asks pmEnvIdentityTyCon
 
+getInstEnvs :: PmPluginM InstEnvs
+getInstEnvs = lift TcPluginM.getInstEnvs
+
 prefixMsg :: String -> String -> String
 prefixMsg prefix = unlines . fmap (prefix ++) . lines
 
@@ -87,3 +90,13 @@ pmErrMsg = prefixMsg $ pluginMsgPrefix ++ " ERROR: "
 
 pmDebugMsg :: String -> String
 pmDebugMsg = prefixMsg $ pluginMsgPrefix ++ " "
+
+-- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.
+getPolymonadInstancesInScope :: TcPluginM [ClsInst]
+getPolymonadInstancesInScope = do
+  mPolymonadClass <- findPolymonadClass
+  case mPolymonadClass of
+    Just polymonadClass -> do
+      instEnvs <- TcPluginM.getInstEnvs
+      return $ classInstances instEnvs polymonadClass
+    Nothing -> return []

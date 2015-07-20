@@ -26,6 +26,8 @@ import Type
 import TyCon ( TyCon )
 import TcRnTypes ( Ct )
 
+import Control.Polymonad.Plugin.Environment
+  ( PmPluginM, getIdentityTyCon )
 import Control.Polymonad.Plugin.Utils
   ( eqTyVar', eqTyCon )
 import Control.Polymonad.Plugin.Constraint
@@ -38,41 +40,43 @@ import Control.Polymonad.Plugin.PrincipalJoin
 -- Base Simplification Rules
 -- -----------------------------------------------------------------------------
 
--- | @simplifyUp idTc (psl, p, psr) rho@ tries to simplify the type variable @rho@
+-- | @simplifyUp (psl, p, psr) rho@ tries to simplify the type variable @rho@
 --   in the constraint @p@ using the S-Up rule. The context of polymonad
---   constraints is given by @psl@ and @psr@. The 'Identity' type constructor has to be
---   passed in for @idTc@.
+--   constraints is given by @psl@ and @psr@.
 --   The result is a new equality constraint between @rho@ and the type it
 --   should be bound to, to simplify @psl ++ [p] ++ psr@. If the simplification cannot
 --   be applied 'Nothing' is returned.
 --
 --   See figure 7 of the the "Polymonad Programming" paper for more information.
-simplifyUp :: TyCon -> ([Ct], Ct, [Ct]) -> TyVar -> Maybe (TyVar, (Ct, Type))
-simplifyUp idTyCon (psl, p, psr) rho = do
-  (t0, t1, t2) <- constraintPolymonadTyArgs p
-  guard $ eqTyVar' rho t2 && (eqTyCon idTyCon t0 || eqTyCon idTyCon t1)
-  guard $ not . null $ flowsFrom (psl ++ psr) rho
-  guard $ null $ flowsTo (psl ++ psr) rho
-  let m = if eqTyCon idTyCon t0 then t1 else t0
-  return (rho, (p, m))
+simplifyUp :: ([Ct], Ct, [Ct]) -> TyVar -> PmPluginM (Maybe (TyVar, (Ct, Type)))
+simplifyUp (psl, p, psr) rho = do
+  idTyCon <- getIdentityTyCon
+  return $ do
+    (t0, t1, t2) <- constraintPolymonadTyArgs p
+    guard $ eqTyVar' rho t2 && (eqTyCon idTyCon t0 || eqTyCon idTyCon t1)
+    guard $ not . null $ flowsFrom (psl ++ psr) rho
+    guard $ null $ flowsTo (psl ++ psr) rho
+    let m = if eqTyCon idTyCon t0 then t1 else t0
+    return (rho, (p, m))
 
--- | @simplifyDown idTc (psl, p, psr) rho@ tries to simplify the type variable @rho@
+-- | @simplifyDown (psl, p, psr) rho@ tries to simplify the type variable @rho@
 --   in the constraint @p@ using the S-Down rule. The context of polymonad
---   constraints is given by @psl@ and @psr@. The 'Identity' type constructor has to be
---   passed in for @idTc@.
+--   constraints is given by @psl@ and @psr@.
 --   The result is a new equality constraint between @rho@ and the type it
 --   should be bound to, to simplify @psl ++ [p] ++ psr@. If the simplification cannot
 --   be applied 'Nothing' is returned.
 --
 --   See figure 7 of the the "Polymonad Programming" paper for more information.
-simplifyDown :: TyCon -> ([Ct], Ct, [Ct]) -> TyVar -> Maybe (TyVar, (Ct, Type))
-simplifyDown idTc (psl, p, psr) rho = do
-  (t0, t1, t2) <- constraintPolymonadTyArgs p
-  guard $  ( eqTyVar' rho t0 && eqTyCon idTc t1 )
-        || ( eqTyVar' rho t1 && eqTyCon idTc t0 )
-  guard $ null $ flowsFrom (psl ++ psr) rho
-  guard $ not . null $ flowsTo (psl ++ psr) rho
-  return (rho, (p, t2))
+simplifyDown :: ([Ct], Ct, [Ct]) -> TyVar -> PmPluginM (Maybe (TyVar, (Ct, Type)))
+simplifyDown (psl, p, psr) rho = do
+  idTyCon <- getIdentityTyCon
+  return $ do
+    (t0, t1, t2) <- constraintPolymonadTyArgs p
+    guard $  ( eqTyVar' rho t0 && eqTyCon idTyCon t1 )
+          || ( eqTyVar' rho t1 && eqTyCon idTyCon t0 )
+    guard $ null $ flowsFrom (psl ++ psr) rho
+    guard $ not . null $ flowsTo (psl ++ psr) rho
+    return (rho, (p, t2))
 
 -- | @simplifyJoin ps rho@ tries to simplify the type variable @rho@
 --   in the constraints @ps@ using the S-Join rule.
@@ -93,29 +97,30 @@ simplifyJoin ps rho = do
 -- -----------------------------------------------------------------------------
 
 -- | Tries to find a simplification for the given type variable using the
---   given set of constraints and the given simplification rule. The Identity
---   type constructor has to be passed in.
-trySimplifyUntil :: TyCon -> [Ct] -> TyVar
-                 -> (TyCon -> ([Ct], Ct, [Ct]) -> TyVar -> Maybe (TyVar, (Ct, Type)))
-                 -> Maybe (TyVar, (Ct, Type))
-trySimplifyUntil _idTc [] _rho _simp = empty
-trySimplifyUntil idTc (ct:cts) rho simp = trySimplifyUntil' ([], ct, cts)
+--   given set of constraints and the given simplification rule.
+trySimplifyUntil :: [Ct] -> TyVar
+                 -> (([Ct], Ct, [Ct]) -> TyVar -> PmPluginM (Maybe (TyVar, (Ct, Type))))
+                 -> PmPluginM (Maybe (TyVar, (Ct, Type)))
+trySimplifyUntil [] _rho _simp = return empty
+trySimplifyUntil (ct:cts) rho simp = trySimplifyUntil' ([], ct, cts)
   where
-    trySimplifyUntil' z@(_psl, _p, []) = simp idTc z rho
-    trySimplifyUntil' z@(psl, p, p' : psr') =
-      simp idTc z rho <|> trySimplifyUntil' (p : psl, p', psr')
+    trySimplifyUntil' z@(_psl, _p, []) = simp z rho
+    trySimplifyUntil' z@(psl, p, p' : psr') = do
+      r <- simp z rho
+      rs <- trySimplifyUntil' (p : psl, p', psr')
+      return $ r <|> rs
 
 -- | Try to simplify as many type variables as possible in the given set using
 --   the 'simplifyUp' and 'simplifyDown' rule (in that order).
 --   The type constructor is the identity type constructor and the
 --   given constraints are the constraints to simplify.
-simplifyAllUpDown :: TyCon -> [Ct] -> Set TyVar -> [(TyVar, (Ct, Type))]
-simplifyAllUpDown idTc ps tvs = upSimps ++ downSimps
-  where
-    tvList = S.toList tvs
-    upSimps = catMaybes $ (\rho -> trySimplifyUntil idTc ps rho simplifyUp) <$> tvList
-    tvList' = S.toList $ tvs S.\\ S.fromList (fst <$> upSimps)
-    downSimps = catMaybes $ (\rho -> trySimplifyUntil idTc ps rho simplifyDown) <$> tvList'
+simplifyAllUpDown :: [Ct] -> Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
+simplifyAllUpDown ps tvs = do
+  let tvList = S.toList tvs
+  upSimps <- catMaybes <$> mapM (\rho -> trySimplifyUntil ps rho simplifyUp) tvList
+  let tvList' = S.toList $ tvs S.\\ S.fromList (fst <$> upSimps)
+  downSimps <- catMaybes <$> mapM (\rho -> trySimplifyUntil ps rho simplifyDown) tvList'
+  return $ upSimps ++ downSimps
 
 -- -----------------------------------------------------------------------------
 -- Utility Functions

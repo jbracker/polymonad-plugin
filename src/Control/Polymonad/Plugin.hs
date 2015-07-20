@@ -58,7 +58,11 @@ import InstEnv
 import Unify ( tcUnifyTys )
 --import PrelNames ( monadClassName )
 import Outputable ( Outputable )
+import TcPluginM ( TcPluginM, tcPluginIO )
 
+import Control.Polymonad.Plugin.Environment
+  ( PmPluginM, runPmPlugin
+  , getIdentityTyCon, getPolymonadClass, getPolymonadInstances )
 import Control.Polymonad.Plugin.Utils
   ( printM, printppr, pprToStr )
 import Control.Polymonad.Plugin.Detect
@@ -69,8 +73,7 @@ import Control.Polymonad.Plugin.Constraint
   ( isClassConstraint, isFullyAppliedClassConstraint
   , mkDerivedTypeEqCt, constraintTopAmbiguousTyVars )
 import Control.Polymonad.Plugin.Core
-  ( getPolymonadInstancesInScope
-  , getPolymonadTyConsInScope
+  ( getPolymonadTyConsInScope
   , pickInstanceForAppliedConstraint )
 import Control.Polymonad.Plugin.Graph
   ( mkGraphView )
@@ -102,52 +105,54 @@ polymonadPlugin = TcPlugin
 
 polymonadInit :: TcPluginM PolymonadState
 polymonadInit = do
-  printM ">>> Plugin Init..."
-  printM ""
+  --printM ">>> Plugin Init..."
+  --printM ""
   return ()
 
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve s given derived wanted = do
-  printM ">>> Plugin Solve..."
-  printppr given
-  printppr derived
-  printppr wanted
-  printM ">>>>>>>>>>>>>>>>>>>"
-  if not $ null wanted then do
-    mPolymonadCls <- findPolymonadClass
-    mIdTyCon <- findIdentityTyCon
-    case (mPolymonadCls, mIdTyCon) of
-      (Just polymonadCls, Just idTyCon) -> do
-        printM ">>> Polymonad in scope, wanted constraints not empty, invoke solver..."
-        let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
-        --polymonadSolve' s polymonadCls (given, derived, wanted)
-        printM ">>>>> Solve Wanted Incompletes"
-        printppr wantedIncomplete
-        let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wantedIncomplete
-        let eqCts = simplifiedTvsToConstraints $ simplifyAllUpDown idTyCon wantedIncomplete ambTvs
-        printppr eqCts
+  res <- runPmPlugin $ do
+    printM ">>> Plugin Solve..."
+    printppr given
+    printppr derived
+    printppr wanted
+    printM ">>>>>>>>>>>>>>>>>>>"
+    if not $ null wanted then do
+      polymonadCls <- getPolymonadClass
+      idTyCon <- getIdentityTyCon
+      printM ">>> Polymonad in scope, wanted constraints not empty, invoke solver..."
+      let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
+      --polymonadSolve' s polymonadCls (given, derived, wanted)
+      printM ">>>>> Solve Wanted Incompletes"
+      printppr wantedIncomplete
+      let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wantedIncomplete
+      eqCts <- simplifiedTvsToConstraints <$> simplifyAllUpDown wantedIncomplete ambTvs
+      printppr eqCts
 
-        printM ">>>>> Solve Wanted Completes"
-        printppr wantedApplied
-        mWantedEvidence <- mapM pickInstanceForAppliedConstraint wantedApplied
-        printppr mWantedEvidence
-        return $ TcPluginOk (catMaybes mWantedEvidence) eqCts
-      _ -> returnNoResult
-  else do
-    returnNoResult
+      printM ">>>>> Solve Wanted Completes"
+      printppr wantedApplied
+      mWantedEvidence <- mapM pickInstanceForAppliedConstraint wantedApplied
+      printppr mWantedEvidence
+      return $ TcPluginOk (catMaybes mWantedEvidence) eqCts
+    else do
+      return noResult
+  case res of
+    Left errMsg -> do
+      tcPluginIO $ putStrLn errMsg
+      return noResult
+    Right solve -> return solve
 
 polymonadStop :: PolymonadState -> TcPluginM ()
 polymonadStop _state = do
-  printM ">>> Plugin Stop..."
-  printM ""
-
+  --printM ">>> Plugin Stop..."
+  --printM ""
   return ()
 
 -- -----------------------------------------------------------------------------
 -- Solver of the Plugin
 -- -----------------------------------------------------------------------------
 
-polymonadSolve' :: PolymonadState -> Class -> ([Ct], [Ct], [Ct]) -> TcPluginM TcPluginResult
+polymonadSolve' :: PolymonadState -> Class -> ([Ct], [Ct], [Ct]) -> PmPluginM TcPluginResult
 polymonadSolve' _s polymonadCls (_given, _derived, wanted) = do
   {-
   instEnv <- fmap (tcg_inst_env . fst) getEnvs
@@ -168,7 +173,7 @@ polymonadSolve' _s polymonadCls (_given, _derived, wanted) = do
   return $ TcPluginOk [] []
   -}
   --printM "> Available Polymonad instances"
-  pmInsts <- getPolymonadInstancesInScope
+  pmInsts <- getPolymonadInstances
   --printppr $ mapM mkPolymonadInst $ pmInsts
 
   --printM "> Wanted Constraints"
@@ -229,7 +234,7 @@ findMatchingInstances' insts ct = do
 -- Utility Functions
 -- -----------------------------------------------------------------------------
 
-mkEqCtsFromSubst :: Ct -> TvSubst -> TcPluginM [Ct]
+mkEqCtsFromSubst :: Ct -> TvSubst -> PmPluginM [Ct]
 mkEqCtsFromSubst wantedCt subst = do
   printM "=== mkEqCtsFromSubst ==="
   let wantedCtTy = ctPred wantedCt
@@ -249,8 +254,8 @@ mkEqCtsFromSubst wantedCt subst = do
       flip mapM inScopeVars $ \var -> do -- type variables in
         return $ mkDerivedTypeEqCt wantedCt var (substTyVar subst var)
 
-returnNoResult :: TcPluginM TcPluginResult
-returnNoResult = return $ TcPluginOk [] []
+noResult :: TcPluginResult
+noResult = TcPluginOk [] []
 
 ctName :: Ct -> Name
 ctName ct = case ct of

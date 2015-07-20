@@ -23,6 +23,7 @@ import Class ( Class, classTyCon )
 import TyCon ( TyCon )
 import TcPluginM
 
+import Control.Polymonad.Plugin.Environment ( PmPluginM )
 import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
   , collectTopTcVars
@@ -77,7 +78,7 @@ instanceTcVars inst = collectTopTcVars $ instanceTyArgs inst
 -- | Search for all possible type constructors that could be
 --   used in the top-level position of the instance arguments.
 --   Delivers a set of type constructors.
-findInstanceTopTyCons :: ClsInst -> TcPluginM (Set TyCon)
+findInstanceTopTyCons :: ClsInst -> PmPluginM (Set TyCon)
 findInstanceTopTyCons clsInst = do
   -- Top level type constructors of the instance arguments
   let instTcs = instanceTyCons clsInst
