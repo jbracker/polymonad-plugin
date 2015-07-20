@@ -5,21 +5,21 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
--- | Provides a generalized monad that models Hoare triples. This is well 
---   known from the indexed monads presented by Edward Kmett in his package 
+-- | Provides a generalized monad that models Hoare triples. This is well
+--   known from the indexed monads presented by Edward Kmett in his package
 --   <https://hackage.haskell.org/package/indexed indexed> (@Control.Monad.Indexed@).
---   
+--
 --   __Note:__
 --   There are orphan instances that this modules provides:
---   
+--
 --     * __@'HoareMonad' m => 'Polymonad' (m i j)  (m j k)  (m i k)@__ - Monadic bind instance.
 --     * __@'HoareMonad' m => 'Polymonad' 'Identity' 'Identity' (m i i)@__ - Return bind instance.
 --     * __@'HoareMonad' m => 'Polymonad' (m i j) 'Identity' (m i j)@__ - Functor bind instance.
 --     * __@'HoareMonad' m => 'Polymonad' 'Identity' (m i j) (m i j)@__ - Apply bind instance.
---   
+--
 --   These will provide a suitable polymonad for any given 'HoareMonad'
 --   instance.
-module Control.Polymonad.Hoare 
+module Control.Polymonad.Hoare
   ( HoareMonad(..)
   ) where
 
@@ -32,7 +32,7 @@ import Control.Polymonad
 --   to those of standard 'Monad's:
 --
 --   __TODO__
---   
+--
 --   Also see the module description.
 class HoareMonad (m :: s -> s -> * -> *) where
   -- | Bind operation (Composition).
@@ -55,5 +55,3 @@ instance HoareMonad m => Polymonad (m i j) Identity (m i j) where
 -- | Apply bind instance.
 instance HoareMonad m => Polymonad Identity (m i j) (m i j) where
   (>>=) ma f = hoareBind (hoareRet $ runIdentity ma) f
-
-
