@@ -11,11 +11,14 @@ import Control.Monad.Trans.Reader ( ReaderT, runReaderT, asks )
 import Class ( Class )
 import Module ( Module )
 import InstEnv ( ClsInst )
+import TyCon ( TyCon )
 import TcPluginM ( TcPluginM )
 
 import Control.Polymonad.Plugin.Detect
   ( polymonadModuleName, polymonadClassName
-  , findPolymonadModule, findPolymonadClass )
+  , identityModuleName, identityTyConName
+  , findPolymonadModule, findPolymonadClass
+  , findIdentityModule, findIdentityTyCon )
 
 import Control.Polymonad.Plugin.Core
   ( getPolymonadInstancesInScope )
@@ -26,6 +29,8 @@ data PmPluginEnv = PmPluginEnv
   { pmEnvPolymonadModule    :: Module
   , pmEnvPolymonadClass     :: Class
   , pmEnvPolymonadInstances :: [ClsInst]
+  , pmEnvIdentityModule :: Module
+  , pmEnvIdentityTyCon  :: TyCon
   }
 
 runPmPlugin :: PmPluginM a -> TcPluginM (Either String a)
@@ -34,16 +39,25 @@ runPmPlugin pmM = do
   mPmCls <- findPolymonadClass
   case (mPmMdl, mPmCls) of
     (Just pmMdl, Just pmCls) -> do
-      pmInsts <- getPolymonadInstancesInScope
-      result <- runReaderT pmM PmPluginEnv
-        { pmEnvPolymonadModule = pmMdl
-        , pmEnvPolymonadClass  = pmCls
-        , pmEnvPolymonadInstances = pmInsts
-        }
-      return $ Right result
+      mIdMdl <- findIdentityModule
+      mIdTyCon <- findIdentityTyCon
+      case (mIdMdl, mIdTyCon) of
+        (Just idMdl, Just idTyCon) -> do
+          pmInsts <- getPolymonadInstancesInScope
+          result <- runReaderT pmM PmPluginEnv
+            { pmEnvPolymonadModule = pmMdl
+            , pmEnvPolymonadClass  = pmCls
+            , pmEnvPolymonadInstances = pmInsts
+            , pmEnvIdentityModule = idMdl
+            , pmEnvIdentityTyCon  = idTyCon
+            }
+          return $ Right result
+        _ -> return $ Left $ pmErrMsg
+          $ "Could not find " ++ identityModuleName
+          ++ " module and " ++ identityTyConName ++ " type constructor!"
     _ -> return $ Left $ pmErrMsg
-      $ "Could not find "
-      ++ polymonadModuleName ++ " module and " ++ polymonadClassName ++ " class!"
+      $ "Could not find " ++ polymonadModuleName
+      ++ " module and " ++ polymonadClassName ++ " class!"
 
 getPolymonadClass :: PmPluginM Class
 getPolymonadClass = asks pmEnvPolymonadClass

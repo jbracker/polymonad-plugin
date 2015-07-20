@@ -63,8 +63,8 @@ import Control.Polymonad.Plugin.Utils
   ( printM, printppr, pprToStr )
 import Control.Polymonad.Plugin.Detect
   ( findPolymonadClass
-  , getIdentityModule
-  , getIdentityTyCon )
+  , findIdentityModule
+  , findIdentityTyCon )
 import Control.Polymonad.Plugin.Constraint
   ( isClassConstraint, isFullyAppliedClassConstraint
   , mkDerivedTypeEqCt, constraintTopAmbiguousTyVars )
@@ -115,7 +115,7 @@ polymonadSolve s given derived wanted = do
   printM ">>>>>>>>>>>>>>>>>>>"
   if not $ null wanted then do
     mPolymonadCls <- findPolymonadClass
-    mIdTyCon <- getIdentityTyCon
+    mIdTyCon <- findIdentityTyCon
     case (mPolymonadCls, mIdTyCon) of
       (Just polymonadCls, Just idTyCon) -> do
         printM ">>> Polymonad in scope, wanted constraints not empty, invoke solver..."

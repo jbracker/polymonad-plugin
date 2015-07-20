@@ -11,8 +11,10 @@ module Control.Polymonad.Plugin.Detect
   , isPolymonadModule
   , findPolymonadClass
     -- * Identity Type Detection
-  , getIdentityModule
-  , getIdentityTyCon
+  , identityModuleName
+  , identityTyConName
+  , findIdentityModule
+  , findIdentityTyCon
   ) where
 
 import Data.Maybe ( catMaybes, listToMaybe )
@@ -115,12 +117,12 @@ findPolymonadClass = do
 
 -- | Checks if the module 'Data.Functor.Identity'
 --   is imported and, if so, returns the module.
-getIdentityModule :: TcPluginM (Maybe Module)
-getIdentityModule = getModule basePackageKey identityModuleName
+findIdentityModule :: TcPluginM (Maybe Module)
+findIdentityModule = getModule basePackageKey identityModuleName
 
-getIdentityTyCon :: TcPluginM (Maybe TyCon)
-getIdentityTyCon = do
-  mIdModule <- getIdentityModule
+findIdentityTyCon :: TcPluginM (Maybe TyCon)
+findIdentityTyCon = do
+  mIdModule <- findIdentityModule
   case mIdModule of
     Just idMdl -> findTyConByNameAndModule (mkTcOcc identityTyConName) idMdl
     Nothing -> return Nothing

@@ -25,7 +25,7 @@ import Control.Polymonad.Plugin.Instance
   ( instanceTyCons, instanceTyArgs, instanceType
   , instancePolymonadTyArgs )
 import Control.Polymonad.Plugin.Core ( pickPolymonadInstance )
-import Control.Polymonad.Plugin.Detect ( getIdentityTyCon )
+import Control.Polymonad.Plugin.Detect ( findIdentityTyCon )
 import Control.Polymonad.Plugin.Constraint
   ( constraintClassTyArgs, constraintClassType
   , constraintPolymonadTyArgs )
@@ -85,7 +85,7 @@ principalJoin (insts, givenCts) f ms = if areGivenCts
 
     isMorphismBetween :: Type -> Type -> TcPluginM Bool
     isMorphismBetween t0 t2 = do
-      mIdTC <- getIdentityTyCon
+      mIdTC <- findIdentityTyCon
       case mIdTC of
         Just idTC -> isBind (t0, mkTyConTy idTC) t2
         Nothing -> return False
