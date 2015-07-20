@@ -6,6 +6,7 @@ module Control.Polymonad.Plugin.Instance
   , instanceTyArgs
   , instanceTyCons
   , instanceTcVars
+  , instancePolymonadTyArgs
   , findInstanceTopTyCons
   ) where
 
@@ -18,7 +19,7 @@ import InstEnv
   , instanceSig )
 import Type
   ( Type, TyVar )
-import Class ( classTyCon )
+import Class ( Class, classTyCon )
 import TyCon ( TyCon )
 import TcPluginM
 
@@ -27,6 +28,8 @@ import Control.Polymonad.Plugin.Utils
   , collectTopTcVars
   , findConstraintOrInstanceTyCons
   , splitTyConApps )
+import Control.Polymonad.Plugin.Detect
+  ( polymonadModule, isPolymonadClass )
 
 -- | Returns the type constructors of the class is instance instantiates.
 instanceClassTyCon :: ClsInst -> TyCon
@@ -34,9 +37,23 @@ instanceClassTyCon inst = classTyCon $ is_cls inst
 
 -- | Returns the arguments of the given instance head.
 instanceTyArgs :: ClsInst -> [Type]
-instanceTyArgs inst =
-  let (_tvs, _cls, args) = instanceHead inst
-  in args
+instanceTyArgs inst = args
+  where (_, _, args) = instanceType inst
+
+-- | Returns the class, naming type constructor and arguments of this instance.
+instanceType :: ClsInst -> (Class, TyCon, [Type])
+instanceType inst = (cls, instanceClassTyCon inst, args)
+  where (_tvs, cls, args) = instanceHead inst
+
+-- | Check if the given instance is a 'Polymonad' instance and
+--   if so return the arguments types of the instance head.
+instancePolymonadTyArgs :: ClsInst -> Maybe (Type, Type, Type)
+instancePolymonadTyArgs inst = if isPolymonadClass polymonadModule instCls
+  then case instArgs of
+    [t0, t1, t2] -> Just (t0, t1, t2)
+    _ -> Nothing
+  else Nothing
+  where (instCls, _, instArgs) = instanceType inst
 
 -- | Retrieve the type constructors involved in the instance head of the
 --   given instance. This only selects the top level type constructors

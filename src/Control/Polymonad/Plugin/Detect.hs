@@ -3,9 +3,10 @@
 --   and types of the plugin.
 module Control.Polymonad.Plugin.Detect
   ( -- * Polymonad Class Detection
-    getPolymonadModule
+    polymonadModule
+  , findPolymonadModule
   , isPolymonadClass
-  , getPolymonadClass
+  , findPolymonadClass
     -- * Identity Type Detection
   , getIdentityModule
   , getIdentityTyCon
@@ -38,7 +39,8 @@ import Module
   ( Module(..), PackageKey
   , mainPackageKey, basePackageKey
   , moduleEnvKeys
-  , moduleNameString )
+  , moduleNameString
+  , mkModule, mkModuleName )
 import Class
   ( Class(..)
   , className, classArity )
@@ -68,8 +70,17 @@ identityTyConName = "Identity"
 
 -- | Checks if the module 'Control.Polymonad'
 --   is imported and, if so, returns the module.
-getPolymonadModule :: TcPluginM (Maybe Module)
-getPolymonadModule = getModule mainPackageKey polymonadModuleName
+findPolymonadModule :: TcPluginM (Maybe Module)
+findPolymonadModule = getModule mainPackageKey polymonadModuleName
+
+polymonadModule :: Module
+polymonadModule = mkModule mainPackageKey $ mkModuleName polymonadModuleName
+
+-- | Check if the given module is the polymonad module.
+isPolymonadModule :: Module -> Bool
+isPolymonadModule mdl
+  =  modulePackageKey mdl == mainPackageKey
+  && moduleName mdl == mkModuleName polymonadModuleName
 
 -- | Checks if the given class matches the shape of the 'Control.Polymonad'
 --   type class and is defined in the given module. Usually the given module
@@ -87,17 +98,13 @@ isPolymonadClass polymonadModule cls =
 -- | Checks if a type class matching the shape and name of the
 --   'Control.Polymonad' type class is in scope and if it is part of the
 --   polymonad module ('getPolymonadModule'). If so returns the class.
-getPolymonadClass :: TcPluginM (Maybe Class)
-getPolymonadClass = do
-  mModule <- getPolymonadModule
-  case mModule of
-    Just polymonadModule -> do
-      visibleInsts <- fmap (instEnvElts . tcg_inst_env . fst) getEnvs
-      let foundInsts = flip filter visibleInsts $ isPolymonadClass polymonadModule . is_cls
-      return $ case foundInsts of
-        (inst : _) -> Just $ is_cls inst
-        [] -> Nothing
-    Nothing -> return Nothing
+findPolymonadClass :: TcPluginM (Maybe Class)
+findPolymonadClass = do
+  visibleInsts <- fmap (instEnvElts . tcg_inst_env . fst) getEnvs
+  let foundInsts = flip filter visibleInsts $ isPolymonadClass polymonadModule . is_cls
+  return $ case foundInsts of
+    (inst : _) -> Just $ is_cls inst
+    [] -> Nothing
 
 -- -----------------------------------------------------------------------------
 -- Identity Type Detection
