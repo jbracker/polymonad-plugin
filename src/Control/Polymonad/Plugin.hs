@@ -62,7 +62,7 @@ import Outputable ( Outputable )
 import Control.Polymonad.Plugin.Utils
   ( printM, printppr, pprToStr )
 import Control.Polymonad.Plugin.Detect
-  ( getPolymonadClass
+  ( findPolymonadClass
   , getIdentityModule
   , getIdentityTyCon )
 import Control.Polymonad.Plugin.Constraint
@@ -114,7 +114,7 @@ polymonadSolve s given derived wanted = do
   printppr wanted
   printM ">>>>>>>>>>>>>>>>>>>"
   if not $ null wanted then do
-    mPolymonadCls <- getPolymonadClass
+    mPolymonadCls <- findPolymonadClass
     mIdTyCon <- getIdentityTyCon
     case (mPolymonadCls, mIdTyCon) of
       (Just polymonadCls, Just idTyCon) -> do
