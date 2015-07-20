@@ -2,7 +2,9 @@
 module Control.Polymonad.Plugin.Environment
   ( PmPluginM
   , runPmPlugin
-  , getPolymonadClass, getPolymonadModule, getPolymonadInstances
+  , getPolymonadClass, getPolymonadModule
+  , getPolymonadInstances
+  , getIdentityTyCon, getIdentityModule
   , pmErrMsg, pmDebugMsg
   ) where
 
@@ -68,11 +70,20 @@ getPolymonadModule = asks pmEnvPolymonadModule
 getPolymonadInstances :: PmPluginM [ClsInst]
 getPolymonadInstances = asks pmEnvPolymonadInstances
 
+getIdentityModule :: PmPluginM Module
+getIdentityModule = asks pmEnvIdentityModule
+
+getIdentityTyCon :: PmPluginM TyCon
+getIdentityTyCon = asks pmEnvIdentityTyCon
+
 prefixMsg :: String -> String -> String
 prefixMsg prefix = unlines . fmap (prefix ++) . lines
 
+pluginMsgPrefix :: String
+pluginMsgPrefix = "[Polymonad]"
+
 pmErrMsg :: String -> String
-pmErrMsg = prefixMsg "[Polymonad] ERROR: "
+pmErrMsg = prefixMsg $ pluginMsgPrefix ++ " ERROR: "
 
 pmDebugMsg :: String -> String
-pmDebugMsg = prefixMsg "[Polymonad] "
+pmDebugMsg = prefixMsg $ pluginMsgPrefix ++ " "
