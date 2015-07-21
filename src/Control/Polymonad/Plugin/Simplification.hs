@@ -13,7 +13,6 @@ module Control.Polymonad.Plugin.Simplification
     -- * Application of Simplification Rules
   , simplifyAllUpDown
     -- * Utility Functions
-  , principalJoin
   , simplifiedTvsToConstraints
   ) where
 
@@ -43,7 +42,8 @@ import Control.Polymonad.Plugin.PrincipalJoin
 -- HLint: Please, ignore the unused template haskell pragma at the beginning.
 -- For some reason this needs to be added here:
 -- https://github.com/ndmitchell/hlint/issues/103
-{-# ANN module "HLint: ignore Unused LANGUAGE pragma" #-}
+-- {-# ANN module "HLint: ignore Unused LANGUAGE pragma" #-}
+-- This causes issues with ghc-mod...
 
 -- -----------------------------------------------------------------------------
 -- Base Simplification Rules
@@ -121,8 +121,7 @@ trySimplifyUntil (ct:cts) rho simp = trySimplifyUntil' ([], ct, cts)
 
 -- | Try to simplify as many type variables as possible in the given set using
 --   the 'simplifyUp' and 'simplifyDown' rule (in that order).
---   The type constructor is the identity type constructor and the
---   given constraints are the constraints to simplify.
+--   The given constraints are the constraints to simplify.
 simplifyAllUpDown :: [Ct] -> Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
 simplifyAllUpDown ps tvs = do
   let tvList = S.toList tvs
