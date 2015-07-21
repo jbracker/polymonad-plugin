@@ -122,7 +122,7 @@ getPolymonadInstancesInScope = do
 
 -- | Print some generic outputable object from the plugin (Unsafe).
 printObj :: Outputable o => o -> PmPluginM ()
-printObj = printMsg . pprToStr
+printObj = internalPrint . pmObjMsg . pprToStr
 
 -- | Print a message from the plugin.
 printMsg :: String -> PmPluginM ()
@@ -134,7 +134,7 @@ printErr = internalPrint . pmErrMsg
 
 -- | Internal function for printing from within the monad.
 internalPrint :: String -> PmPluginM ()
-internalPrint = lift . tcPluginIO . putStrLn
+internalPrint = lift . tcPluginIO . putStr
 
 -- | Convert some generic outputable to a string (Unsafe).
 pprToStr :: Outputable o => o -> String
@@ -146,7 +146,7 @@ prefixMsg prefix = unlines . fmap (prefix ++) . lines
 
 -- | Message prefix of the polymonad plugin.
 pluginMsgPrefix :: String
-pluginMsgPrefix = "[Polymonad]"
+pluginMsgPrefix = "[PM]"
 
 -- | Prefix a message with the error prefix.
 pmErrMsg :: String -> String
@@ -155,3 +155,8 @@ pmErrMsg = prefixMsg $ pluginMsgPrefix ++ " ERROR: "
 -- | Prefix a message with the standard debug prefix.
 pmDebugMsg :: String -> String
 pmDebugMsg = prefixMsg $ pluginMsgPrefix ++ " "
+
+-- | Prefix a message with the debug prefix and a note that this is a
+--   printed object.
+pmObjMsg :: String -> String
+pmObjMsg = prefixMsg $ pluginMsgPrefix ++ "> "

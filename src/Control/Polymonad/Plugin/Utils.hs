@@ -1,12 +1,8 @@
 
 -- | Provides all kinds of functions that are needed by the plugin.
 module Control.Polymonad.Plugin.Utils (
-  -- * Plugin printing and debugging
-    printppr
-  , printM
-  , pprToStr
   -- * Type inspection
-  , collectTopTyCons
+    collectTopTyCons
   , collectTopTcVars
   , collectTyVars
   , mkTcVarSubst
@@ -50,10 +46,11 @@ import InstEnv
   , lookupInstEnv
   , instanceBindFun )
 import Unify ( tcUnifyTys )
-import TcPluginM ( TcPluginM, tcPluginIO, tcLookupClass )
+import TcPluginM ( tcLookupClass )
+import Outputable ( Outputable )
 
 import Control.Polymonad.Plugin.Environment
-  ( PmPluginM, getInstEnvs )
+  ( PmPluginM, getInstEnvs, printObj, pprToStr )
 
 -- -----------------------------------------------------------------------------
 -- Constraint and type inspection
@@ -113,7 +110,7 @@ findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
     let (otherFoundClsInsts, foundClsInsts, _) = lookupInstEnv instEnvs ctCls ctTyConAppArgs
     -- ([(ClsInst, [DFunInstType])], [ClsInst], Bool)
     -- TODO: So far this was always empty. Alert when there actually is something in there:
-    unless (null otherFoundClsInsts) $ printppr otherFoundClsInsts
+    unless (null otherFoundClsInsts) $ printObj otherFoundClsInsts
     -- Now look at each found instance and collect the type constructor for the relevant variables
     collectedTyCons <- forM foundClsInsts $ \foundInst ->
       -- Unify the constraint arguments with the instance arguments.
