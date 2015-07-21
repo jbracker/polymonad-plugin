@@ -1,4 +1,8 @@
 
+-- This is a workaround of a cabal/haddock bug:
+-- http://trac.haskell.org/haddock/ticket/187
+{-# LANGUAGE TemplateHaskell #-}
+
 -- | Implementation of the simplification rules for polymonad constraints
 --   described in section 5 of the "Polymonad Programming" paper (Hicks 2014).
 module Control.Polymonad.Plugin.Simplification
@@ -35,6 +39,11 @@ import Control.Polymonad.Plugin.Constraint
   , mkDerivedTypeEqCt )
 import Control.Polymonad.Plugin.PrincipalJoin
   ( principalJoin )
+
+-- HLint: Please, ignore the unused template haskell pragma at the beginning.
+-- For some reason this needs to be added here:
+-- https://github.com/ndmitchell/hlint/issues/103
+{-# ANN module "HLint: ignore Unused LANGUAGE pragma" #-}
 
 -- -----------------------------------------------------------------------------
 -- Base Simplification Rules
