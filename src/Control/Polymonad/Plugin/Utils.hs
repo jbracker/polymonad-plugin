@@ -51,29 +51,9 @@ import InstEnv
   , instanceBindFun )
 import Unify ( tcUnifyTys )
 import TcPluginM ( TcPluginM, tcPluginIO, tcLookupClass )
-import Outputable
-  ( Outputable( ppr )
-  --, text, parens, (<>)
-  , showSDocUnsafe )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, getInstEnvs )
-
--- -----------------------------------------------------------------------------
--- Plugin debug primitives
--- -----------------------------------------------------------------------------
-
--- | Print some generic outputable from the plugin (Unsafe).
-printppr :: Outputable o => o -> PmPluginM ()
-printppr = lift . tcPluginIO . putStrLn . pprToStr
-
--- | Print a message from the plugin.
-printM :: String -> PmPluginM ()
-printM = lift . tcPluginIO . putStrLn
-
--- | Convert some generic outputable to a string (Unsafe).
-pprToStr :: Outputable o => o -> String
-pprToStr = showSDocUnsafe . ppr
 
 -- -----------------------------------------------------------------------------
 -- Constraint and type inspection

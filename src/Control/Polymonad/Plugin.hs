@@ -113,11 +113,11 @@ polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginRe
 polymonadSolve s given derived wanted = do
   res <- runPmPlugin $ do
     printM ">>> Plugin Solve..."
-    printppr given
-    printppr derived
-    printppr wanted
     printM ">>>>>>>>>>>>>>>>>>>"
     if not $ null wanted then do
+      printppr given
+      printppr derived
+      printppr wanted
       polymonadCls <- getPolymonadClass
       idTyCon <- getIdentityTyCon
       printM ">>> Polymonad in scope, wanted constraints not empty, invoke solver..."
