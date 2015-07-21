@@ -4,8 +4,6 @@ module Control.Polymonad.Plugin.PrincipalJoin
   ) where
 
 import Data.Maybe ( isJust, catMaybes, listToMaybe )
-import Data.Set ( Set )
-import qualified Data.Set as S
 
 import Control.Monad ( forM, guard, mzero, filterM )
 
@@ -15,35 +13,38 @@ import Type
   , eqTypes
   , substTy )
 import InstEnv ( ClsInst(..), instanceBindFun )
-import TcRnTypes
-  ( Ct, TcPluginM
-  , isGivenCt )
+import TcRnTypes ( Ct, isGivenCt )
 import Unify ( tcUnifyTys )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
   , getIdentityTyCon )
-import Control.Polymonad.Plugin.Utils ( collectTopTyCons )
 import Control.Polymonad.Plugin.Instance
-  ( instanceTyCons, instanceTyArgs, instanceType
-  , instancePolymonadTyArgs )
+  ( instanceType, instancePolymonadTyArgs )
 import Control.Polymonad.Plugin.Core ( pickPolymonadInstance )
-import Control.Polymonad.Plugin.Detect ( findIdentityTyCon )
 import Control.Polymonad.Plugin.Constraint
-  ( constraintClassTyArgs, constraintClassType
-  , constraintPolymonadTyArgs )
+  ( constraintClassTyArgs, constraintPolymonadTyArgs )
 
--- | Calculate the principal join of a set of type constructors.
+-- | Calculate the principal join of a set of unary type constructors.
 --   For this to work properly all of the given types need to be
 --   type constructors or partially applied type constructors.
 --   The principal join is defined in definition 4 of the
 --   "Polymonad Programming" paper.
---   TODO: UNFINISHED
---   @principalJoin insts f ms@
---   insts - Available polymonad instances
---   f     - The set to calculate the join for
---   ms    - The target constructors.
+--
+--   @principalJoin (insts, givenCts) f ms@ calculates the principal join,
+--   by assuming the given @insts@ and @givenCts@ are available bind operations
+--   in Sigma. @f@ is the set of unary type constructor pairs and @ms@ is
+--   the set of type constructors we want to arrive at ({M_1, M_2} subsetof Sigma).
+--
+--   According to communication with the authors of the paper @f@ should
+--   never be empty. The original definition requires exactly one or two
+--   type constructors in @ms@. The type constructors in these sets may also
+--   be variables that appear as type constructors in the given constraints,
+--   but it is the responsibility of the user to ensure that they actually
+--   represent type constructors.
 principalJoin :: ([ClsInst], [Ct]) -> [(Type, Type)] -> [Type] -> PmPluginM (Maybe Type)
+principalJoin (_, _) _ [] = return Nothing
+principalJoin (_, _) [] _ = return Nothing
 principalJoin (insts, givenCts) f ms = if areGivenCts
   then do
     meetsPrecond <- checkPrincipalPrecondition
@@ -134,15 +135,3 @@ possiblePolymonadConstraintBindResults cts (t0, t1) = do
       then return (m2, ct)
       else mzero
     Nothing -> mzero
-
-
-{-
-case constraintClassType ct of
-  Just (ctTyCon, ctTys) -> do
-    guard $ classTyCon (is_cls inst) == ctTyCon
-    case tcUnifyTys instanceBindFun (is_tys inst) ctTys of
-      Just subst -> return (inst, subst)
-      Nothing -> mzero
-  Nothing -> mzero
-
--}
