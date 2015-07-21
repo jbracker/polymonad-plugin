@@ -30,7 +30,7 @@ import TyCon ( TyCon )
 import TcRnTypes ( Ct )
 
 import Control.Polymonad.Plugin.Environment
-  ( PmPluginM, getIdentityTyCon )
+  ( PmPluginM, getIdentityTyCon, getPolymonadInstances )
 import Control.Polymonad.Plugin.Utils
   ( eqTyVar', eqTyCon )
 import Control.Polymonad.Plugin.Constraint
@@ -50,8 +50,8 @@ import Control.Polymonad.Plugin.PrincipalJoin
 -- -----------------------------------------------------------------------------
 
 -- | @simplifyUp (psl, p, psr) rho@ tries to simplify the type variable @rho@
---   in the constraint @p@ using the S-Up rule. The context of polymonad
---   constraints is given by @psl@ and @psr@.
+--   in the wanted constraint @p@ using the S-Up rule. The context of the
+--   wanted polymonad constraints is given by @psl@ and @psr@.
 --   The result is a new equality constraint between @rho@ and the type it
 --   should be bound to, to simplify @psl ++ [p] ++ psr@. If the simplification cannot
 --   be applied 'Nothing' is returned.
@@ -69,8 +69,8 @@ simplifyUp (psl, p, psr) rho = do
     return (rho, (p, m))
 
 -- | @simplifyDown (psl, p, psr) rho@ tries to simplify the type variable @rho@
---   in the constraint @p@ using the S-Down rule. The context of polymonad
---   constraints is given by @psl@ and @psr@.
+--   in the wanted constraint @p@ using the S-Down rule. The context of
+--   the wanted polymonad constraints is given by @psl@ and @psr@.
 --   The result is a new equality constraint between @rho@ and the type it
 --   should be bound to, to simplify @psl ++ [p] ++ psr@. If the simplification cannot
 --   be applied 'Nothing' is returned.
@@ -87,19 +87,30 @@ simplifyDown (psl, p, psr) rho = do
     guard $ not . null $ flowsTo (psl ++ psr) rho
     return (rho, (p, t2))
 
--- | @simplifyJoin ps rho@ tries to simplify the type variable @rho@
---   in the constraints @ps@ using the S-Join rule.
+-- | @simplifyJoin (given, ps) rho@ tries to simplify the type variable @rho@
+--   in the wanted constraints @ps@ using the S-Join rule.
 --   The result is a new equality constraint between @rho@ and the type it
 --   should be bound to, to simplify @ps@. If the simplification cannot
 --   be applied 'Nothing' is returned.
 --
 --   See figure 7 of the the "Polymonad Programming" paper for more information.
-simplifyJoin :: [Ct] -> TyVar -> Maybe Ct
-simplifyJoin [] _rho = Nothing
-simplifyJoin ps rho = do
+simplifyJoin :: ([Ct], [Ct]) -> TyVar -> PmPluginM (Maybe Ct)
+simplifyJoin (_givenCts, []) _rho = return Nothing
+simplifyJoin (givenCts, ps) rho = do
   let f = flowsTo ps rho
-  guard $ all (\(t0,t1) -> isConcreteTyConApp t0 && isConcreteTyConApp t1) f
-  return $ mkDerivedTypeEqCt (head ps) rho undefined -- (principalJoin f)
+  if (not . null $ f) && all (\(t0,t1) -> isConcreteTyConApp t0 && isConcreteTyConApp t1) f
+    then do
+      -- TODO: We might have to restrict the set of instances we look at.
+      pmInsts <- getPolymonadInstances
+      -- TODO: This is the only possibility I can think of to get targets.
+      let ms = flowsFrom ps rho
+      
+      mJoinM <- principalJoin (pmInsts, givenCts) f ms
+      return $ fmap (mkDerivedTypeEqCt (head ps) rho) mJoinM
+    else
+      return Nothing
+
+-- principalJoin :: ([ClsInst], [Ct]) -> [(Type, Type)] -> [Type] -> PmPluginM (Maybe Type)
 
 -- -----------------------------------------------------------------------------
 -- Simplification Application
