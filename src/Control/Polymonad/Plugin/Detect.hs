@@ -15,6 +15,8 @@ module Control.Polymonad.Plugin.Detect
   , identityTyConName
   , findIdentityModule
   , findIdentityTyCon
+    -- * Other Utilities
+  , findPolymonadInstancesInScope
   ) where
 
 import Data.Maybe ( catMaybes, listToMaybe )
@@ -51,7 +53,8 @@ import Class
   , className, classArity )
 import InstEnv
   ( ClsInst(..)
-  , instEnvElts )
+  , instEnvElts
+  , classInstances )
 
 -- -----------------------------------------------------------------------------
 -- Constant Names (Magic Numbers...)
@@ -126,6 +129,20 @@ findIdentityTyCon = do
   case mIdModule of
     Just idMdl -> findTyConByNameAndModule (mkTcOcc identityTyConName) idMdl
     Nothing -> return Nothing
+
+-- -----------------------------------------------------------------------------
+-- Utility Functions
+-- -----------------------------------------------------------------------------
+
+-- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.
+findPolymonadInstancesInScope :: TcPluginM [ClsInst]
+findPolymonadInstancesInScope = do
+  mPolymonadClass <- findPolymonadClass
+  case mPolymonadClass of
+    Just polymonadClass -> do
+      instEnvs <- TcPluginM.getInstEnvs
+      return $ classInstances instEnvs polymonadClass
+    Nothing -> return []
 
 -- -----------------------------------------------------------------------------
 -- Local Utility Functions

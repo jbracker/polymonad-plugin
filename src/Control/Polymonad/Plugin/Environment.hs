@@ -25,7 +25,7 @@ import Control.Monad.Trans.Class ( lift )
 
 import Class ( Class )
 import Module ( Module )
-import InstEnv ( ClsInst, InstEnvs, classInstances )
+import InstEnv ( ClsInst, InstEnvs )
 import Type ( TyVar, getClassPredTys_maybe )
 import TyCon ( TyCon )
 import TcRnTypes
@@ -42,7 +42,8 @@ import Control.Polymonad.Plugin.Detect
   ( polymonadModuleName, polymonadClassName
   , identityModuleName, identityTyConName
   , findPolymonadModule, findPolymonadClass
-  , findIdentityModule, findIdentityTyCon )
+  , findIdentityModule, findIdentityTyCon
+  , findPolymonadInstancesInScope )
 
 -- -----------------------------------------------------------------------------
 -- Plugin Monad
@@ -79,7 +80,7 @@ runPmPlugin givenCts wantedCts pmM = do
       mIdTyCon <- findIdentityTyCon
       case (mIdMdl, mIdTyCon) of
         (Just idMdl, Just idTyCon) -> do
-          pmInsts <- getPolymonadInstancesInScope
+          pmInsts <- findPolymonadInstancesInScope
           let givenPmCts  = filter (\ct -> isGivenCt ct  && isClassConstraint pmCls ct) givenCts
           let wantedPmCts = filter (\ct -> isWantedCt ct && isClassConstraint pmCls ct) wantedCts
           let currPm = (undefined, undefined, undefined, givenPmCts) -- TODO
@@ -126,13 +127,13 @@ getIdentityTyCon :: PmPluginM TyCon
 getIdentityTyCon = asks pmEnvIdentityTyCon
 
 -- | Returns the given constraints of this plugin solver call.
---   All of the returned constraints are guarenteed to be "givens"
+--   All of the returned constraints are guarenteed to be _given_ constraints
 --   and actual 'Control.Polymonad' constraints.
 getGivenConstraints :: PmPluginM [Ct]
 getGivenConstraints = asks pmEnvGivenConstraints
 
 -- | Returns the wanted constraints of this plugin solver call.
---   All of the returned constraints are guarenteed to be "wanteds"
+--   All of the returned constraints are guarenteed to be _wanted_ constraints
 --   and actual 'Control.Polymonad' constraints.
 getWantedConstraints :: PmPluginM [Ct]
 getWantedConstraints = asks pmEnvWantedConstraints
@@ -155,18 +156,8 @@ getInstEnvs :: PmPluginM InstEnvs
 getInstEnvs = lift TcPluginM.getInstEnvs
 
 -- -----------------------------------------------------------------------------
--- Plugin internal utility
+-- Plugin utility
 -- -----------------------------------------------------------------------------
-
--- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.
-getPolymonadInstancesInScope :: TcPluginM [ClsInst]
-getPolymonadInstancesInScope = do
-  mPolymonadClass <- findPolymonadClass
-  case mPolymonadClass of
-    Just polymonadClass -> do
-      instEnvs <- TcPluginM.getInstEnvs
-      return $ classInstances instEnvs polymonadClass
-    Nothing -> return []
 
 -- | Check if the given constraint is a class constraint of the given class.
 isClassConstraint :: Class -> Ct -> Bool
