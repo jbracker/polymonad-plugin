@@ -21,7 +21,6 @@ import Type
   ( Type, TyVar )
 import Class ( Class, classTyCon )
 import TyCon ( TyCon )
-import TcPluginM
 
 import Control.Polymonad.Plugin.Environment ( PmPluginM )
 import Control.Polymonad.Plugin.Utils

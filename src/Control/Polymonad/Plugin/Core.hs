@@ -10,18 +10,17 @@ module Control.Polymonad.Plugin.Core
 import Data.Maybe ( isJust, isNothing, fromJust, catMaybes )
 import Data.Set ( Set )
 import qualified Data.Set as S
-import Control.Monad ( guard, forM, unless, MonadPlus(..) )
+import Control.Monad ( guard, forM, MonadPlus(..) )
 
 import InstEnv
-  ( ClsInst(..), InstEnvs
-  , classInstances
+  ( ClsInst(..)
   , instanceBindFun, instanceSig
   , lookupInstEnv
   , lookupUniqueInstEnv )
 import TyCon ( TyCon )
 import Type
   ( Type, TvSubst, TyVar
-  , lookupTyVar, getClassPredTys_maybe
+  , getClassPredTys_maybe
   , mkTopTvSubst, substTys )
 import Unify ( tcUnifyTys )
 import Class ( Class(..) )
@@ -35,11 +34,9 @@ import Control.Polymonad.Plugin.Constraint
   , constraintTyCons
   , isClassConstraint, isFullyAppliedClassConstraint )
 import Control.Polymonad.Plugin.Instance
-  ( findInstanceTopTyCons, instanceTyCons, instanceClassTyCon, instanceTyArgs, instanceTcVars )
-import Control.Polymonad.Plugin.Detect
-  ( findPolymonadClass )
+  ( findInstanceTopTyCons, instanceTyCons, instanceTcVars )
 import Control.Polymonad.Plugin.Utils
-  ( findConstraintOrInstanceTyCons, isGroundUnaryTyCon )
+  ( isGroundUnaryTyCon )
 
 -- | Returns the set of all type constructors in the current scope
 --   that are part of a polymonad in Haskell. Uses the polymonad
@@ -84,17 +81,15 @@ pickInstanceForAppliedConstraint ct = do
       -- Get the instance environment
       instEnvs <- getInstEnvs
       -- Find matching instance for our constraint.
-      case lookupInstEnv instEnvs pmCls tyArgs of
-        (matches, _, _) ->
-          -- Only keep those matches that actually found a type for every argument.
-          case filter (\(_, args) -> all isJust args) matches of
-            -- If we found more then one instance, just use the first.
-            -- Because we are talking about polymonad we can freely choose.
-            (foundInst, foundInstArgs) : _ -> do
-              -- Try to produce evidence for the instance we want to use.
-              evTerm <- produceEvidenceFor foundInst (fromJust <$> foundInstArgs)
-              return $ (\ev -> (ev, ct)) <$> evTerm
-            _ -> return Nothing
+      let (matches, _, _) = lookupInstEnv instEnvs pmCls tyArgs
+      -- Only keep those matches that actually found a type for every argument.
+      case filter (\(_, args) -> all isJust args) matches of
+        -- If we found more then one instance, just use the first.
+        -- Because we are talking about polymonad we can freely choose.
+        (foundInst, foundInstArgs) : _ -> do
+          -- Try to produce evidence for the instance we want to use.
+          evTerm <- produceEvidenceFor foundInst (fromJust <$> foundInstArgs)
+          return $ (\ev -> (ev, ct)) <$> evTerm
         _ -> return Nothing
     _ -> return Nothing
   where

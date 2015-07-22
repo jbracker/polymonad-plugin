@@ -36,7 +36,6 @@ import Type
   , getClassPredTys_maybe
   )
 import TyCon ( TyCon )
-import TcPluginM ( TcPluginM )
 import TcType ( mkTcEqPred, isAmbiguousTyVar )
 
 import Control.Polymonad.Plugin.Utils
