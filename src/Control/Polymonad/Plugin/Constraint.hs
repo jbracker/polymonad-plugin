@@ -33,7 +33,6 @@ import Type
   , splitTyConApp_maybe
   , mkTyVarTy
   , getTyVar_maybe
-  , getClassPredTys_maybe
   )
 import TyCon ( TyCon )
 import TcType ( mkTcEqPred, isAmbiguousTyVar )
@@ -43,7 +42,7 @@ import Control.Polymonad.Plugin.Utils
   , collectTopTcVars
   , collectTyVars
   , findConstraintOrInstanceTyCons )
-import Control.Polymonad.Plugin.Environment ( PmPluginM )
+import Control.Polymonad.Plugin.Environment ( PmPluginM, isClassConstraint )
 -- -----------------------------------------------------------------------------
 -- Constraint Creation
 -- -----------------------------------------------------------------------------
@@ -59,16 +58,6 @@ mkDerivedTypeEqCt' loc tv ty = mkNonCanonical CtDerived
 -- -----------------------------------------------------------------------------
 -- Constraint Inspection
 -- -----------------------------------------------------------------------------
-
--- | Check if the given constraint is a class constraint of the given class.
-isClassConstraint :: Class -> Ct -> Bool
-isClassConstraint wantedClass ct =
-  case ct of
-    CDictCan { cc_class = cls } -> cls == wantedClass
-    CNonCanonical { cc_ev = ev } -> case getClassPredTys_maybe (ctev_pred ev) of
-      Just (cls, _args) -> cls == wantedClass
-      _ -> False
-    _ -> False
 
 -- | Check if the given constraint is fully applied, i.e., if the
 --   constraint is a class constraint and the arguments do not contain

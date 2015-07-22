@@ -107,7 +107,7 @@ polymonadStop _s = return ()
 
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve s given derived wanted = do
-  res <- runPmPlugin $ do
+  res <- runPmPlugin given wanted $ do
     unless (null derived) $ do
       printMsg "Derived constraints not empty:"
       printObj derived
@@ -141,7 +141,7 @@ polymonadSolve' _s (given, _derived, wanted) = do
   printObj wantedApplied
   wantedEvidence <- catMaybes <$> mapM pickInstanceForAppliedConstraint wantedApplied
   printObj wantedEvidence
-  
+
   return $ TcPluginOk wantedEvidence eqCts
 
 -- -----------------------------------------------------------------------------
