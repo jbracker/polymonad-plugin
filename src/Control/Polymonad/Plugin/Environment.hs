@@ -63,12 +63,12 @@ data PmPluginEnv = PmPluginEnv
   }
 
 -- | @runPmPlugin given wanted m@ runs the given polymonad plugin solver @m@
---   within the type checker plugin monad. The _given_ constraints are
---   passed in through @given@ and the _wanted_ constraints are passed in
+--   within the type checker plugin monad. The /given/ constraints are
+--   passed in through @given@ and the /wanted/ constraints are passed in
 --   through @wanted@.
 --
 --   The function will make sure that only the polymonad constraints
---   and actually _given_ or _wanted_ constraints
+--   and actually /given/ or /wanted/ constraints
 --   are kept, respectivly.
 runPmPlugin :: [Ct] -> [Ct] -> PmPluginM a -> TcPluginM (Either String a)
 runPmPlugin givenCts wantedCts pmM = do
@@ -127,14 +127,16 @@ getIdentityTyCon :: PmPluginM TyCon
 getIdentityTyCon = asks pmEnvIdentityTyCon
 
 -- | Returns the given constraints of this plugin solver call.
---   All of the returned constraints are guarenteed to be _given_ constraints
+--   All of the returned constraints are guarenteed to be /given/ constraints
 --   and actual 'Control.Polymonad' constraints.
+--   The list of /given/ constraints may be empty.
 getGivenConstraints :: PmPluginM [Ct]
 getGivenConstraints = asks pmEnvGivenConstraints
 
 -- | Returns the wanted constraints of this plugin solver call.
---   All of the returned constraints are guarenteed to be _wanted_ constraints
+--   All of the returned constraints are guarenteed to be /wanted/ constraints
 --   and actual 'Control.Polymonad' constraints.
+--   The list /wanted/ of constraints will never be empty.
 getWantedConstraints :: PmPluginM [Ct]
 getWantedConstraints = asks pmEnvWantedConstraints
 
