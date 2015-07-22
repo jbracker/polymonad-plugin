@@ -28,11 +28,13 @@ import Control.Monad ( filterM, forM, liftM )
 
 import TcRnTypes
   ( Ct
+  , isGivenCt, isWantedCt
   , imp_mods
   , TcGblEnv(..)
   , TcTyThing(..) )
 import Type
-  ( TyThing(..), TyVar )
+  ( Type, TyThing(..), TyVar
+  , isTyVarTy, splitAppTys )
 import TyCon ( TyCon )
 import TcPluginM
 import Name
@@ -61,7 +63,8 @@ import InstEnv
   , classInstances )
 
 import Control.Polymonad.Plugin.Instance ( instanceTcVars, instanceTyCons )
-import Control.Polymonad.Plugin.Constraint ( constraintTyCons )
+import Control.Polymonad.Plugin.Constraint
+  ( constraintTyCons, constraintClassTyArgs, isClassConstraint )
 
 -- -----------------------------------------------------------------------------
 -- Constant Names (Magic Numbers...)
@@ -153,7 +156,7 @@ findPolymonadInstancesInScope = do
 
 -- | Subset selection algorithm to select the correct subset of
 --   type constructor and bind instances that belong to the polymonad
---   being worked with in the list of constraints.
+--   being worked with in the list of /given/ and /wanted/ constraints.
 --
 --   /Preconditions:/ For the algorithm to work correctly,
 --   certain preconditions have to be meet:
@@ -161,14 +164,24 @@ findPolymonadInstancesInScope = do
 --     * TODO
 --
 --   __TODO: Work in Progress / Unfinished__
-selectPolymonadSubset :: [Ct] -> TcPluginM (Set TyCon, [ClsInst])
-selectPolymonadSubset cts =
-  -- TODO
-  return undefined
+selectPolymonadSubset :: TyCon -> Class -> [ClsInst] -> ([Ct], [Ct]) -> TcPluginM (Set TyCon, [Type], [ClsInst])
+selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
+  -- TODO: This is just a very naiv approach to get things up and running.
+  let givenTyCons  = S.unions $ fmap constraintTyCons givenCts
+  let wantedTyCons = S.unions $ fmap constraintTyCons wantedCts
+  let pmTyCons = givenTyCons `S.union` wantedTyCons `S.union` S.singleton idTyCon
+  let varTyCons = filter (isTyVarTy . fst . splitAppTys)
+                $ concat $ catMaybes $ fmap constraintClassTyArgs givenCts
+  relevantInsts <- filterApplicableInstances pmInsts pmTyCons
+  return (pmTyCons, varTyCons, relevantInsts)
   where
+    givenPmCts = filter (\ct -> isClassConstraint pmCls ct && isGivenCt ct) givenCts
+    wantedPmCts = filter (\ct -> isClassConstraint pmCls ct && isWantedCt ct) wantedCts
+
+    -- TODO
     c :: Int -> TcPluginM (Set TyCon , [ClsInst])
     c 0 = do
-      let initialTcs = S.unions $ fmap constraintTyCons cts
+      let initialTcs = S.unions $ fmap constraintTyCons wantedPmCts
       return (initialTcs, [])
     c n = do
       (initialTcs, _initialClsInsts) <- c (n - 1)
@@ -187,6 +200,12 @@ selectPolymonadSubset cts =
           return (undefined, undefined)
         else return (S.empty, [])
 
+-- | Filters the list of polymonads constraints, to only keep those
+--   that can be applied to the given type constructors.
+filterApplicableInstances :: [ClsInst] -> Set TyCon -> TcPluginM [ClsInst]
+filterApplicableInstances pmInsts tcs = do
+
+  return undefined
 
 -- -----------------------------------------------------------------------------
 -- Local Utility Functions

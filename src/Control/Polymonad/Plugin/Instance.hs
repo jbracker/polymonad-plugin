@@ -11,23 +11,20 @@ module Control.Polymonad.Plugin.Instance
   ) where
 
 import Data.Set ( Set )
-import qualified Data.Set as S
 
 import InstEnv
   ( ClsInst(..)
   , instanceSig )
 import Type
-  ( Type, TyVar, getClassPredTys_maybe )
+  ( Type, TyVar )
 import Class ( Class, classTyCon )
 import TyCon ( TyCon )
-import TcRnTypes ( Ct(..), CtEvidence(..) )
 
 import Control.Polymonad.Plugin.Log
   ( missingCaseError )
 import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
-  , collectTopTcVars
-  , splitTyConApps )
+  , collectTopTcVars )
 
 -- | Returns the type constructors of the class is instance instantiates.
 instanceClassTyCon :: ClsInst -> TyCon
@@ -49,7 +46,7 @@ instancePolymonadTyArgs :: ClsInst -> (Type, Type, Type)
 instancePolymonadTyArgs inst = case instArgs of
     [t0, t1, t2] -> (t0, t1, t2)
     x -> missingCaseError "instancePolymonadTyArgs" (Just x)
-  where (_, instCls, _, instArgs) = instanceType inst
+  where (_, _instCls, _, instArgs) = instanceType inst
 
 -- | Retrieve the type constructors involved in the instance head of the
 --   given instance. This only selects the top level type constructors

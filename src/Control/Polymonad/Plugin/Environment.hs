@@ -24,7 +24,7 @@ import Control.Monad.Trans.Class ( lift )
 import Class ( Class )
 import Module ( Module )
 import InstEnv ( ClsInst, InstEnvs )
-import Type ( TyVar )
+import Type ( Type )
 import TyCon ( TyCon )
 import TcRnTypes
   ( Ct
@@ -59,7 +59,7 @@ data PmPluginEnv = PmPluginEnv
   , pmEnvIdentityTyCon  :: TyCon
   , pmEnvGivenConstraints  :: [Ct]
   , pmEnvWantedConstraints :: [Ct]
-  , pmEnvCurrentPolymonad  :: (Set TyCon, Set TyVar, [ClsInst], [Ct])
+  , pmEnvCurrentPolymonad  :: (Set TyCon, [Type], [ClsInst], [Ct])
   }
 
 -- | @runPmPlugin given wanted m@ runs the given polymonad plugin solver @m@
@@ -83,8 +83,8 @@ runPmPlugin givenCts wantedCts pmM = do
           pmInsts <- findPolymonadInstancesInScope
           let givenPmCts  = filter (\ct -> isGivenCt ct  && isClassConstraint pmCls ct) givenCts
           let wantedPmCts = filter (\ct -> isWantedCt ct && isClassConstraint pmCls ct) wantedCts
-          (pmTcs, pmBindClsInsts) <- selectPolymonadSubset undefined -- TODO
-          let currPm = (pmTcs, undefined, pmBindClsInsts, givenPmCts) -- TODO
+          (pmTcs, pmTvs, pmBindClsInsts) <- selectPolymonadSubset idTyCon pmCls pmInsts (givenPmCts, wantedPmCts)
+          let currPm = (pmTcs, pmTvs, pmBindClsInsts, givenPmCts)
           result <- runReaderT pmM PmPluginEnv
             { pmEnvPolymonadModule = pmMdl
             , pmEnvPolymonadClass  = pmCls
@@ -151,7 +151,7 @@ getWantedConstraints = asks pmEnvWantedConstraints
 --   of the triple. They come as class instances that provide bind operations
 --   or given constraints that need to be assumed to be existing bind
 --   operations.
-getCurrentPolymonad :: PmPluginM (Set TyCon, Set TyVar, [ClsInst], [Ct])
+getCurrentPolymonad :: PmPluginM (Set TyCon, [Type], [ClsInst], [Ct])
 getCurrentPolymonad = asks pmEnvCurrentPolymonad
 
 -- | Shortcut to access the instance environments.

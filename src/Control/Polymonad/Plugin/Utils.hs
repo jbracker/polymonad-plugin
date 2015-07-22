@@ -20,9 +20,6 @@ import Data.Maybe ( listToMaybe, catMaybes )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
-import Control.Monad ( unless, forM )
-import Control.Monad.Trans.Class ( lift )
-
 import Type
   ( Type, TyVar, TvSubst
   , getTyVar_maybe
@@ -31,20 +28,8 @@ import Type
   , splitAppTys
   , mkTyConTy
   , mkTopTvSubst
-  , mkTyVarTy, getTyVar
-  , tyConAppTyCon
-  , substTy
   , eqType )
 import TyCon ( TyCon, tyConArity )
-import Name ( getName )
-import InstEnv
-  ( ClsInst(..)
-  , instanceSig
-  , lookupInstEnv
-  , instanceBindFun )
-import Unify ( tcUnifyTys )
-import TcPluginM ( tcLookupClass )
-import Outputable ( Outputable )
 
 -- -----------------------------------------------------------------------------
 -- Constraint and type inspection
