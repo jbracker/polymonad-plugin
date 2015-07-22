@@ -16,7 +16,6 @@ module Control.Polymonad.Plugin.Constraint
   , constraintTyCons
   , constraintTcVars
   , constraintTopAmbiguousTyVars
-  , findConstraintTopTyCons
   ) where
 
 import Data.Maybe ( isJust, catMaybes, fromMaybe )
@@ -33,6 +32,7 @@ import Type
   , splitTyConApp_maybe
   , mkTyVarTy
   , getTyVar_maybe
+  , getClassPredTys_maybe
   )
 import TyCon ( TyCon )
 import TcType ( mkTcEqPred, isAmbiguousTyVar )
@@ -40,9 +40,8 @@ import TcType ( mkTcEqPred, isAmbiguousTyVar )
 import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
   , collectTopTcVars
-  , collectTyVars
-  , findConstraintOrInstanceTyCons )
-import Control.Polymonad.Plugin.Environment ( PmPluginM, isClassConstraint )
+  , collectTyVars )
+
 -- -----------------------------------------------------------------------------
 -- Constraint Creation
 -- -----------------------------------------------------------------------------
@@ -58,6 +57,16 @@ mkDerivedTypeEqCt' loc tv ty = mkNonCanonical CtDerived
 -- -----------------------------------------------------------------------------
 -- Constraint Inspection
 -- -----------------------------------------------------------------------------
+
+-- | Check if the given constraint is a class constraint of the given class.
+isClassConstraint :: Class -> Ct -> Bool
+isClassConstraint wantedClass ct =
+  case ct of
+    CDictCan { cc_class = cls } -> cls == wantedClass
+    CNonCanonical { cc_ev = ev } -> case getClassPredTys_maybe (ctev_pred ev) of
+      Just (cls, _args) -> cls == wantedClass
+      _ -> False
+    _ -> False
 
 -- | Check if the given constraint is fully applied, i.e., if the
 --   constraint is a class constraint and the arguments do not contain
@@ -125,17 +134,6 @@ constraintTopAmbiguousTyVars ct = ambTvs
   where tyArgs = fromMaybe [] (constraintClassTyArgs ct)
         tvArgs = catMaybes $ getTyVar_maybe <$> tyArgs
         ambTvs = S.fromList $ filter isAmbiguousTyVar tvArgs
-
--- | Search for all possible type constructors that could be
---   used in the top-level position of the constraint arguments.
---   Delivers a set of type constructors.
-findConstraintTopTyCons :: Ct -> PmPluginM (Set TyCon)
-findConstraintTopTyCons ct = case constraintClassType ct of
-  Just (tyCon, tyArgs) -> do
-    let tcs = constraintTyCons ct
-    foundTcs <- findConstraintOrInstanceTyCons (constraintTcVars ct) (tyCon, tyArgs)
-    return $ tcs `S.union` foundTcs
-  Nothing -> return S.empty
 
 -- | Retrieve the source location the given constraint originated from.
 constraintLocation :: Ct -> CtLoc

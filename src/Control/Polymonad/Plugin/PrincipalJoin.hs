@@ -113,14 +113,13 @@ principalJoin (insts, givenCts) f ms = if areGivenCts
 --   constraints this result would imply.
 possiblePolymonadInstBindResults :: [ClsInst] -> (Type, Type)
                                  -> PmPluginM [(Type, [Type], ClsInst, TvSubst)]
-possiblePolymonadInstBindResults insts (t0, t1) = fmap catMaybes $ forM insts $ \inst ->
-  case instancePolymonadTyArgs inst of
-    Just (m0, m1, m2) -> case tcUnifyTys instanceBindFun [m0, m1] [t0, t1] of
-      Just subst -> do
-        let (instCts, _, _, _) = instanceType inst
-        return $ Just (substTy subst m2, substTy subst <$> instCts, inst, subst)
-      _ -> return Nothing
-    Nothing -> return Nothing
+possiblePolymonadInstBindResults insts (t0, t1) = fmap catMaybes $ forM insts $ \inst -> do
+  let (m0, m1, m2) = instancePolymonadTyArgs inst
+  case tcUnifyTys instanceBindFun [m0, m1] [t0, t1] of
+    Just subst -> do
+      let (instCts, _, _, _) = instanceType inst
+      return $ Just (substTy subst m2, substTy subst <$> instCts, inst, subst)
+    _ -> return Nothing
 
 -- | Looks at all the given (given) constraints and if they are polymonad constraints
 --   checks the given two types match the first two arguments.

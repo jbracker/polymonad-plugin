@@ -4,13 +4,17 @@ module Control.Polymonad.Plugin.Core
   ( getPolymonadTyConsInScope
   , pickInstanceForAppliedConstraint
   , pickPolymonadInstance
-  , selectPolymonadSubset
+  , findInstanceTopTyCons
+  , findConstraintTopTyCons
+  , findConstraintOrInstanceTyCons
   ) where
 
 import Data.Maybe ( isJust, isNothing, fromJust, catMaybes )
+import Data.List ( partition )
 import Data.Set ( Set )
 import qualified Data.Set as S
-import Control.Monad ( guard, forM, MonadPlus(..) )
+import Control.Monad ( guard, forM, unless, MonadPlus(..) )
+import Control.Monad.Trans.Class ( lift )
 
 import InstEnv
   ( ClsInst(..)
@@ -21,22 +25,31 @@ import TyCon ( TyCon )
 import Type
   ( Type, TvSubst, TyVar
   , getClassPredTys_maybe
-  , mkTopTvSubst, substTys )
+  , mkTopTvSubst, mkTyVarTy
+  , substTys, substTy
+  , splitTyConApp_maybe
+  , getTyVar
+  , tyConAppTyCon )
 import Unify ( tcUnifyTys )
 import Class ( Class(..) )
+import Name ( getName )
 import TcRnTypes ( Ct(..) )
+import TcPluginM ( tcLookupClass )
 import TcEvidence ( EvTerm(..) )
 
+import Control.Polymonad.Plugin.Log ( pprToStr )
 import Control.Polymonad.Plugin.Environment
-  ( PmPluginM, getPolymonadClass, getPolymonadInstances, getInstEnvs )
+  ( PmPluginM
+  , getPolymonadClass, getPolymonadInstances, getInstEnvs
+  , printObj )
 import Control.Polymonad.Plugin.Constraint
   ( constraintClassType, constraintClassTyArgs
-  , constraintTyCons
+  , constraintTyCons, constraintTcVars
   , isClassConstraint, isFullyAppliedClassConstraint )
 import Control.Polymonad.Plugin.Instance
-  ( findInstanceTopTyCons, instanceTyCons, instanceTcVars )
+  ( instanceTyCons, instanceTcVars )
 import Control.Polymonad.Plugin.Utils
-  ( isGroundUnaryTyCon )
+  ( isGroundUnaryTyCon, splitTyConApps )
 
 -- | Returns the set of all type constructors in the current scope
 --   that are part of a polymonad in Haskell. Uses the polymonad
@@ -61,7 +74,79 @@ findMatchingInstancesForConstraint insts ct = do
         Nothing -> mzero
     Nothing -> mzero
 
+-- | Search for all possible type constructors that could be
+--   used in the top-level position of the constraint arguments.
+--   Delivers a set of type constructors.
+findConstraintTopTyCons :: Ct -> PmPluginM (Set TyCon)
+findConstraintTopTyCons ct = case constraintClassType ct of
+  Just (tyCon, tyArgs) -> do
+    let tcs = constraintTyCons ct
+    foundTcs <- findConstraintOrInstanceTyCons (constraintTcVars ct) (tyCon, tyArgs)
+    return $ tcs `S.union` foundTcs
+  Nothing -> return S.empty
 
+-- | Search for all possible type constructors that could be
+--   used in the top-level position of the instance arguments.
+--   Delivers a set of type constructors.
+findInstanceTopTyCons :: ClsInst -> PmPluginM (Set TyCon)
+findInstanceTopTyCons clsInst = do
+  -- Top level type constructors of the instance arguments
+  let instTcs = instanceTyCons clsInst
+  -- Type constructor variables of the instance arguments
+  let instTcvs = instanceTcVars clsInst
+  -- Get the constraints of the given instance
+  let (_vars, cts, _cls, _instArgs) = instanceSig clsInst
+  -- For each constraint find the type constructors in its instances as
+  -- long as they are substitutes for the type constructor variables in
+  -- this instance
+  foundTcs <- mapM (findConstraintOrInstanceTyCons instTcvs) (splitTyConApps cts)
+  -- Collect all results
+  return $ instTcs `S.union` S.unions foundTcs
+
+
+-- | @findConstraintOrInstanceTyCons tvs ctOrInst@ delivers the set of type
+--   constructors that can be substituted for the type variables in @tvs@
+--   which are part of the given constraint or instance @ctOrInst@.
+--   Only works properly if the given type variables are a subset of
+--   @collectTopTcVars (snd ctOrInst)@.
+findConstraintOrInstanceTyCons :: Set TyVar -> (TyCon, [Type]) -> PmPluginM (Set TyCon)
+findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
+  -- There are no relevant type variables to substitute. We are done
+  | S.null tcvs = return S.empty
+  | otherwise = do
+    -- Find the type class this constraint is about
+    ctCls <- lift $ tcLookupClass (getName ctTyCon)
+    -- Get our instance environment
+    instEnvs <- getInstEnvs
+    -- Find all instances that match the given constraint
+    let (otherFoundClsInsts, foundClsInsts, _) = lookupInstEnv instEnvs ctCls ctTyConAppArgs
+    -- ([(ClsInst, [DFunInstType])], [ClsInst], Bool)
+    -- TODO: So far this was always empty. Alert when there actually is something in there:
+    unless (null otherFoundClsInsts) $ printObj otherFoundClsInsts
+    -- Now look at each found instance and collect the type constructor for the relevant variables
+    collectedTyCons <- forM foundClsInsts $ \foundInst ->
+      -- Unify the constraint arguments with the instance arguments.
+      case tcUnifyTys instanceBindFun ctTyConAppArgs (is_tys foundInst) of
+        -- The instance is applicable
+        Just subst -> do
+          -- Get substitutions for variables that we are searching for
+          let substTcvs = fmap (substTy subst . mkTyVarTy) (S.toList tcvs)
+          -- Sort the substitutions into type constructors and type variables
+          let (substTcs, substTvs) = partition (isJust . splitTyConApp_maybe) substTcvs
+          -- Get the constraints of this instance
+          let (_vars, cts, _cls, _instArgs) = instanceSig foundInst
+          -- Search for further instantiations of type constructors in
+          -- the constraints of this instance. Search is restricted to
+          -- variables that are relevant for the original search.
+          -- Relevant means that the variables are substitutes for the original ones.
+          collectedTcs <- forM (splitTyConApps cts)
+                        $ findConstraintOrInstanceTyCons (S.fromList $ fmap (getTyVar "This should never happen") substTvs)
+          -- Union everthing we found so far together
+          return $ S.fromList (fmap tyConAppTyCon substTcs) `S.union` S.unions collectedTcs
+        -- The instance is not applicable for our constraint. We are done here.
+        Nothing -> return S.empty
+    -- Union all collected type constructors
+    return $ S.unions collectedTyCons
 
 -- | Given a fully applied polymonad constraint it will pick the first instance
 --   that matches it. This is ok to do, because for polymonads it does
@@ -182,41 +267,3 @@ pickPolymonadInstance (t0, t1, t2) = do
           -- We found one: Now we also need to check the found instance for
           -- its preconditions.
           Right (clsInst, instArgs) -> checkInstance clsInst instArgs
-
-
-
--- | Subset selection algorithm to select the correct subset of
---   type constructor and bind instances that belong to the polymonad
---   being worked with in the list of constraints.
---
---   /Preconditions:/ For the algorithm to work correctly,
---   certain preconditions have to be meet:
---
---     * TODO
---
---   __TODO: Work in Progress / Unfinished__
-selectPolymonadSubset :: [Ct] -> PmPluginM (Set TyCon, [ClsInst])
-selectPolymonadSubset cts =
-  -- TODO
-  return undefined
-  where
-    c :: Int -> PmPluginM (Set TyCon , [ClsInst])
-    c 0 = do
-      let initialTcs = S.unions $ fmap constraintTyCons cts
-      return (initialTcs, [])
-    c n = do
-      (initialTcs, _initialClsInsts) <- c (n - 1)
-
-      return (initialTcs `S.union` undefined, undefined)
-
-    appTC :: Set TyCon -> ClsInst -> TyVar -> PmPluginM (Set TyCon, [ClsInst])
-    appTC tcsCn clsInst tcVarArg =
-      if instanceTyCons clsInst `S.isSubsetOf` tcsCn
-        then do
-          let tcVarArgs = S.delete tcVarArg $ instanceTcVars clsInst
-          -- TODO
-          -- Substitute tycons (already collected ones) for the given argument
-          -- Substitute all possible tycons for the rest of the arguments
-          -- Find applicable instances and return the together with all of the substituted tycons
-          return (undefined, undefined)
-        else return (S.empty, [])

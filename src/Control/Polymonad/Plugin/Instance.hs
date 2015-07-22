@@ -8,7 +8,6 @@ module Control.Polymonad.Plugin.Instance
   , instanceTcVars
   , instanceType
   , instancePolymonadTyArgs
-  , findInstanceTopTyCons
   ) where
 
 import Data.Set ( Set )
@@ -18,18 +17,17 @@ import InstEnv
   ( ClsInst(..)
   , instanceSig )
 import Type
-  ( Type, TyVar )
+  ( Type, TyVar, getClassPredTys_maybe )
 import Class ( Class, classTyCon )
 import TyCon ( TyCon )
+import TcRnTypes ( Ct(..), CtEvidence(..) )
 
-import Control.Polymonad.Plugin.Environment ( PmPluginM )
+import Control.Polymonad.Plugin.Log
+  ( missingCaseError )
 import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
   , collectTopTcVars
-  , findConstraintOrInstanceTyCons
   , splitTyConApps )
-import Control.Polymonad.Plugin.Detect
-  ( isPolymonadClass )
 
 -- | Returns the type constructors of the class is instance instantiates.
 instanceClassTyCon :: ClsInst -> TyCon
@@ -47,12 +45,10 @@ instanceType inst = (cts, cls, instanceClassTyCon inst, args)
 
 -- | Check if the given instance is a 'Polymonad' instance and
 --   if so return the arguments types of the instance head.
-instancePolymonadTyArgs :: ClsInst -> Maybe (Type, Type, Type)
-instancePolymonadTyArgs inst = if isPolymonadClass instCls
-  then case instArgs of
-    [t0, t1, t2] -> Just (t0, t1, t2)
-    _ -> Nothing
-  else Nothing
+instancePolymonadTyArgs :: ClsInst -> (Type, Type, Type)
+instancePolymonadTyArgs inst = case instArgs of
+    [t0, t1, t2] -> (t0, t1, t2)
+    x -> missingCaseError "instancePolymonadTyArgs" (Just x)
   where (_, instCls, _, instArgs) = instanceType inst
 
 -- | Retrieve the type constructors involved in the instance head of the
@@ -73,21 +69,3 @@ instanceTyCons inst = collectTopTyCons $ instanceTyArgs inst
 --   > > { m , n }
 instanceTcVars :: ClsInst -> Set TyVar
 instanceTcVars inst = collectTopTcVars $ instanceTyArgs inst
-
--- | Search for all possible type constructors that could be
---   used in the top-level position of the instance arguments.
---   Delivers a set of type constructors.
-findInstanceTopTyCons :: ClsInst -> PmPluginM (Set TyCon)
-findInstanceTopTyCons clsInst = do
-  -- Top level type constructors of the instance arguments
-  let instTcs = instanceTyCons clsInst
-  -- Type constructor variables of the instance arguments
-  let instTcvs = instanceTcVars clsInst
-  -- Get the constraints of the given instance
-  let (_vars, cts, _cls, _instArgs) = instanceSig clsInst
-  -- For each constraint find the type constructors in its instances as
-  -- long as they are substitutes for the type constructor variables in
-  -- this instance
-  foundTcs <- mapM (findConstraintOrInstanceTyCons instTcvs) (splitTyConApps cts)
-  -- Collect all results
-  return $ instTcs `S.union` S.unions foundTcs

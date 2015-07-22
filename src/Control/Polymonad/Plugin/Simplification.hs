@@ -29,11 +29,11 @@ import Type
   , tyConAppTyCon_maybe )
 import TcRnTypes ( Ct )
 
+import Control.Polymonad.Plugin.Log ( pprToStr )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
   , getIdentityTyCon, getPolymonadInstances
-  , printErr, printObj, printMsg
-  , pprToStr )
+  , printErr, printObj, printMsg )
 import Control.Polymonad.Plugin.Utils
   ( eqTyVar', eqTyCon )
 import Control.Polymonad.Plugin.Constraint

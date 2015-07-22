@@ -28,6 +28,7 @@ library
                  , Control.Polymonad.Hoare
                  , Control.Polymonad.Functions
                  , Control.Polymonad.Plugin
+                 , Control.Polymonad.Plugin.Log
                  , Control.Polymonad.Plugin.Utils
                  , Control.Polymonad.Plugin.Detect
                  , Control.Polymonad.Plugin.Constraint

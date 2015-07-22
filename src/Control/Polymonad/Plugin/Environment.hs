@@ -13,9 +13,7 @@ module Control.Polymonad.Plugin.Environment
   , getCurrentPolymonad
   , getInstEnvs
     -- * Debug and Error Output
-  , printErr, printMsg, printObj, pprToStr
-    -- * Other Utilities
-  , isClassConstraint
+  , printErr, printMsg, printObj
   ) where
 
 import Data.Set ( Set )
@@ -26,24 +24,26 @@ import Control.Monad.Trans.Class ( lift )
 import Class ( Class )
 import Module ( Module )
 import InstEnv ( ClsInst, InstEnvs )
-import Type ( TyVar, getClassPredTys_maybe )
+import Type ( TyVar )
 import TyCon ( TyCon )
 import TcRnTypes
-  ( Ct(..), CtEvidence(..)
+  ( Ct
   , isGivenCt, isWantedCt )
 import TcPluginM ( TcPluginM, tcPluginIO )
 import qualified TcPluginM
-import Outputable
-  ( Outputable( ppr )
-  --, text, parens, (<>)
-  , showSDocUnsafe )
+import Outputable ( Outputable )
 
+import Control.Polymonad.Plugin.Log
+  ( pmErrMsg, pmDebugMsg, pmObjMsg, pprToStr )
+import Control.Polymonad.Plugin.Constraint
+  ( isClassConstraint )
 import Control.Polymonad.Plugin.Detect
   ( polymonadModuleName, polymonadClassName
   , identityModuleName, identityTyConName
   , findPolymonadModule, findPolymonadClass
   , findIdentityModule, findIdentityTyCon
-  , findPolymonadInstancesInScope )
+  , findPolymonadInstancesInScope
+  , selectPolymonadSubset )
 
 -- -----------------------------------------------------------------------------
 -- Plugin Monad
@@ -83,7 +83,8 @@ runPmPlugin givenCts wantedCts pmM = do
           pmInsts <- findPolymonadInstancesInScope
           let givenPmCts  = filter (\ct -> isGivenCt ct  && isClassConstraint pmCls ct) givenCts
           let wantedPmCts = filter (\ct -> isWantedCt ct && isClassConstraint pmCls ct) wantedCts
-          let currPm = (undefined, undefined, undefined, givenPmCts) -- TODO
+          (pmTcs, pmBindClsInsts) <- selectPolymonadSubset undefined -- TODO
+          let currPm = (pmTcs, undefined, pmBindClsInsts, givenPmCts) -- TODO
           result <- runReaderT pmM PmPluginEnv
             { pmEnvPolymonadModule = pmMdl
             , pmEnvPolymonadClass  = pmCls
@@ -158,20 +159,6 @@ getInstEnvs :: PmPluginM InstEnvs
 getInstEnvs = lift TcPluginM.getInstEnvs
 
 -- -----------------------------------------------------------------------------
--- Plugin utility
--- -----------------------------------------------------------------------------
-
--- | Check if the given constraint is a class constraint of the given class.
-isClassConstraint :: Class -> Ct -> Bool
-isClassConstraint wantedClass ct =
-  case ct of
-    CDictCan { cc_class = cls } -> cls == wantedClass
-    CNonCanonical { cc_ev = ev } -> case getClassPredTys_maybe (ctev_pred ev) of
-      Just (cls, _args) -> cls == wantedClass
-      _ -> False
-    _ -> False
-
--- -----------------------------------------------------------------------------
 -- Plugin debug and error printing
 -- -----------------------------------------------------------------------------
 
@@ -190,28 +177,3 @@ printErr = internalPrint . pmErrMsg
 -- | Internal function for printing from within the monad.
 internalPrint :: String -> PmPluginM ()
 internalPrint = lift . tcPluginIO . putStr
-
--- | Convert some generic outputable to a string (Unsafe).
-pprToStr :: Outputable o => o -> String
-pprToStr = showSDocUnsafe . ppr
-
--- | @prefixMsg prefix msg@ prefixes a message with the given string.
-prefixMsg :: String -> String -> String
-prefixMsg prefix = unlines . fmap (prefix ++) . lines
-
--- | Message prefix of the polymonad plugin.
-pluginMsgPrefix :: String
-pluginMsgPrefix = "[PM]"
-
--- | Prefix a message with the error prefix.
-pmErrMsg :: String -> String
-pmErrMsg = prefixMsg $ pluginMsgPrefix ++ " ERROR: "
-
--- | Prefix a message with the standard debug prefix.
-pmDebugMsg :: String -> String
-pmDebugMsg = prefixMsg $ pluginMsgPrefix ++ " "
-
--- | Prefix a message with the debug prefix and a note that this is a
---   printed object.
-pmObjMsg :: String -> String
-pmObjMsg = prefixMsg $ pluginMsgPrefix ++ "> "

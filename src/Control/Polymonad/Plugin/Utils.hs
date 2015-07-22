@@ -6,7 +6,6 @@ module Control.Polymonad.Plugin.Utils (
   , collectTopTcVars
   , collectTyVars
   , mkTcVarSubst
-  , findConstraintOrInstanceTyCons
   , splitTyConApps
   , isGroundUnaryTyCon
   -- * General Utilities
@@ -15,11 +14,9 @@ module Control.Polymonad.Plugin.Utils (
   , atIndex
   , associations
   , subsets
-  , missingCaseError
   ) where
 
-import Data.List ( partition )
-import Data.Maybe ( listToMaybe, catMaybes, isJust )
+import Data.Maybe ( listToMaybe, catMaybes )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
@@ -48,9 +45,6 @@ import InstEnv
 import Unify ( tcUnifyTys )
 import TcPluginM ( tcLookupClass )
 import Outputable ( Outputable )
-
-import Control.Polymonad.Plugin.Environment
-  ( PmPluginM, getInstEnvs, printObj, pprToStr )
 
 -- -----------------------------------------------------------------------------
 -- Constraint and type inspection
@@ -91,50 +85,6 @@ collectTyVars t =
 --   associated type constructors.
 mkTcVarSubst :: [(TyVar, TyCon)] -> TvSubst
 mkTcVarSubst substs = mkTopTvSubst $ fmap (\(tv, tc) -> (tv, mkTyConTy tc)) substs
-
--- | @findConstraintOrInstanceTyCons tvs ctOrInst@ delivers the set of type
---   constructors that can be substituted for the type variables in @tvs@
---   which are part of the given constraint or instance @ctOrInst@.
---   Only works properly if the given type variables are a subset of
---   @collectTopTcVars (snd ctOrInst)@.
-findConstraintOrInstanceTyCons :: Set TyVar -> (TyCon, [Type]) -> PmPluginM (Set TyCon)
-findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
-  -- There are no relevant type variables to substitute. We are done
-  | S.null tcvs = return S.empty
-  | otherwise = do
-    -- Find the type class this constraint is about
-    ctCls <- lift $ tcLookupClass (getName ctTyCon)
-    -- Get our instance environment
-    instEnvs <- getInstEnvs
-    -- Find all instances that match the given constraint
-    let (otherFoundClsInsts, foundClsInsts, _) = lookupInstEnv instEnvs ctCls ctTyConAppArgs
-    -- ([(ClsInst, [DFunInstType])], [ClsInst], Bool)
-    -- TODO: So far this was always empty. Alert when there actually is something in there:
-    unless (null otherFoundClsInsts) $ printObj otherFoundClsInsts
-    -- Now look at each found instance and collect the type constructor for the relevant variables
-    collectedTyCons <- forM foundClsInsts $ \foundInst ->
-      -- Unify the constraint arguments with the instance arguments.
-      case tcUnifyTys instanceBindFun ctTyConAppArgs (is_tys foundInst) of
-        -- The instance is applicable
-        Just subst -> do
-          -- Get substitutions for variables that we are searching for
-          let substTcvs = fmap (substTy subst . mkTyVarTy) (S.toList tcvs)
-          -- Sort the substitutions into type constructors and type variables
-          let (substTcs, substTvs) = partition (isJust . splitTyConApp_maybe) substTcvs
-          -- Get the constraints of this instance
-          let (_vars, cts, _cls, _instArgs) = instanceSig foundInst
-          -- Search for further instantiations of type constructors in
-          -- the constraints of this instance. Search is restricted to
-          -- variables that are relevant for the original search.
-          -- Relevant means that the variables are substitutes for the original ones.
-          collectedTcs <- forM (splitTyConApps cts)
-                        $ findConstraintOrInstanceTyCons (S.fromList $ fmap (getTyVar "This should never happen") substTvs)
-          -- Union everthing we found so far together
-          return $ S.fromList (fmap tyConAppTyCon substTcs) `S.union` S.unions collectedTcs
-        -- The instance is not applicable for our constraint. We are done here.
-        Nothing -> return S.empty
-    -- Union all collected type constructors
-    return $ S.unions collectedTyCons
 
 -- | Split type constructor applications into their type constructor and arguments. Only
 --   keeps those in the result list where this split actually worked.
@@ -195,10 +145,3 @@ subsets s = case S.size s of
   _ -> let (x, s') = S.deleteFindMin s
            subs = subsets s'
        in S.map (S.insert x) subs `S.union` subs
-
--- | Used to emit an error with a message describing the missing case.
---   The string is the function that misses the case and the 'Outputable'
---   is the object being matched.
-missingCaseError :: (Outputable o) => String -> Maybe o -> a
-missingCaseError funName (Just val) = error $ "Missing case in '" ++ funName ++ "' for " ++ pprToStr val
-missingCaseError funName Nothing    = error $ "Missing case in '" ++ funName ++ "'"

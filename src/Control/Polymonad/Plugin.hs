@@ -59,10 +59,11 @@ import Unify ( tcUnifyTys )
 import Outputable ( Outputable )
 import TcPluginM ( TcPluginM, tcPluginIO )
 
+import Control.Polymonad.Plugin.Log ( pprToStr )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getIdentityTyCon, getPolymonadClass, getPolymonadInstances
-  , printMsg, printObj, printErr, pprToStr )
+  , printMsg, printObj, printErr )
 import Control.Polymonad.Plugin.Detect
   ( findPolymonadClass
   , findIdentityModule

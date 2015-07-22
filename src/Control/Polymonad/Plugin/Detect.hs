@@ -17,18 +17,22 @@ module Control.Polymonad.Plugin.Detect
   , findIdentityTyCon
     -- * Other Utilities
   , findPolymonadInstancesInScope
+  , selectPolymonadSubset
   ) where
 
 import Data.Maybe ( catMaybes, listToMaybe )
+import Data.Set ( Set )
+import qualified Data.Set as S
 
 import Control.Monad ( filterM, forM, liftM )
 
 import TcRnTypes
-  ( imp_mods
+  ( Ct
+  , imp_mods
   , TcGblEnv(..)
   , TcTyThing(..) )
 import Type
-  ( TyThing(..) )
+  ( TyThing(..), TyVar )
 import TyCon ( TyCon )
 import TcPluginM
 import Name
@@ -55,6 +59,9 @@ import InstEnv
   ( ClsInst(..)
   , instEnvElts
   , classInstances )
+
+import Control.Polymonad.Plugin.Instance ( instanceTcVars, instanceTyCons )
+import Control.Polymonad.Plugin.Constraint ( constraintTyCons )
 
 -- -----------------------------------------------------------------------------
 -- Constant Names (Magic Numbers...)
@@ -143,6 +150,43 @@ findPolymonadInstancesInScope = do
       instEnvs <- TcPluginM.getInstEnvs
       return $ classInstances instEnvs polymonadClass
     Nothing -> return []
+
+-- | Subset selection algorithm to select the correct subset of
+--   type constructor and bind instances that belong to the polymonad
+--   being worked with in the list of constraints.
+--
+--   /Preconditions:/ For the algorithm to work correctly,
+--   certain preconditions have to be meet:
+--
+--     * TODO
+--
+--   __TODO: Work in Progress / Unfinished__
+selectPolymonadSubset :: [Ct] -> TcPluginM (Set TyCon, [ClsInst])
+selectPolymonadSubset cts =
+  -- TODO
+  return undefined
+  where
+    c :: Int -> TcPluginM (Set TyCon , [ClsInst])
+    c 0 = do
+      let initialTcs = S.unions $ fmap constraintTyCons cts
+      return (initialTcs, [])
+    c n = do
+      (initialTcs, _initialClsInsts) <- c (n - 1)
+
+      return (initialTcs `S.union` undefined, undefined)
+
+    appTC :: Set TyCon -> ClsInst -> TyVar -> TcPluginM (Set TyCon, [ClsInst])
+    appTC tcsCn clsInst tcVarArg =
+      if instanceTyCons clsInst `S.isSubsetOf` tcsCn
+        then do
+          let tcVarArgs = S.delete tcVarArg $ instanceTcVars clsInst
+          -- TODO
+          -- Substitute tycons (already collected ones) for the given argument
+          -- Substitute all possible tycons for the rest of the arguments
+          -- Find applicable instances and return the together with all of the substituted tycons
+          return (undefined, undefined)
+        else return (S.empty, [])
+
 
 -- -----------------------------------------------------------------------------
 -- Local Utility Functions
