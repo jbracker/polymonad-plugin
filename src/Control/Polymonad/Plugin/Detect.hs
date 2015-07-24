@@ -25,6 +25,7 @@ import Data.Set ( Set )
 import qualified Data.Set as S
 
 import Control.Monad ( filterM, forM, liftM )
+import Control.Monad.Trans.Class ( lift )
 
 import TcRnTypes
   ( Ct
@@ -34,8 +35,10 @@ import TcRnTypes
   , TcTyThing(..) )
 import Type
   ( Type, TyThing(..), TyVar
-  , isTyVarTy, splitAppTys )
-import TyCon ( TyCon )
+  , isTyVarTy, splitAppTys
+  , splitFunTysN
+  , mkTyConApp, mkTyVarTy, mkTyConTy )
+import TyCon ( TyCon, tyConArity, tyConKind )
 import TcPluginM
 import Name
   ( nameModule
@@ -57,11 +60,17 @@ import Module
 import Class
   ( Class(..)
   , className, classArity )
+import Unify ( tcUnifyTys )
 import InstEnv
   ( ClsInst(..)
   , instEnvElts
+  , instanceSig
+  , instanceBindFun
   , classInstances )
+import Outputable ( Outputable )
 
+import Control.Polymonad.Plugin.Log ( pmDebugMsg, pmObjMsg, pprToStr )
+import Control.Polymonad.Plugin.Utils ( associations )
 import Control.Polymonad.Plugin.Instance ( instanceTcVars, instanceTyCons )
 import Control.Polymonad.Plugin.Constraint
   ( constraintTyCons, constraintClassTyArgs, isClassConstraint )
@@ -167,11 +176,11 @@ findPolymonadInstancesInScope = do
 selectPolymonadSubset :: TyCon -> Class -> [ClsInst] -> ([Ct], [Ct]) -> TcPluginM (Set TyCon, [Type], [ClsInst])
 selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
   -- TODO: This is just a very naiv approach to get things up and running.
-  let givenTyCons  = S.unions $ fmap constraintTyCons givenCts
-  let wantedTyCons = S.unions $ fmap constraintTyCons wantedCts
-  let pmTyCons = givenTyCons `S.union` wantedTyCons `S.union` S.singleton idTyCon
+  let givenPmTyCons  = S.unions $ fmap constraintTyCons givenPmCts
+  let wantedPmTyCons = S.unions $ fmap constraintTyCons wantedPmCts
+  let pmTyCons = givenPmTyCons `S.union` wantedPmTyCons `S.union` S.singleton idTyCon
   let varTyCons = filter (isTyVarTy . fst . splitAppTys)
-                $ concat $ catMaybes $ fmap constraintClassTyArgs givenCts
+                $ concat $ catMaybes $ fmap constraintClassTyArgs givenPmCts
   relevantInsts <- filterApplicableInstances pmInsts pmTyCons
   return (pmTyCons, varTyCons, relevantInsts)
   where
@@ -204,8 +213,36 @@ selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
 --   that can be applied to the given type constructors.
 filterApplicableInstances :: [ClsInst] -> Set TyCon -> TcPluginM [ClsInst]
 filterApplicableInstances pmInsts tcs = do
+  appliedTyCons <- forM (S.toList tcs) $ \tc -> do
+    let (indexKinds, _unaryKind) = splitFunTysN (tyConArity tc - 1) (tyConKind tc)
+    if null indexKinds then do
+      indexVars <- mapM newFlexiTyVar indexKinds
+      return $ mkTyConApp tc $ mkTyVarTy <$> indexVars
+    else
+      return $ mkTyConTy tc
+  filteredInsts <- forM pmInsts $ \pmInst -> do
+    let (_instTvs, _instCtTys, _instCls, instArgs) = instanceSig pmInst
+    --associations :: [(key , [value])] -> [[(key, value)]]
+    let assocs = fmap snd <$> associations [(instArg, appliedTyCons) | instArg <- instArgs]
+    mListInsts <- forM assocs $ \assoc -> case tcUnifyTys instanceBindFun instArgs assoc of
+      Just _subst ->
+        -- TODO: For now we just accept this, although superclasses might keep
+        -- us from actually using this instance. In future we probably want to
+        -- check instCtTys for matches.
+        return $ Just pmInst
+      Nothing -> return Nothing
+    return $ catMaybes mListInsts
+  return $ concat filteredInsts
 
-  return undefined
+-- | Internal function for printing from within the monad.
+internalPrint :: String -> TcPluginM ()
+internalPrint = tcPluginIO . putStr
+
+printMsg :: String -> TcPluginM ()
+printMsg = internalPrint . pmDebugMsg
+
+printObj :: Outputable o => o -> TcPluginM ()
+printObj = internalPrint . pmObjMsg . pprToStr
 
 -- -----------------------------------------------------------------------------
 -- Local Utility Functions

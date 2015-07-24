@@ -63,6 +63,7 @@ import Control.Polymonad.Plugin.Log ( pprToStr )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getIdentityTyCon, getPolymonadClass, getPolymonadInstances
+  , getCurrentPolymonad
   , printMsg, printObj, printErr )
 import Control.Polymonad.Plugin.Detect
   ( findPolymonadClass
@@ -129,6 +130,8 @@ polymonadSolve' _s (given, _derived, wanted) = do
   printObj given
   printMsg "Wanted constraints:"
   printObj wanted
+  printMsg "Selected Polymonad:"
+  printObj =<< getCurrentPolymonad
 
   let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
   --polymonadSolve' s polymonadCls (given, derived, wanted)
