@@ -26,7 +26,9 @@ import Control.Monad ( guard )
 
 import Type
   ( Type, TyVar
-  , tyConAppTyCon_maybe )
+  , tyConAppTyCon_maybe
+  , eqType
+  , mkTyVarTy )
 import TcRnTypes ( Ct )
 
 import Control.Polymonad.Plugin.Log ( pprToStr )
@@ -70,7 +72,10 @@ simplifyUp (psl, p, psr) rho = do
     guard $ not . null $ flowsFrom (psl ++ psr) rho
     guard $ null $ flowsTo (psl ++ psr) rho
     let m = if eqTyCon idTyCon t0 then t1 else t0
-    return (rho, (p, m))
+    -- It does not help to say some type variables equals itself.
+    if eqType (mkTyVarTy rho) m
+      then Nothing
+      else return (rho, (p, m))
 
 -- | @simplifyDown (psl, p, psr) rho@ tries to simplify the type variable @rho@
 --   in the wanted constraint @p@ using the S-Down rule. The context of
@@ -89,7 +94,10 @@ simplifyDown (psl, p, psr) rho = do
           || ( eqTyVar' rho t1 && eqTyCon idTyCon t0 )
     guard $ null $ flowsFrom (psl ++ psr) rho
     guard $ not . null $ flowsTo (psl ++ psr) rho
-    return (rho, (p, t2))
+    -- It does not help to say some type variables equals itself.
+    if eqType (mkTyVarTy rho) t2
+      then Nothing
+      else return (rho, (p, t2))
 
 -- | @simplifyJoin rho@ tries to simplify the type variable @rho@ using
 --   the S-Join rule.
@@ -117,7 +125,10 @@ simplifyJoin ps rho = do
           printObj f
           printObj ms
           printObj mJoinM
-          return $ fmap (\t -> (rho, (head ps, t))) mJoinM
+          -- It does not help to say some type variables equals itself.
+          return $ if maybe True (eqType (mkTyVarTy rho)) mJoinM
+            then Nothing
+            else fmap (\t -> (rho, (head ps, t))) mJoinM
         else do
           printErr $ "simplifyJoin: There are more then 2 principal join targets: " ++ pprToStr ms
           return Nothing
