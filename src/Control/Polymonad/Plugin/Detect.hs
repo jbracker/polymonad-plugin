@@ -3,8 +3,7 @@
 --   and types of the plugin.
 module Control.Polymonad.Plugin.Detect
   ( -- * Polymonad Class Detection
-    polymonadModule
-  , polymonadModuleName
+    polymonadModuleName
   , polymonadClassName
   , findPolymonadModule
   , isPolymonadClass
@@ -98,16 +97,11 @@ identityTyConName = "Identity"
 -- | Checks if the module 'Control.Polymonad'
 --   is imported and, if so, returns the module.
 findPolymonadModule :: TcPluginM (Either String Module)
-findPolymonadModule = getModule mainPackageKey polymonadModuleName
-
--- | How an instance of the polymonad module should look from the
---   perspective of the plugin.
-polymonadModule :: Module
-polymonadModule = mkModule mainPackageKey $ mkModuleName polymonadModuleName
+findPolymonadModule = getModule Nothing {- mainPackageKey -} polymonadModuleName
 
 -- | Check if the given module is the polymonad module.
 isPolymonadModule :: Module -> Bool
-isPolymonadModule = (polymonadModule ==)
+isPolymonadModule = (mkModuleName polymonadModuleName ==) . moduleName
 
 -- | Checks if the given class matches the shape of the 'Control.Polymonad'
 --   type class and is defined in the given module. Usually the given module
@@ -118,7 +112,7 @@ isPolymonadClass cls =
       clsMdl = nameModule clsName
       clsNameStr = occNameString $ getOccName clsName
       clsArity = classArity cls
-  in    clsMdl == polymonadModule
+  in    isPolymonadModule clsMdl
      && clsNameStr == polymonadClassName
      && clsArity == 3
 
@@ -140,7 +134,7 @@ findPolymonadClass = do
 -- | Checks if the module 'Data.Functor.Identity'
 --   is imported and, if so, returns the module.
 findIdentityModule :: TcPluginM (Either String Module)
-findIdentityModule = getModule basePackageKey identityModuleName
+findIdentityModule = getModule (Just basePackageKey) identityModuleName
 
 findIdentityTyCon :: TcPluginM (Maybe TyCon)
 findIdentityTyCon = do
@@ -250,12 +244,12 @@ printObj = internalPrint . pmObjMsg . pprToStr
 
 -- | Checks if the module with the given name is imported and,
 --   if so, returns that module.
-getModule :: PackageKey -> String -> TcPluginM (Either String Module)
+getModule :: Maybe PackageKey -> String -> TcPluginM (Either String Module)
 getModule pkgKeyToFind mdlNameToFind = do
   mdlResult <- findImportedModule (mkModuleName mdlNameToFind) Nothing
   case mdlResult of
     Found _mdlLoc mdl ->
-      if modulePackageKey mdl == pkgKeyToFind then
+      if maybe True (modulePackageKey mdl ==) pkgKeyToFind then
         return $ Right mdl
       else
         return $ Left $ pmErrMsg
