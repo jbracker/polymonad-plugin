@@ -78,7 +78,8 @@ import Control.Polymonad.Plugin.Core
 import Control.Polymonad.Plugin.Graph
   ( mkGraphView )
 import Control.Polymonad.Plugin.Simplification
-  ( simplifyAllUpDown , simplifiedTvsToConstraints )
+  ( simplifyAllUpDown, simplifyAllJoin
+  , simplifiedTvsToConstraints )
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -133,20 +134,40 @@ polymonadSolve' _s (given, _derived, wanted) = do
   printMsg "Selected Polymonad:"
   printObj =<< getCurrentPolymonad
 
+  -- Simplification ------------------------------------------------------------
   let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
-  --polymonadSolve' s polymonadCls (given, derived, wanted)
-  printMsg "Solve wanted incompletes:"
-  printObj wantedIncomplete
-  let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wantedIncomplete
-  eqCts <- simplifiedTvsToConstraints <$> simplifyAllUpDown wantedIncomplete ambTvs
-  printObj eqCts
 
+  -- First, if we have any constraint that does not contain type variables,
+  -- we are allowed to just pick an applicable instance, since we are talking
+  -- about polymonads.
   printMsg "Solve wanted completes:"
   printObj wantedApplied
   wantedEvidence <- catMaybes <$> mapM pickInstanceForAppliedConstraint wantedApplied
   printObj wantedEvidence
 
-  return $ TcPluginOk wantedEvidence eqCts
+  -- Second, we have to look at those constraints that are not yet fully applied.
+  -- We can now try to simplify these constraints using the S-Up and S-Down rules.
+  printMsg "Solve wanted incompletes:"
+  printObj wantedIncomplete
+  let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wantedIncomplete
+  eqUpDownCtData <- simplifyAllUpDown wantedIncomplete ambTvs
+  let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
+  printObj eqUpDownCts
+  -- Calculate type variables that still require solving and then
+  -- try to solve them using the S-Join rule.
+  let ambTvs' = ambTvs S.\\ S.fromList (fmap fst eqUpDownCtData)
+  eqJoinCts <- simplifiedTvsToConstraints <$> simplifyAllJoin wantedIncomplete ambTvs'
+  printObj eqJoinCts
+
+  -- Lets see if we made progress through simplification or if we need to
+  -- move on to actually trying to solve things.
+  if null wantedEvidence && null eqUpDownCts && null eqJoinCts then do
+    printMsg "Simplification could not solve all variables."
+    printMsg "Moving on to solving..."
+    return noResult
+  else do
+    printMsg "Simplification made progress. Not solving."
+    return $ TcPluginOk wantedEvidence (eqUpDownCts ++ eqJoinCts)
 
 -- -----------------------------------------------------------------------------
 -- Solver of the Plugin
