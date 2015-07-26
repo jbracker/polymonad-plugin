@@ -16,7 +16,11 @@
 -- | Collection of the ported monad-based prelude functions for polymonads.
 module Control.Polymonad.Functions
   ( (=<<)
-  , mapM
+  , mapM, mapM_
+  , sequence, sequence_
+  , when
+  , liftM
+  , join
   ) where
 {-
 import Prelude
@@ -25,6 +29,10 @@ import Prelude
   , error
   )-}
 import qualified Prelude as P
+import Prelude
+  ( Bool(..)
+  , (.), ($)
+  , id, const )
 import Data.Functor.Identity ( Identity )
 
 import Control.Polymonad
@@ -33,8 +41,41 @@ import Control.Polymonad
 (=<<) :: Polymonad m n p => (a -> n b) -> m a -> p b
 f =<< ma = ma >>= f
 
-mapM :: forall m n a b. (Polymonad Identity Identity n, Polymonad m n n, Polymonad n n n) => (a -> m b) -> [a] -> n [b]
-mapM f ys = P.foldr k (return []) ys
+when :: (Polymonad Identity Identity m) => Bool -> m () -> m ()
+when p s = case p of
+  True -> s
+  False -> return ()
+
+mapM :: ( Polymonad Identity Identity n, Polymonad n Identity n
+        , Polymonad m n n, Polymonad n n n)
+     => (a -> m b) -> [a] -> n [b]
+mapM f = P.foldr k (return [])
   where
-    k :: a -> n [b] -> n [b]
-    k a r = f a >>= ( \x -> ( ( r >>= \xs -> ( return (x : xs) :: n [b] ) ) :: n [b] ) )
+    k a r = do
+      x <- f a
+      xs <- r
+      return (x : xs)
+
+sequence :: ( Polymonad Identity Identity n, Polymonad n Identity n
+            , Polymonad m n n, Polymonad n n n)
+         => [m b] -> n [b]
+sequence = mapM id
+
+void :: (Polymonad m Identity n) => m a -> n ()
+void = (>>= const (return ()))
+
+mapM_ :: ( Polymonad Identity Identity n, Polymonad n Identity n
+         , Polymonad m n n, Polymonad n n n)
+      => (a -> m b) -> [a] -> n ()
+mapM_ f = void . mapM f
+
+sequence_ :: ( Polymonad Identity Identity n, Polymonad n Identity n
+             , Polymonad m n n, Polymonad n n n)
+          => [m b] -> n ()
+sequence_ = void . sequence
+
+liftM :: (Polymonad m Identity n) => (a -> r) -> m a -> n r
+liftM f m = m >>= (return . f)
+
+join :: (Polymonad m n p) => m (n a) -> p a
+join k = k >>= id
