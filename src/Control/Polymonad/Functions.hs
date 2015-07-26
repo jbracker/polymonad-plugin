@@ -61,6 +61,12 @@ sequence :: ( Polymonad Identity Identity n, Polymonad n Identity n
          => [m b] -> n [b]
 sequence = mapM id
 
+liftM :: (Polymonad m Identity n) => (a -> r) -> m a -> n r
+liftM f m = m >>= (return . f)
+
+join :: (Polymonad m n p) => m (n a) -> p a
+join k = k >>= id
+
 void :: (Polymonad m Identity n) => m a -> n ()
 void = (>>= const (return ()))
 
@@ -73,9 +79,3 @@ sequence_ :: ( Polymonad Identity Identity n, Polymonad n Identity n
              , Polymonad m n n, Polymonad n n n)
           => [m b] -> n ()
 sequence_ = void . sequence
-
-liftM :: (Polymonad m Identity n) => (a -> r) -> m a -> n r
-liftM f m = m >>= (return . f)
-
-join :: (Polymonad m n p) => m (n a) -> p a
-join k = k >>= id
