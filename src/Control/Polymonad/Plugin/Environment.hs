@@ -17,6 +17,7 @@ module Control.Polymonad.Plugin.Environment
   ) where
 
 import Data.Set ( Set )
+import Data.List ( nubBy )
 
 import Control.Monad.Trans.Reader ( ReaderT, runReaderT, asks )
 import Control.Monad.Trans.Class ( lift )
@@ -24,7 +25,7 @@ import Control.Monad.Trans.Class ( lift )
 import Class ( Class )
 import Module ( Module )
 import InstEnv ( ClsInst, InstEnvs )
-import Type ( Type )
+import Type ( Type, eqType )
 import TyCon ( TyCon )
 import TcRnTypes
   ( Ct
@@ -84,7 +85,7 @@ runPmPlugin givenCts wantedCts pmM = do
           let givenPmCts  = filter (\ct -> isGivenCt ct  && isClassConstraint pmCls ct) givenCts
           let wantedPmCts = filter (\ct -> isWantedCt ct && isClassConstraint pmCls ct) wantedCts
           (pmTcs, pmTvs, pmBindClsInsts) <- selectPolymonadSubset idTyCon pmCls pmInsts (givenPmCts, wantedPmCts)
-          let currPm = (pmTcs, pmTvs, pmBindClsInsts, givenPmCts)
+          let currPm = (pmTcs, nubBy eqType pmTvs, pmBindClsInsts, givenPmCts)
           result <- runReaderT pmM PmPluginEnv
             { pmEnvPolymonadModule = pmMdl
             , pmEnvPolymonadClass  = pmCls
