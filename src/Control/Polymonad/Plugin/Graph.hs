@@ -29,6 +29,7 @@ import Outputable ( Outputable(..) )
 import qualified Outputable as O
 
 import Control.Polymonad.Plugin.Utils ( eqTyVar )
+import Control.Polymonad.Plugin.Environment ( PmPluginM )
 import Control.Polymonad.Plugin.Constraint
   ( constraintPolymonadTyArgs' )
 
@@ -104,7 +105,7 @@ mkGraphView cts =
 
 -- | Check if the given 'GraphView' is unambiguous in sense of
 --   definition 7 in the "Polymonad Programming" paper. This
---   does look at subgraphes; it only checks if the given graph
+--   does /not/ look at subgraphes; it only checks if the given graph
 --   fulfills the criteria.
 isUnambiguous :: GraphView -> Bool
 isUnambiguous gv =
@@ -152,6 +153,11 @@ isFlowEdge _gv _p _q = False
 isUnificationEdge :: LEdge EdgeType -> Bool
 isUnificationEdge (_, _, Unif) = True
 isUnificationEdge _ = False
+
+-- | Check if the given edge is a 'Bind' edge.
+isBindEdge :: LEdge EdgeType -> Bool
+isBindEdge (_, _, Bind) = True
+isBindEdge _ = False
 
 -- | Checks if there are any flow edges going in or out of the given node.
 flowEdgeAtNodeExists :: GraphView -> PiNode -> Bool
