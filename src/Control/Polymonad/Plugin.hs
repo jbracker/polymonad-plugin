@@ -127,13 +127,12 @@ polymonadSolve s given derived wanted = do
 
 polymonadSolve' :: PolymonadState -> ([Ct], [Ct], [Ct]) -> PmPluginM TcPluginResult
 polymonadSolve' _s (given, _derived, wanted) = do
-  printMsg "Given constraints:"
-  printObj given
-  printMsg "Wanted constraints:"
-  printObj wanted
-  printMsg "Selected Polymonad:"
-  printObj =<< getCurrentPolymonad
-
+  --printMsg "Given constraints:"
+  --printObj given
+  --printMsg "Wanted constraints:"
+  --printObj wanted
+  --printMsg "Selected Polymonad:"
+  --printObj =<< getCurrentPolymonad
   -- Simplification ------------------------------------------------------------
   let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
 

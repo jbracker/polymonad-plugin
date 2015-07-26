@@ -74,8 +74,11 @@ mapM_ :: ( Polymonad Identity Identity n, Polymonad n Identity n
          , Polymonad m n n, Polymonad n n n)
       => (a -> m b) -> [a] -> n ()
 mapM_ f = void . mapM f
-
+{-
 sequence_ :: ( Polymonad Identity Identity n, Polymonad n Identity n
              , Polymonad m n n, Polymonad n n n)
           => [m b] -> n ()
 sequence_ = void . sequence
+-}
+
+-- TODO: Generalize all the other functions in Control.Monad.
