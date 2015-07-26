@@ -75,11 +75,11 @@ runPmPlugin givenCts wantedCts pmM = do
   mPmMdl <- findPolymonadModule
   mPmCls <- findPolymonadClass
   case (mPmMdl, mPmCls) of
-    (Just pmMdl, Just pmCls) -> do
+    (Right pmMdl, Just pmCls) -> do
       mIdMdl <- findIdentityModule
       mIdTyCon <- findIdentityTyCon
       case (mIdMdl, mIdTyCon) of
-        (Just idMdl, Just idTyCon) -> do
+        (Right idMdl, Just idTyCon) -> do
           pmInsts <- findPolymonadInstancesInScope
           let givenPmCts  = filter (\ct -> isGivenCt ct  && isClassConstraint pmCls ct) givenCts
           let wantedPmCts = filter (\ct -> isWantedCt ct && isClassConstraint pmCls ct) wantedCts
@@ -96,12 +96,17 @@ runPmPlugin givenCts wantedCts pmM = do
             , pmEnvCurrentPolymonad = currPm
             }
           return $ Right result
-        _ -> return $ Left $ pmErrMsg
-          $ "Could not find " ++ identityModuleName
-          ++ " module and " ++ identityTyConName ++ " type constructor!"
-    _ -> return $ Left $ pmErrMsg
-      $ "Could not find " ++ polymonadModuleName
-      ++ " module and " ++ polymonadClassName ++ " class!"
+        (Left errId, _) -> return $ Left
+          $ pmErrMsg ("Could not find " ++ identityModuleName ++ " module:\n")
+          ++ errId
+        _ -> return $ Left
+          $ pmErrMsg ("Could not find " ++ identityTyConName ++ " type constructor.")
+    (Left errPm, _) -> return $ Left
+      $ pmErrMsg ("Could not find " ++ polymonadModuleName
+        ++ " module:\n")
+      ++ errPm
+    _ -> return $ Left
+      $ pmErrMsg ("Could not find " ++ polymonadClassName ++ " class:")
 
 -- -----------------------------------------------------------------------------
 -- Plugin Environment Access

@@ -69,7 +69,7 @@ import InstEnv
   , classInstances )
 import Outputable ( Outputable )
 
-import Control.Polymonad.Plugin.Log ( pmDebugMsg, pmObjMsg, pprToStr )
+import Control.Polymonad.Plugin.Log ( pmDebugMsg, pmObjMsg, pmErrMsg, pprToStr )
 import Control.Polymonad.Plugin.Utils ( associations )
 import Control.Polymonad.Plugin.Instance ( instanceTcVars, instanceTyCons )
 import Control.Polymonad.Plugin.Constraint
@@ -97,7 +97,7 @@ identityTyConName = "Identity"
 
 -- | Checks if the module 'Control.Polymonad'
 --   is imported and, if so, returns the module.
-findPolymonadModule :: TcPluginM (Maybe Module)
+findPolymonadModule :: TcPluginM (Either String Module)
 findPolymonadModule = getModule mainPackageKey polymonadModuleName
 
 -- | How an instance of the polymonad module should look from the
@@ -139,15 +139,15 @@ findPolymonadClass = do
 
 -- | Checks if the module 'Data.Functor.Identity'
 --   is imported and, if so, returns the module.
-findIdentityModule :: TcPluginM (Maybe Module)
+findIdentityModule :: TcPluginM (Either String Module)
 findIdentityModule = getModule basePackageKey identityModuleName
 
 findIdentityTyCon :: TcPluginM (Maybe TyCon)
 findIdentityTyCon = do
   mIdModule <- findIdentityModule
   case mIdModule of
-    Just idMdl -> findTyConByNameAndModule (mkTcOcc identityTyConName) idMdl
-    Nothing -> return Nothing
+    Right idMdl -> findTyConByNameAndModule (mkTcOcc identityTyConName) idMdl
+    Left _err -> return Nothing
 
 -- -----------------------------------------------------------------------------
 -- Utility Functions
@@ -250,8 +250,24 @@ printObj = internalPrint . pmObjMsg . pprToStr
 
 -- | Checks if the module with the given name is imported and,
 --   if so, returns that module.
-getModule :: PackageKey -> String -> TcPluginM (Maybe Module)
+getModule :: PackageKey -> String -> TcPluginM (Either String Module)
 getModule pkgKeyToFind mdlNameToFind = do
+  mdlResult <- findImportedModule (mkModuleName mdlNameToFind) Nothing
+  case mdlResult of
+    Found _mdlLoc mdl ->
+      if modulePackageKey mdl == pkgKeyToFind then
+        return $ Right mdl
+      else
+        return $ Left $ pmErrMsg
+          $  "Package key of found module (" ++ pprToStr (modulePackageKey mdl) ++ ")"
+          ++ " does not match the requested key (" ++ pprToStr pkgKeyToFind ++ ")."
+    NoPackage pkgKey -> return $ Left $ pmErrMsg
+      $ "Found module, but missing its package: " ++ pprToStr pkgKey
+    FoundMultiple mdls -> return $ Left $ pmErrMsg
+      $ "Module " ++ mdlNameToFind ++ " appears in several packages:\n"
+      ++ pprToStr (fmap snd mdls)
+    NotFound {} -> return $ Left $ pmErrMsg "Module was not found."
+{-
   impMdls <- fmap (moduleEnvKeys . imp_mods . tcg_imports . fst) getEnvs
   foundMdls <- flip filterM impMdls $ \m -> do
     let pkgKey = modulePackageKey m
@@ -260,6 +276,7 @@ getModule pkgKeyToFind mdlNameToFind = do
   return $ case foundMdls of
     [m] -> Just m
     _ -> Nothing
+-}
 
 -- | Try to find a type constructor given its name and the module it
 --   was originally exported from.
