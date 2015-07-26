@@ -33,6 +33,7 @@ import Control.Polymonad.Plugin.Log ( pprToStr )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
   , getIdentityTyCon, getPolymonadInstances
+  , getGivenConstraints, getWantedConstraints
   , printErr, printObj, printMsg )
 import Control.Polymonad.Plugin.Utils
   ( eqTyVar', eqTyCon )
@@ -90,51 +91,56 @@ simplifyDown (psl, p, psr) rho = do
     guard $ not . null $ flowsTo (psl ++ psr) rho
     return (rho, (p, t2))
 
--- | @simplifyJoin (given, ps) rho@ tries to simplify the type variable @rho@
---   in the wanted constraints @ps@ using the S-Join rule.
+-- | @simplifyJoin rho@ tries to simplify the type variable @rho@ using
+--   the S-Join rule.
 --   The result is a new equality constraint between @rho@ and the type it
---   should be bound to, to simplify @ps@. If the simplification cannot
+--   should be bound to. If the simplification cannot
 --   be applied 'Nothing' is returned.
 --
 --   See figure 7 of the the "Polymonad Programming" paper for more information.
-simplifyJoin :: ([Ct], [Ct]) -> TyVar -> PmPluginM (Maybe (TyVar, (Ct, Type)))
-simplifyJoin (_givenCts, []) _rho = return Nothing
-simplifyJoin (givenCts, ps) rho = do
-  let f = flowsTo ps rho
-  if (not . null $ f) && all (\(t0,t1) -> isConcreteTyConApp t0 && isConcreteTyConApp t1) f
-    then do
-      -- TODO: We might have to restrict the set of instances we look at.
-      pmInsts <- getPolymonadInstances
-      -- TODO: This is the only possibility I can think of to get targets.
-      let ms = flowsFrom ps rho
-      if length ms == 2 || length ms == 1
+simplifyJoin :: TyVar -> PmPluginM (Maybe (TyVar, (Ct, Type)))
+simplifyJoin rho = do
+  ps <- getWantedConstraints
+  case ps of
+    [] -> return Nothing
+    _ -> do
+      let f = flowsTo ps rho
+      if (not . null $ f) && all (\(t0,t1) -> isConcreteTyConApp t0 && isConcreteTyConApp t1) f
         then do
-          mJoinM <- principalJoin (pmInsts, givenCts) f ms
-          printMsg "Apply simplifyJoin:"
-          printObj (pmInsts, givenCts)
-          printObj f
-          printObj ms
-          printObj mJoinM
-          return $ fmap (\t -> (rho, (head ps, t))) mJoinM
-        else do
-          printErr $ "simplifyJoin: There are more then 2 principal join targets: " ++ pprToStr ms
+          -- TODO: We might have to restrict the set of instances we look at.
+          pmInsts <- getPolymonadInstances
+          -- TODO: This is the only possibility I can think of to get targets.
+          let ms = flowsFrom ps rho
+          if length ms == 2 || length ms == 1
+            then do
+              givenCts <- getGivenConstraints
+              mJoinM <- principalJoin (pmInsts, givenCts) f ms
+              printMsg "Apply simplifyJoin:"
+              printObj (pmInsts, givenCts)
+              printObj f
+              printObj ms
+              printObj mJoinM
+              return $ fmap (\t -> (rho, (head ps, t))) mJoinM
+            else do
+              printErr $ "simplifyJoin: There are more then 2 principal join targets: " ++ pprToStr ms
+              return Nothing
+        else
           return Nothing
-    else
-      return Nothing
-
--- principalJoin :: ([ClsInst], [Ct]) -> [(Type, Type)] -> [Type] -> PmPluginM (Maybe Type)
 
 -- -----------------------------------------------------------------------------
 -- Simplification Application
 -- -----------------------------------------------------------------------------
 
 -- | Tries to find a simplification for the given type variable using the
---   given set of constraints and the given simplification rule.
-trySimplifyUntil :: [Ct] -> TyVar
+--   given simplification rule.
+trySimplifyUntil :: TyVar
                  -> (([Ct], Ct, [Ct]) -> TyVar -> PmPluginM (Maybe (TyVar, (Ct, Type))))
                  -> PmPluginM (Maybe (TyVar, (Ct, Type)))
-trySimplifyUntil [] _rho _simp = return empty
-trySimplifyUntil (ct:cts) rho simp = trySimplifyUntil' ([], ct, cts)
+trySimplifyUntil rho simp = do
+  ps <- getWantedConstraints
+  case ps of
+    [] -> return empty
+    (ct:cts) -> trySimplifyUntil' ([], ct, cts)
   where
     trySimplifyUntil' z@(_psl, _p, []) = simp z rho
     trySimplifyUntil' z@(psl, p, p' : psr') = do
@@ -144,21 +150,18 @@ trySimplifyUntil (ct:cts) rho simp = trySimplifyUntil' ([], ct, cts)
 
 -- | Try to simplify as many type variables as possible in the given set using
 --   the 'simplifyUp' and 'simplifyDown' rule (in that order).
---   The given constraints are the constraints to simplify.
-simplifyAllUpDown :: [Ct] -> Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
-simplifyAllUpDown ps tvs = do
+simplifyAllUpDown :: Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
+simplifyAllUpDown tvs = do
   let tvList = S.toList tvs
-  upSimps <- catMaybes <$> mapM (\rho -> trySimplifyUntil ps rho simplifyUp) tvList
+  upSimps <- catMaybes <$> mapM (\rho -> trySimplifyUntil rho simplifyUp) tvList
   let tvList' = S.toList $ tvs S.\\ S.fromList (fst <$> upSimps)
-  downSimps <- catMaybes <$> mapM (\rho -> trySimplifyUntil ps rho simplifyDown) tvList'
+  downSimps <- catMaybes <$> mapM (\rho -> trySimplifyUntil rho simplifyDown) tvList'
   return $ upSimps ++ downSimps
 
--- | @simplifyAllJoin (given, ps) rhos@ tries to apply the S-Join rule to all
---   of the type variables in @rho@. @given@ are the given constraints and
---   @ps@ are the wanted constraints.
-simplifyAllJoin :: ([Ct], [Ct]) -> Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
-simplifyAllJoin (givenCts, ps) tvs =
-  catMaybes <$> mapM (simplifyJoin (givenCts, ps)) (S.toList tvs)
+-- | @simplifyAllJoin rhos@ tries to apply the S-Join rule to all
+--   of the type variables in @rho@.
+simplifyAllJoin :: Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
+simplifyAllJoin tvs = catMaybes <$> mapM simplifyJoin (S.toList tvs)
 
 -- -----------------------------------------------------------------------------
 -- Utility Functions
