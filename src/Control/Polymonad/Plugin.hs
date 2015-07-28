@@ -64,6 +64,7 @@ import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getIdentityTyCon, getPolymonadClass, getPolymonadInstances
   , getCurrentPolymonad
+  , getWantedConstraints
   , printMsg, printObj, printErr )
 import Control.Polymonad.Plugin.Detect
   ( findPolymonadClass
@@ -76,7 +77,7 @@ import Control.Polymonad.Plugin.Core
   ( getPolymonadTyConsInScope
   , pickInstanceForAppliedConstraint )
 import Control.Polymonad.Plugin.Graph
-  ( mkGraphView )
+  ( mkGraphView, isAllUnambigious )
 import Control.Polymonad.Plugin.Simplification
   ( simplifyAllUpDown, simplifyAllJoin
   , simplifiedTvsToConstraints )
@@ -117,7 +118,7 @@ polymonadSolve s given derived wanted = do
     if not $ null wanted
       then do
         printMsg "SOLVE..."
-        polymonadSolve' s (given, derived, wanted)
+        polymonadSolve' s
       else return noResult
   case res of
     Left errMsg -> do
@@ -125,8 +126,8 @@ polymonadSolve s given derived wanted = do
       return noResult
     Right solve -> return solve
 
-polymonadSolve' :: PolymonadState -> ([Ct], [Ct], [Ct]) -> PmPluginM TcPluginResult
-polymonadSolve' _s (given, _derived, wanted) = do
+polymonadSolve' :: PolymonadState -> PmPluginM TcPluginResult
+polymonadSolve' _s = do
   --printMsg "Given constraints:"
   --printObj given
   --printMsg "Wanted constraints:"
@@ -134,36 +135,46 @@ polymonadSolve' _s (given, _derived, wanted) = do
   --printMsg "Selected Polymonad:"
   --printObj =<< getCurrentPolymonad
   -- Simplification ------------------------------------------------------------
+  printMsg "Try simplification of constraints..."
+  wanted <- getWantedConstraints
   let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
 
   -- First, if we have any constraint that does not contain type variables,
   -- we are allowed to just pick an applicable instance, since we are talking
   -- about polymonads.
-  printMsg "Solve wanted completes:"
-  printObj wantedApplied
+  --printMsg "Solve wanted completes:"
+  --printObj wantedApplied
   wantedEvidence <- catMaybes <$> mapM pickInstanceForAppliedConstraint wantedApplied
-  printObj wantedEvidence
+  --printObj wantedEvidence
 
   -- Second, we have to look at those constraints that are not yet fully applied.
   -- We can now try to simplify these constraints using the S-Up and S-Down rules.
-  printMsg "Solve wanted incompletes:"
-  printObj wantedIncomplete
+  --printMsg "Solve wanted incompletes:"
+  --printObj wantedIncomplete
   let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wantedIncomplete
   eqUpDownCtData <- simplifyAllUpDown wantedIncomplete ambTvs
   let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
-  printObj eqUpDownCts
+  --printObj eqUpDownCts
   -- Calculate type variables that still require solving and then
   -- try to solve them using the S-Join rule.
   let ambTvs' = ambTvs S.\\ S.fromList (fmap fst eqUpDownCtData)
   eqJoinCts <- simplifiedTvsToConstraints <$> simplifyAllJoin wantedIncomplete ambTvs'
-  printObj eqJoinCts
+  --printObj eqJoinCts
 
   -- Lets see if we made progress through simplification or if we need to
   -- move on to actually trying to solve things.
   if null wantedEvidence && null eqUpDownCts && null eqJoinCts then do
     printMsg "Simplification could not solve all variables."
     printMsg "Moving on to solving..."
-    return noResult
+    let ctGraph = mkGraphView wanted
+    if isAllUnambigious ctGraph then do
+      printMsg "Constraint graph is unambigious proceed with solving..."
+      -- TODO: Actually solve the constraints.
+      printMsg "TODO"
+      return noResult
+    else do
+      printMsg "Constraint graph is ambigious, unable to solve polymonad constraints..."
+      return noResult
   else do
     printMsg "Simplification made progress. Not solving."
     return $ TcPluginOk wantedEvidence (eqUpDownCts ++ eqJoinCts)

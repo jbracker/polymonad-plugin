@@ -7,7 +7,8 @@ module Control.Polymonad.Plugin.Graph
   , PiNode(..)
   , piNodeType
   , mkGraphView
-  , isUnambiguous
+  --, isUnambiguous
+  , isAllUnambigious
   , isFlowEdge
   ) where
 
@@ -21,6 +22,7 @@ import Data.Graph.Inductive
   ( Graph(..), Gr, Node, LNode, LEdge
   , out, inn
   , esp )
+import Data.Graph.Inductive.Graph ( delLEdge )
 
 import Type ( Type, TyVar, getTyVar_maybe )
 import TcRnTypes ( Ct(..) )
@@ -28,10 +30,12 @@ import TcType ( isAmbiguousTyVar )
 import Outputable ( Outputable(..) )
 import qualified Outputable as O
 
-import Control.Polymonad.Plugin.Utils ( eqTyVar )
+import Control.Polymonad.Plugin.Utils ( eqTyVar, subsets )
 import Control.Polymonad.Plugin.Environment ( PmPluginM )
 import Control.Polymonad.Plugin.Constraint
   ( constraintPolymonadTyArgs' )
+
+import Debug.Trace ( trace )
 
 type PiNodeId = Int
 
@@ -60,6 +64,7 @@ data GraphView = GraphView
   , piNodes :: Set PiNode
   , graph :: Gr PiNode EdgeType
   , nextPiNodeId :: Int
+  , unificationEdges :: Set (Set PiNode)
   }
 
 -- | Retrieves the assigned type of the given node in the 'GraphView',
@@ -83,14 +88,15 @@ mkGraphView cts =
       piNodeConstr :: PiNodeConstraints
       piNodeConstr = M.fromList vs
       -- The undirected unification edges of the graph
+      protoUnificationEdges :: [[PiNode]]
+      protoUnificationEdges = removeDup
+        [ sort [v , v'] -- Order does not matter, needed to detect duplicates correctly
+        | v <- S.toList newPiNodes
+        , v' <- S.toList newPiNodes
+        , v /= v'
+        , isSameTyVar piNodeConstr v v' ]
       unifEdges :: [LEdge EdgeType]
-      unifEdges = concatMap (\[v,v'] -> mkUnifEdge v v')
-                $ removeDup
-                [ sort [v , v'] -- Order does not matter, needed to detect duplicates correctly
-                | v <- S.toList newPiNodes
-                , v' <- S.toList newPiNodes
-                , v /= v'
-                , isSameTyVar piNodeConstr v v' ]
+      unifEdges = concatMap (\[v,v'] -> mkUnifEdge v v') protoUnificationEdges
       -- The directed bind edges
       bindEdges :: [LEdge EdgeType]
       bindEdges =  [ mkEdge (Pi0 i) (Pi2 i) Bind | i <- ids ]
@@ -101,6 +107,7 @@ mkGraphView cts =
     , graph = mkGraph (fmap piNodeToLNode (S.toList newPiNodes))
             $ unifEdges ++ bindEdges
     , nextPiNodeId = length vs
+    , unificationEdges = S.fromList $ fmap S.fromList protoUnificationEdges
     }
 
 -- | Check if the given 'GraphView' is unambiguous in sense of
@@ -115,8 +122,7 @@ isUnambiguous gv =
               [ noPathExists gv (Pi2 i) (Pi0 i) &&
                 noPathExists gv (Pi2 i) (Pi1 i)
               | Pi2 i <- S.toList $ piNodes gv ]
-      -- Collect all top-level ambiguous type variables in the constraints.
-      -- Top-level is enough, because A(v) can only be a top-level variable.
+      -- Collect all ambiguous type variables in the constraints.
       ambTvs :: Set TyVar
       ambTvs = collectAmbiguousTyVars $ piNodeConstraints gv
       -- Get nodes of ambiguous type variables.
@@ -126,6 +132,42 @@ isUnambiguous gv =
   --   1. No paths from a Pi.2 to a Pi.0 or Pi.1.
   --   2. For all nodes with an ambiguous type variable there exists a connected flow edge.
   in noPaths && all (flowEdgeAtNodeExists gv) ambNodes
+
+printTrace :: (Show a) => a -> a
+printTrace x = trace (show x) x
+
+-- Check if the given graph view is unambigious as described in
+-- definition 7 in the "Polymonad Programming" paper by looking
+-- at all subgraphs with fewer unification edges.
+isAllUnambigious :: GraphView -> Bool
+isAllUnambigious gv = any isUnambiguousSubset (S.toList possUnifEdgeSubsets)
+  where
+    -- TODO: FIXME: This does not work number of subsets becomes to big...
+    possUnifEdgeSubsets :: Set (Set (Set PiNode))
+    possUnifEdgeSubsets = subsets $ unificationEdges gv
+
+    isUnambiguousSubset :: Set (Set PiNode) -> Bool
+    isUnambiguousSubset unifEdgeSubset = isUnambiguous gvWithout
+      where
+        -- Since we are looking at all subsets we can just assume that
+        -- all of the given sets are the inverted version of their original
+        -- and remove them (PowSet(P) = { P - p | p in PowSet(P) }).
+        gvWithout :: GraphView
+        gvWithout = S.foldr' remUnifEdge gv unifEdgeSubset
+
+        remUnifEdge :: Set PiNode -> GraphView -> GraphView
+        remUnifEdge edge gv' = case S.toList edge of
+          [v, v'] -> removeEdge (piNodeToNode v, piNodeToNode v', Unif) gv'
+          _ -> gv'
+
+removeEdge :: LEdge EdgeType -> GraphView -> GraphView
+removeEdge e@(n, n', Unif) gv = gv
+  { graph = delLEdge (n', n, Unif) $ delLEdge e (graph gv)
+  , unificationEdges = S.delete (S.fromList [nodeToPiNode n, nodeToPiNode n']) (unificationEdges gv)
+  }
+removeEdge e@(_n, _n', Bind) gv = gv
+  { graph = delLEdge e (graph gv)
+  }
 
 -- -----------------------------------------------------------------------------
 -- Local Utility Functions
