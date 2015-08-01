@@ -75,6 +75,9 @@ data GraphView = GraphView
 piNodeType :: GraphView -> PiNode -> Maybe Type
 piNodeType gv = piNodeType' (piNodeConstraints gv)
 
+gvLEdges :: GraphView -> [LEdge EdgeType]
+gvLEdges = labEdges . graph
+
 -- | Create a 'GraphView' for solving the given constraints.
 mkGraphView :: [Ct] -> GraphView
 mkGraphView cts =
@@ -143,57 +146,48 @@ printTrace x = trace (show x) x
 -- definition 7 in the "Polymonad Programming" paper by looking
 -- at all subgraphs with fewer unification edges.
 isAllUnambigious :: GraphView -> Bool
-isAllUnambigious gv = isUnambiguous gv || subgraphsAreUnambigious
+isAllUnambigious gvOrig = isAllUnambigious' gvSmall
   where
-    g :: Gr PiNode EdgeType
-    g = graph gv
+    -- The graph we want to work with in the rest of the algorithm.
+    -- We can safely remove all unification edges that are not
+    -- flow edges, because removing an edge can not create a
+    -- new path and we are only removing non-flow-edges.
+    gvSmall :: GraphView
+    gvSmall = foldr (\e g -> if isUnificationEdge e && not (isFlowLEdge g e && isAdjToAmbiguousNodes g e)
+                                then removeEdge e g
+                                else g)
+                    gvOrig (gvLEdges gvOrig)
 
-    -- First look at all non-flow edges. Then at all flow edges that are
-    -- not adjacent to ambiguous nodes. At last look at those edges that are
-    -- adjacent to ambiguous nodes.
-    flowEdgeOrder :: LEdge EdgeType -> LEdge EdgeType -> Ordering
-    flowEdgeOrder e1 e2 = case (isFlowLEdge gv e1, isFlowLEdge gv e2) of
-      (False, False) -> EQ
-      (False, True) -> LT
-      (True, False) -> GT
-      (True, True) -> case (adjToAmbiguousNodes e1, adjToAmbiguousNodes e2) of
-        (False, True) -> LT
-        (True, False) -> GT
-        (_, _) -> EQ
-
-    subgraphsAreUnambigious :: Bool
-    subgraphsAreUnambigious = any checkSubgraphAtNode
-                            $ sortBy flowEdgeOrder
-                            $ filter isUnificationEdge
-                            $ labEdges g
-
-    checkSubgraphAtNode :: LEdge EdgeType -> Bool
-    checkSubgraphAtNode e@(n, n', _et) =
-      case (isFlowLEdge gv e, adjToAmbiguousNodes e) of
-       (False, _) -> isAllUnambigious (removeEdge e gv)
-       (_, False) -> isAllUnambigious (removeEdge e gv)
-       (True, True) -> case ((length adjFlowEdges, length adjNonFlowEdges), (length adjFlowEdges', length adjNonFlowEdges')) of
-         ((0, _), (_, _)) -> False
-         ((_, _), (0, _)) -> False
-         ((1, _), (_, _)) -> False
-         ((_, _), (1, _)) -> False
-         -- FIXME
+    -- Assumes the graph has already been minified as in 'gvSmall'.
+    isAllUnambigious' :: GraphView -> Bool
+    isAllUnambigious' gv = isUnambiguous gv || subgraphsAreUnambigious
       where
-        adjFlowEdges = fst nodeEnv
-        adjFlowEdges' = fst nodeEnv'
-        adjNonFlowEdges = snd nodeEnv
-        adjNonFlowEdges' = snd nodeEnv'
+        subgraphsAreUnambigious :: Bool
+        subgraphsAreUnambigious = any checkSubgraphAtNode
+                                $ filter isUnificationEdge -- No need to look at bind edges.
+                                $ gvLEdges gv
 
-        nodeEnv, nodeEnv' :: ([LEdge EdgeType], [LEdge EdgeType])
-        nodeEnv = flowEdgesAtNode gv (nodeToPiNode n)
-        nodeEnv' = flowEdgesAtNode gv (nodeToPiNode n')
+        -- We do not need to check if the given edge is a flow edge,
+        -- because we only apply this function to unification edges
+        -- and all non-floew-edges were already removed.
+        checkSubgraphAtNode :: LEdge EdgeType -> Bool
+        checkSubgraphAtNode (n, n', _et) =
+          case (length adjFlowEdges, length adjFlowEdges') of
+            (i, j) | i > 1 && j > 1 ->
+              isAllUnambigious' $ removeEdge (head adjFlowEdges')
+                                $ removeEdge (head adjFlowEdges) gv
+            (i, _) | i > 1 ->
+              isAllUnambigious' $ removeEdge (head adjFlowEdges) gv
+            (_, j) | j > 1 ->
+              isAllUnambigious' $ removeEdge (head adjFlowEdges') gv
+            (_, _) -> False
+          where
+            adjFlowEdges = fst nodeEnv
+            adjFlowEdges' = fst nodeEnv'
 
-    adjToAmbiguousNodes :: LEdge EdgeType -> Bool
-    adjToAmbiguousNodes (n, n', _) = isAmbiguousNode (nodeToPiNode n) || isAmbiguousNode (nodeToPiNode n')
-
-    isAmbiguousNode :: PiNode -> Bool
-    isAmbiguousNode piN = maybe False isAmbiguousTyVar
-      $ piNodeType gv piN >>= getTyVar_maybe
+            nodeEnv, nodeEnv' :: ([LEdge EdgeType], [LEdge EdgeType])
+            nodeEnv = flowEdgesAtNode gv (nodeToPiNode n)
+            nodeEnv' = flowEdgesAtNode gv (nodeToPiNode n')
 
 removeEdge :: LEdge EdgeType -> GraphView -> GraphView
 removeEdge e@(n, n', Unif) gv = gv
@@ -215,6 +209,14 @@ inEdges gv node = inn (graph gv) (piNodeToNode node)
 -- | Returns the outgoing edges of the given node.
 outEdges :: GraphView -> PiNode -> [LEdge EdgeType]
 outEdges gv node = out (graph gv) (piNodeToNode node)
+
+
+isAdjToAmbiguousNodes :: GraphView -> LEdge EdgeType -> Bool
+isAdjToAmbiguousNodes gv (n, n', _) = isAmbiguousNode gv (nodeToPiNode n) || isAmbiguousNode gv (nodeToPiNode n')
+
+isAmbiguousNode :: GraphView -> PiNode -> Bool
+isAmbiguousNode gv piN = maybe False isAmbiguousTyVar
+  $ piNodeType gv piN >>= getTyVar_maybe
 
 -- | Checks if there is a flow edge (Definition 6 in "Polymonad Programming")
 --   between the given two nodes. Only returns true if there is a unification
