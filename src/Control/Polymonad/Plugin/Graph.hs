@@ -142,8 +142,8 @@ isUnambiguous gv =
   in noPaths && all ((>= 1) . flowEdgeCountAtNode gv) ambNodes
 
 ambigiousBadPaths :: GraphView -> [[PiNode]]
-ambigiousBadPaths gv
-  =  [ getPath gv (Pi2 i) (Pi0 i) | Pi2 i <- S.toList $ piNodes gv ]
+ambigiousBadPaths gv = catMaybes
+  $  [ getPath gv (Pi2 i) (Pi0 i) | Pi2 i <- S.toList $ piNodes gv ]
   ++ [ getPath gv (Pi2 i) (Pi1 i) | Pi2 i <- S.toList $ piNodes gv ]
 
 printTrace :: (Show a) => a -> a
@@ -352,8 +352,9 @@ collectAmbiguousTyVars cts = S.unions $ collectAmbTVs <$> M.elems cts
 noPathExists :: GraphView -> PiNode -> PiNode -> Bool
 noPathExists gv p q = null $ getPath gv p q
 
-getPath :: GraphView -> PiNode -> PiNode -> [PiNode]
-getPath gv p q = nodeToPiNode <$> esp (piNodeToNode p) (piNodeToNode q) (graph gv)
+getPath :: GraphView -> PiNode -> PiNode -> Maybe [PiNode]
+getPath gv p q = if null path then Nothing else Just path
+  where path = nodeToPiNode <$> esp (piNodeToNode p) (piNodeToNode q) (graph gv)
 
 
 -- -----------------------------------------------------------------------------
