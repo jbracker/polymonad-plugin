@@ -176,7 +176,9 @@ isAllUnambigious gvOrig = isAllUnambigious' $ printObjTrace gvSmall
         -- paths without removing flow edges that are essential for its
         -- unambigiuity.
         reduceBadPaths :: Maybe GraphView
-        reduceBadPaths = foldr f (Just gv) (ambigiousBadPaths gv)
+        reduceBadPaths = do
+            gvReduced <- foldr f (Just gv) (ambigiousBadPaths gv)
+            if (graph gv) == (graph gvReduced) then Nothing else return gvReduced
           where f :: [PiNode] -> Maybe GraphView -> Maybe GraphView
                 f _ Nothing = Nothing -- We failed in reducing, so we remain failing.
                 f [] _g = Nothing -- We could not break up the path: Fail
