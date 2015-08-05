@@ -155,14 +155,14 @@ printObjTrace o = trace (pprToStr o) o
 -- definition 7 in the "Polymonad Programming" paper by looking
 -- at all subgraphs with fewer unification edges.
 isAllUnambigious :: GraphView -> Bool
-isAllUnambigious gvOrig = isAllUnambigious' $ printObjTrace gvSmall
+isAllUnambigious gvOrig = isAllUnambigious' gvSmall
   where
     -- The graph we want to work with in the rest of the algorithm.
     -- We can safely remove all unification edges that are not
     -- flow edges, because removing an edge can not create a
     -- new path and we are only removing non-flow-edges.
     gvSmall :: GraphView
-    gvSmall = printObjTrace $ foldr (\e g -> if isUnificationEdge e && not (isFlowLEdge g e && isAdjToAmbiguousNodes g e)
+    gvSmall = foldr (\e g -> if isUnificationEdge e && not (isFlowLEdge g e && isAdjToAmbiguousNodes g e)
                                 then removeEdge e g
                                 else g)
                     gvOrig (gvLEdges gvOrig)
