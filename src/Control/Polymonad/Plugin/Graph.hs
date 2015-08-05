@@ -162,7 +162,7 @@ isAllUnambigious gvOrig = isAllUnambigious' $ printObjTrace gvSmall
     -- flow edges, because removing an edge can not create a
     -- new path and we are only removing non-flow-edges.
     gvSmall :: GraphView
-    gvSmall = foldr (\e g -> if isUnificationEdge e && not (isFlowLEdge g e && isAdjToAmbiguousNodes g e)
+    gvSmall = printObjTrace $ foldr (\e g -> if isUnificationEdge e && not (isFlowLEdge g e && isAdjToAmbiguousNodes g e)
                                 then removeEdge e g
                                 else g)
                     gvOrig (gvLEdges gvOrig)
@@ -186,10 +186,10 @@ isAllUnambigious gvOrig = isAllUnambigious' $ printObjTrace gvSmall
                 f (p:q:ps) (Just g) = case (isEdge gv p q Unif, isFlowEdge gv p q) of
                   -- We found a flow edge. We may only remove it if the number of flow edges at each node is big enough.
                   (True, True) -> case (flowEdgeCountAtNode gv p, flowEdgeCountAtNode gv q) of
-                    (i, j) | i > 1 && j > 1 -> Just $ removeEdge (piNodeToNode p, piNodeToNode q, Unif) gv
+                    (i, j) | i > 1 && j > 1 -> Just $ removeEdge (printTrace (piNodeToNode p, piNodeToNode q, Unif)) gv
                     (_, _) -> f (q:ps) (Just g)
                   -- A unification but no flow edge: We can remove it safly to interrupt the path.
-                  (True, False) -> Just $ removeEdge (piNodeToNode p, piNodeToNode q, Unif) gv
+                  (True, False) -> Just $ removeEdge (printTrace (piNodeToNode p, piNodeToNode q, Unif)) gv
                   -- This is a bind edge, we can't remove these
                   (False, _) -> f (q:ps) (Just g)
 
@@ -250,16 +250,16 @@ isBindEdge :: LEdge EdgeType -> Bool
 isBindEdge (_, _, Bind) = True
 isBindEdge _ = False
 
+-- | Counts the number of flow edges adjacent to the given node.
+--   This number is corrected such that the same edge in different directions
+--   is not counted as several edges.
 flowEdgeCountAtNode :: GraphView -> PiNode -> Int
-flowEdgeCountAtNode gv = length . fst . flowEdgesAtNode gv
+flowEdgeCountAtNode gv = length . removeDupUndirectedEdges . flowEdgesAtNode gv
 
 -- | Checks if there are any flow edges going in or out of the given node.
-flowEdgesAtNode :: GraphView -> PiNode -> ([LEdge EdgeType], [LEdge EdgeType])
+flowEdgesAtNode :: GraphView -> PiNode -> [LEdge EdgeType]
 flowEdgesAtNode gv node =
-  (inFlowEs ++ outFlowEs , inEs ++ outEs)
-  where
-    (inFlowEs, inEs) = partition (isFlowLEdge gv) (inEdges gv node)
-    (outFlowEs, outEs) = partition (isFlowLEdge gv) (outEdges gv node)
+  filter (isFlowLEdge gv) (inEdges gv node) ++ filter (isFlowLEdge gv) (outEdges gv node)
 
 -- | Check if there is an edge between the given nodes and, if so, return
 --   that edge.
@@ -330,6 +330,11 @@ mkUnifEdge p q = [ mkEdge p q Unif, mkEdge q p Unif]
 --   The result list is ordered in ascending order.
 removeDup :: (Ord a) => [a] -> [a]
 removeDup = S.toAscList . S.fromList
+
+removeDupUndirectedEdges :: [LEdge EdgeType] -> [LEdge EdgeType]
+removeDupUndirectedEdges [] = []
+removeDupUndirectedEdges (e@(p, q, Unif):es) = e : removeDupUndirectedEdges (filter (\e' -> e' /= e && e' /= (q, p, Unif)) es)
+removeDupUndirectedEdges (e:es) = e : removeDupUndirectedEdges es
 
 -- | Collectes all ambiguous type variables from the associated constraints.
 --   Only collect type variables that are at the top-level.
