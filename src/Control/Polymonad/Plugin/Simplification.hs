@@ -35,7 +35,7 @@ import Control.Polymonad.Plugin.Log ( pprToStr )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
   , getIdentityTyCon, getPolymonadInstances
-  , getGivenConstraints, getWantedConstraints
+  , getGivenConstraints
   , printErr, printObj, printMsg )
 import Control.Polymonad.Plugin.Utils
   ( eqTyVar', eqTyCon )
@@ -107,7 +107,7 @@ simplifyDown (psl, p, psr) rho = do
 --
 --   See figure 7 of the the "Polymonad Programming" paper for more information.
 simplifyJoin :: [Ct] -> TyVar -> PmPluginM (Maybe (TyVar, (Ct, Type)))
-simplifyJoin [] rho = return Nothing
+simplifyJoin [] _rho = return Nothing
 simplifyJoin ps rho = do
   let f = flowsTo ps rho
   if (not . null $ f) && all (\(t0,t1) -> isConcreteTyConApp t0 && isConcreteTyConApp t1) f
