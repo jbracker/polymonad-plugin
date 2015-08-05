@@ -186,11 +186,12 @@ isAllUnambigious gvOrig = isAllUnambigious' $ printObjTrace gvSmall
                 f (p:q:ps) (Just g) = case (isEdge gv p q Unif, isFlowEdge gv p q) of
                   -- We found a flow edge. We may only remove it if the number of flow edges at each node is big enough.
                   (True, True) -> case (flowEdgeCountAtNode gv p, flowEdgeCountAtNode gv q) of
-                    (i, j) | i > 1 && j > 1 -> Just $ removeEdge (printTrace (piNodeToNode p, piNodeToNode q, Unif)) gv
+                    (i, j) | i > 1 && j > 1 -> Just $ removeEdge (piNodeToNode p, piNodeToNode q, Unif) gv
                     (_, _) -> f (q:ps) (Just g)
                   -- A unification but no flow edge: We can remove it safly to interrupt the path.
-                  (True, False) -> Just $ removeEdge (printTrace (piNodeToNode p, piNodeToNode q, Unif)) gv
-                  -- This is a bind edge, we can't remove these
+                  -- This case probably is never used because we work on gvSmall from the beginning.
+                  (True, False) -> Just $ removeEdge (piNodeToNode p, piNodeToNode q, Unif) gv
+                  -- This is a bind edge or no edge at all, either way we can't remove it
                   (False, _) -> f (q:ps) (Just g)
 
 removeEdge :: LEdge EdgeType -> GraphView -> GraphView
