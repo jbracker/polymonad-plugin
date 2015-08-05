@@ -166,7 +166,7 @@ polymonadSolve' _s = do
   -- Lets see if we made progress through simplification or if we need to
   -- move on to actually trying to solve things.
   if null wantedEvidence && null eqUpDownCts && null eqJoinCts then do
-    printMsg "Simplification could not solve all variables."
+    printMsg "Simplification could not solve all constraints."
     printMsg "Moving on to solving..."
     let ctGraph = mkGraphView wanted
     if isAllUnambigious ctGraph then do
