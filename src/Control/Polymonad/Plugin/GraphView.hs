@@ -1,7 +1,7 @@
 
 -- | Graph structure given by the "Polymonad Programming"
 --   paper (Hicks 2014) used for coherence.
-module Control.Polymonad.Plugin.Graph
+module Control.Polymonad.Plugin.GraphView
   ( GraphView
   , EdgeType(..)
   , PiNode(..)

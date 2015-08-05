@@ -34,7 +34,7 @@ library
                  , Control.Polymonad.Plugin.Constraint
                  , Control.Polymonad.Plugin.Instance
                  , Control.Polymonad.Plugin.Core
-                 , Control.Polymonad.Plugin.Graph
+                 , Control.Polymonad.Plugin.GraphView
                  , Control.Polymonad.Plugin.Simplification
                  , Control.Polymonad.Plugin.PrincipalJoin
                  , Control.Polymonad.Plugin.Environment

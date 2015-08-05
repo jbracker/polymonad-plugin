@@ -76,7 +76,7 @@ import Control.Polymonad.Plugin.Constraint
 import Control.Polymonad.Plugin.Core
   ( getPolymonadTyConsInScope
   , pickInstanceForAppliedConstraint )
-import Control.Polymonad.Plugin.Graph
+import Control.Polymonad.Plugin.GraphView
   ( mkGraphView, isAllUnambigious )
 import Control.Polymonad.Plugin.Simplification
   ( simplifyAllUpDown, simplifyAllJoin
