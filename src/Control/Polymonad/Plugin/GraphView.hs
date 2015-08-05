@@ -2,18 +2,31 @@
 -- | Graph structure given by the "Polymonad Programming"
 --   paper (Hicks 2014) used for coherence.
 module Control.Polymonad.Plugin.GraphView
-  ( GraphView
+  ( GraphView(..)
   , EdgeType(..)
   , PiNode(..)
   , piNodeType
   , mkGraphView
-  --, isUnambiguous
-  , isAllUnambigious
   , isFlowEdge
+  , getPath
+  , noPathExists
+  , getAmbiguousConstraintTyVars
+  , tyVarIsIn
+  , flowEdgeCountAtNode
+  , isUnificationEdge
+  , isFlowLEdge
+  , isAdjToAmbiguousNodes
+  , removeLEdge
+  , piNodeToNode
+  , nodeToPiNode
+  , isEdge
+  , getLEdges
+  , isBindEdge
+  , getLEdge
   ) where
 
 import Data.Maybe ( catMaybes, listToMaybe )
-import Data.List ( sort, sortBy, partition )
+import Data.List ( sort )
 import Data.Map ( Map )
 import qualified Data.Map as M
 import Data.Set ( Set )
@@ -21,8 +34,6 @@ import qualified Data.Set as S
 import Data.Graph.Inductive
   ( Graph(..), Gr
   , Node, LNode, LEdge
-  , Context
-  , context
   , out, inn
   , esp
   , hasLEdge )
@@ -34,13 +45,9 @@ import TcType ( isAmbiguousTyVar )
 import Outputable ( Outputable(..) )
 import qualified Outputable as O
 
-import Control.Polymonad.Plugin.Log ( pprToStr )
-import Control.Polymonad.Plugin.Utils ( eqTyVar, subsets )
-import Control.Polymonad.Plugin.Environment ( PmPluginM )
+import Control.Polymonad.Plugin.Utils ( eqTyVar )
 import Control.Polymonad.Plugin.Constraint
   ( constraintPolymonadTyArgs' )
-
-import Debug.Trace ( trace )
 
 type PiNodeId = Int
 
@@ -65,20 +72,27 @@ data EdgeType
 --   See 'mkGraphView' and definition 5 of the paper
 --   "Polymonad Programming" (Hicks 2014).
 data GraphView = GraphView
-  { piNodeConstraints :: PiNodeConstraints
-  , piNodes :: Set PiNode
-  , graph :: Gr PiNode EdgeType
-  , nextPiNodeId :: Int
-  , unificationEdges :: Set (Set PiNode)
+  { gvPiNodeConstraints :: PiNodeConstraints
+  , gvPiNodes :: Set PiNode
+  , gvGraph :: Gr PiNode EdgeType
+  , gvNextPiNodeId :: Int
+  , gvUnificationEdges :: Set (Set PiNode)
   }
 
 -- | Retrieves the assigned type of the given node in the 'GraphView',
 --   if the node exists.
 piNodeType :: GraphView -> PiNode -> Maybe Type
-piNodeType gv = piNodeType' (piNodeConstraints gv)
+piNodeType gv = piNodeType' (gvPiNodeConstraints gv)
 
-gvLEdges :: GraphView -> [LEdge EdgeType]
-gvLEdges = labEdges . graph
+-- | Retrieve the type associated with the given 'PiNode' from the map
+--   of associations, if there is one.
+piNodeType' :: PiNodeConstraints -> PiNode -> Maybe Type
+piNodeType' constr (Pi0 i) = (\(_, t, _, _) -> t) <$> M.lookup i constr
+piNodeType' constr (Pi1 i) = (\(_, _, t, _) -> t) <$> M.lookup i constr
+piNodeType' constr (Pi2 i) = (\(_, _, _, t) -> t) <$> M.lookup i constr
+
+getLEdges :: GraphView -> [LEdge EdgeType]
+getLEdges = labEdges . gvGraph
 
 -- | Create a 'GraphView' for solving the given constraints.
 mkGraphView :: [Ct] -> GraphView
@@ -110,97 +124,23 @@ mkGraphView cts =
       bindEdges =  [ mkEdge (Pi0 i) (Pi2 i) Bind | i <- ids ]
                 ++ [ mkEdge (Pi1 i) (Pi2 i) Bind | i <- ids ]
   in GraphView
-    { piNodeConstraints = piNodeConstr
-    , piNodes = newPiNodes
-    , graph = mkGraph (fmap piNodeToLNode (S.toList newPiNodes))
+    { gvPiNodeConstraints = piNodeConstr
+    , gvPiNodes = newPiNodes
+    , gvGraph = mkGraph (fmap piNodeToLNode (S.toList newPiNodes))
             $ unifEdges ++ bindEdges
-    , nextPiNodeId = length vs
-    , unificationEdges = S.fromList $ fmap S.fromList protoUnificationEdges
+    , gvNextPiNodeId = length vs
+    , gvUnificationEdges = S.fromList $ fmap S.fromList protoUnificationEdges
     }
 
--- | Check if the given 'GraphView' is unambiguous in sense of
---   definition 7 in the "Polymonad Programming" paper. This
---   does /not/ look at subgraphes; it only checks if the given graph
---   fulfills the criteria.
-isUnambiguous :: GraphView -> Bool
-isUnambiguous gv =
-  let -- Check of there are an paths from a 'Pi2' to a 'Pi0' or a 'Pi1'.
-      noPaths :: Bool
-      noPaths = and
-              [ noPathExists gv (Pi2 i) (Pi0 i) &&
-                noPathExists gv (Pi2 i) (Pi1 i)
-              | Pi2 i <- S.toList $ piNodes gv ]
-      -- Collect all ambiguous type variables in the constraints.
-      ambTvs :: Set TyVar
-      ambTvs = collectAmbiguousTyVars $ piNodeConstraints gv
-      -- Get nodes of ambiguous type variables.
-      ambNodes :: Set PiNode
-      ambNodes = S.filter (\node -> tyVarIsIn gv node ambTvs) (piNodes gv)
-  -- Check the ambiguity conditions:
-  --   1. No paths from a Pi.2 to a Pi.0 or Pi.1.
-  --   2. For all nodes with an ambiguous type variable there exists a connected flow edge.
-  in noPaths && all ((>= 1) . flowEdgeCountAtNode gv) ambNodes
-
-ambigiousBadPaths :: GraphView -> [[PiNode]]
-ambigiousBadPaths gv = catMaybes
-  $  [ getPath gv (Pi2 i) (Pi0 i) | Pi2 i <- S.toList $ piNodes gv ]
-  ++ [ getPath gv (Pi2 i) (Pi1 i) | Pi2 i <- S.toList $ piNodes gv ]
-
-printTrace :: (Show a) => a -> a
-printTrace x = trace (show x) x
-
-printObjTrace o = trace (pprToStr o) o
-
--- Check if the given graph view is unambigious as described in
--- definition 7 in the "Polymonad Programming" paper by looking
--- at all subgraphs with fewer unification edges.
-isAllUnambigious :: GraphView -> Bool
-isAllUnambigious gvOrig = isAllUnambigious' gvSmall
-  where
-    -- The graph we want to work with in the rest of the algorithm.
-    -- We can safely remove all unification edges that are not
-    -- flow edges, because removing an edge can not create a
-    -- new path and we are only removing non-flow-edges.
-    gvSmall :: GraphView
-    gvSmall = foldr (\e g -> if isUnificationEdge e && not (isFlowLEdge g e && isAdjToAmbiguousNodes g e)
-                                then removeEdge e g
-                                else g)
-                    gvOrig (gvLEdges gvOrig)
-
-    -- Assumes the graph has already been minified as in 'gvSmall'.
-    isAllUnambigious' :: GraphView -> Bool
-    isAllUnambigious' gv = isUnambiguous gv || maybe False isAllUnambigious' reduceBadPaths
-      where
-        -- Look at all the paths from a pi.2 to a pi.0 or pi.1 node.
-        -- They cause the graph to be ambigious. Try to break up those
-        -- paths without removing flow edges that are essential for its
-        -- unambigiuity.
-        reduceBadPaths :: Maybe GraphView
-        reduceBadPaths = do
-            gvReduced <- foldr f (Just gv) (ambigiousBadPaths gv)
-            if graph gv == graph gvReduced then Nothing else return gvReduced
-          where f :: [PiNode] -> Maybe GraphView -> Maybe GraphView
-                f _ Nothing = Nothing -- We failed in reducing, so we remain failing.
-                f [] _g = Nothing -- We could not break up the path: Fail
-                f [_] _g = Nothing -- We could not break up the path: Fail
-                f (p:q:ps) (Just g) = case (isEdge gv p q Unif, isFlowEdge gv p q) of
-                  -- We found a flow edge. We may only remove it if the number of flow edges at each node is big enough.
-                  (True, True) -> case (flowEdgeCountAtNode gv p, flowEdgeCountAtNode gv q) of
-                    (i, j) | i > 1 && j > 1 -> Just $ removeEdge (piNodeToNode p, piNodeToNode q, Unif) gv
-                    (_, _) -> f (q:ps) (Just g)
-                  -- A unification but no flow edge: We can remove it safly to interrupt the path.
-                  -- This case probably is never used because we work on gvSmall from the beginning.
-                  (True, False) -> Just $ removeEdge (piNodeToNode p, piNodeToNode q, Unif) gv
-                  -- This is a bind edge or no edge at all, either way we can't remove it
-                  (False, _) -> f (q:ps) (Just g)
-
-removeEdge :: LEdge EdgeType -> GraphView -> GraphView
-removeEdge e@(n, n', Unif) gv = gv
-  { graph = delLEdge (n', n, Unif) $ delLEdge e (graph gv)
-  , unificationEdges = S.delete (S.fromList [nodeToPiNode n, nodeToPiNode n']) (unificationEdges gv)
+-- | Correctly remove the given edge from the given 'GraphView'.
+--   If the edge does not exists in the graph, nothing is changed.
+removeLEdge :: LEdge EdgeType -> GraphView -> GraphView
+removeLEdge e@(n, n', Unif) gv = gv
+  { gvGraph = delLEdge (n', n, Unif) $ delLEdge e (gvGraph gv)
+  , gvUnificationEdges = S.delete (S.fromList [nodeToPiNode n, nodeToPiNode n']) (gvUnificationEdges gv)
   }
-removeEdge e@(_n, _n', Bind) gv = gv
-  { graph = delLEdge e (graph gv)
+removeLEdge e@(_n, _n', Bind) gv = gv
+  { gvGraph = delLEdge e (gvGraph gv)
   }
 
 -- -----------------------------------------------------------------------------
@@ -209,12 +149,11 @@ removeEdge e@(_n, _n', Bind) gv = gv
 
 -- | Returns the incoming edges of the given node.
 inEdges :: GraphView -> PiNode -> [LEdge EdgeType]
-inEdges gv node = inn (graph gv) (piNodeToNode node)
+inEdges gv node = inn (gvGraph gv) (piNodeToNode node)
 
 -- | Returns the outgoing edges of the given node.
 outEdges :: GraphView -> PiNode -> [LEdge EdgeType]
-outEdges gv node = out (graph gv) (piNodeToNode node)
-
+outEdges gv node = out (gvGraph gv) (piNodeToNode node)
 
 isAdjToAmbiguousNodes :: GraphView -> LEdge EdgeType -> Bool
 isAdjToAmbiguousNodes gv (n, n', _) = isAmbiguousNode gv (nodeToPiNode n) || isAmbiguousNode gv (nodeToPiNode n')
@@ -224,7 +163,7 @@ isAmbiguousNode gv piN = maybe False isAmbiguousTyVar
   $ piNodeType gv piN >>= getTyVar_maybe
 
 isEdge :: GraphView -> PiNode -> PiNode -> EdgeType -> Bool
-isEdge gv a b t = hasLEdge (graph gv) (piNodeToNode a, piNodeToNode b, t)
+isEdge gv a b t = hasLEdge (gvGraph gv) (piNodeToNode a, piNodeToNode b, t)
 
 -- | Checks if there is a flow edge (Definition 6 in "Polymonad Programming")
 --   between the given two nodes. Only returns true if there is a unification
@@ -265,14 +204,7 @@ flowEdgesAtNode gv node =
 -- | Check if there is an edge between the given nodes and, if so, return
 --   that edge.
 getLEdge :: GraphView -> PiNode -> PiNode -> Maybe (LEdge EdgeType)
-getLEdge gv p q = listToMaybe [ e | e@(_np, nq, _et) <- (printTrace $ outEdges gv p), nq == piNodeToNode q ]
-
--- | Retrieve the type associated with the given 'PiNode' from the map
---   of associations, if there is one.
-piNodeType' :: PiNodeConstraints -> PiNode -> Maybe Type
-piNodeType' constr (Pi0 i) = (\(_, t, _, _) -> t) <$> M.lookup i constr
-piNodeType' constr (Pi1 i) = (\(_, _, t, _) -> t) <$> M.lookup i constr
-piNodeType' constr (Pi2 i) = (\(_, _, _, t) -> t) <$> M.lookup i constr
+getLEdge gv p q = listToMaybe [ e | e@(_np, nq, _et) <- outEdges gv p, nq == piNodeToNode q ]
 
 -- | Calculate the actual graph node from the given 'PiNode'.
 piNodeToLNode :: PiNode -> LNode PiNode
@@ -309,7 +241,7 @@ piNodeTyVar' constr node = piNodeType' constr node >>= getTyVar_maybe
 -- | Get the top-level type variable associated with the given node, if
 --   the node is associated with a type variable.
 piNodeTyVar :: GraphView -> PiNode -> Maybe TyVar
-piNodeTyVar = piNodeTyVar' . piNodeConstraints
+piNodeTyVar = piNodeTyVar' . gvPiNodeConstraints
 
 -- | Check if the given 'PiNode' is a type variable and, if so, if it
 --   is inside the given set of type variables.
@@ -337,6 +269,9 @@ removeDupUndirectedEdges [] = []
 removeDupUndirectedEdges (e@(p, q, Unif):es) = e : removeDupUndirectedEdges (filter (\e' -> e' /= e && e' /= (q, p, Unif)) es)
 removeDupUndirectedEdges (e:es) = e : removeDupUndirectedEdges es
 
+getAmbiguousConstraintTyVars :: GraphView -> Set TyVar
+getAmbiguousConstraintTyVars = collectAmbiguousTyVars . gvPiNodeConstraints
+
 -- | Collectes all ambiguous type variables from the associated constraints.
 --   Only collect type variables that are at the top-level.
 --   Top-level variables are enough, because the test in 'isUnambiguous'
@@ -362,7 +297,7 @@ noPathExists gv p q = null $ getPath gv p q
 
 getPath :: GraphView -> PiNode -> PiNode -> Maybe [PiNode]
 getPath gv p q = if null path then Nothing else Just path
-  where path = nodeToPiNode <$> esp (piNodeToNode p) (piNodeToNode q) (graph gv)
+  where path = nodeToPiNode <$> esp (piNodeToNode p) (piNodeToNode q) (gvGraph gv)
 
 
 -- -----------------------------------------------------------------------------
@@ -374,9 +309,9 @@ instance Outputable PiNode where
 
 instance Outputable GraphView where
   ppr gv = O.text "GraphView {" O.$$
-       O.nest 2 ( ppr (piNodeConstraints gv)
-         O.$$ ppr (piNodes gv)
-         O.$$ O.text (show $ graph gv)
-         O.$$ O.int (nextPiNodeId gv)
+       O.nest 2 ( ppr (gvPiNodeConstraints gv)
+         O.$$ ppr (gvPiNodes gv)
+         O.$$ O.text (show $ gvGraph gv)
+         O.$$ O.int (gvNextPiNodeId gv)
        )
        O.$$ O.text "}"
