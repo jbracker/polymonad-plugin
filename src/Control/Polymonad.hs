@@ -74,7 +74,6 @@ instance Polymonad Identity Identity Identity where
 -- -----------------------------------------------------------------------------
 
 -- | Functor bind instance.
-
 instance P.Monad f => Polymonad f Identity f where
   m >>= f = m P.>>= (P.return . runIdentity . f)
 
