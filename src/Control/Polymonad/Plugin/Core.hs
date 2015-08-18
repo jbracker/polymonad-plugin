@@ -115,7 +115,7 @@ findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
   | S.null tcvs = return S.empty
   | otherwise = do
     -- Find the type class this constraint is about
-    ctCls <- lift $ tcLookupClass (getName ctTyCon)
+    ctCls <- lift . lift $ tcLookupClass (getName ctTyCon)
     -- Get our instance environment
     instEnvs <- getInstEnvs
     -- Find all instances that match the given constraint

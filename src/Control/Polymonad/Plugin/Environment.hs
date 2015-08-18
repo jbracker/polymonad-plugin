@@ -12,6 +12,7 @@ module Control.Polymonad.Plugin.Environment
   , getGivenConstraints, getWantedConstraints
   , getCurrentPolymonad
   , getInstEnvs
+  , throwPluginError
     -- * Debug and Error Output
   , printErr, printMsg, printObj
   ) where
@@ -20,6 +21,7 @@ import Data.Set ( Set )
 import Data.List ( nubBy )
 
 import Control.Monad.Trans.Reader ( ReaderT, runReaderT, asks )
+import Control.Monad.Trans.Except ( ExceptT, runExceptT, throwE )
 import Control.Monad.Trans.Class ( lift )
 
 import Class ( Class )
@@ -50,7 +52,7 @@ import Control.Polymonad.Plugin.Detect
 -- Plugin Monad
 -- -----------------------------------------------------------------------------
 
-type PmPluginM = ReaderT PmPluginEnv TcPluginM
+type PmPluginM = ReaderT PmPluginEnv (ExceptT String TcPluginM)
 
 data PmPluginEnv = PmPluginEnv
   { pmEnvPolymonadModule    :: Module
@@ -86,7 +88,7 @@ runPmPlugin givenCts wantedCts pmM = do
           let wantedPmCts = filter (\ct -> isWantedCt ct && isClassConstraint pmCls ct) wantedCts
           (pmTcs, pmTvs, pmBindClsInsts) <- selectPolymonadSubset idTyCon pmCls pmInsts (givenPmCts, wantedPmCts)
           let currPm = (pmTcs, nubBy eqType pmTvs, pmBindClsInsts, givenPmCts)
-          result <- runReaderT pmM PmPluginEnv
+          result <- runExceptT $ runReaderT pmM PmPluginEnv
             { pmEnvPolymonadModule = pmMdl
             , pmEnvPolymonadClass  = pmCls
             , pmEnvPolymonadInstances = pmInsts
@@ -96,7 +98,7 @@ runPmPlugin givenCts wantedCts pmM = do
             , pmEnvWantedConstraints = wantedPmCts
             , pmEnvCurrentPolymonad = currPm
             }
-          return $ Right result
+          return $ result
         (Left errId, _) -> return $ Left
           $ pmErrMsg ("Could not find " ++ identityModuleName ++ " module:\n")
           ++ errId
@@ -162,11 +164,14 @@ getCurrentPolymonad = asks pmEnvCurrentPolymonad
 
 -- | Shortcut to access the instance environments.
 getInstEnvs :: PmPluginM InstEnvs
-getInstEnvs = lift TcPluginM.getInstEnvs
+getInstEnvs = lift $ lift TcPluginM.getInstEnvs
 
 -- -----------------------------------------------------------------------------
 -- Plugin debug and error printing
 -- -----------------------------------------------------------------------------
+
+throwPluginError :: String -> PmPluginM a
+throwPluginError = lift . throwE
 
 -- | Print some generic outputable object from the plugin (Unsafe).
 printObj :: Outputable o => o -> PmPluginM ()
@@ -182,4 +187,4 @@ printErr = internalPrint . pmErrMsg
 
 -- | Internal function for printing from within the monad.
 internalPrint :: String -> PmPluginM ()
-internalPrint = lift . tcPluginIO . putStr
+internalPrint = lift . lift . tcPluginIO . putStr

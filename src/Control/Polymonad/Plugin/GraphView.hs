@@ -26,7 +26,7 @@ module Control.Polymonad.Plugin.GraphView
   ) where
 
 import Data.Maybe ( catMaybes, listToMaybe )
-import Data.List ( sort )
+import Data.List ( sort, nubBy, find )
 import Data.Map ( Map )
 import qualified Data.Map as M
 import Data.Set ( Set )
@@ -35,17 +35,19 @@ import Data.Graph.Inductive
   ( Graph(..), Gr
   , Node, LNode, LEdge
   , out, inn
-  , esp
-  , hasLEdge )
-import Data.Graph.Inductive.Graph ( delLEdge )
+  , esp )
+import Data.Graph.Inductive.Graph
+  ( delLEdge, delNode, hasLEdge
+  , indeg )
 
-import Type ( Type, TyVar, getTyVar_maybe )
+import Type ( Type, TyVar, getTyVar_maybe, eqType )
 import TcRnTypes ( Ct(..) )
 import TcType ( isAmbiguousTyVar )
 import Outputable ( Outputable(..) )
 import qualified Outputable as O
 
-import Control.Polymonad.Plugin.Utils ( eqTyVar )
+import Control.Polymonad.Plugin.Log ( printTrace, printObjTrace )
+import Control.Polymonad.Plugin.Utils ( eqTyVar, removeDup )
 import Control.Polymonad.Plugin.Constraint
   ( constraintPolymonadTyArgs' )
 
@@ -258,11 +260,6 @@ mkEdge p q e = (piNodeToNode p, piNodeToNode q, e)
 --   two edges in a list.
 mkUnifEdge :: PiNode -> PiNode -> [LEdge EdgeType]
 mkUnifEdge p q = [ mkEdge p q Unif, mkEdge q p Unif]
-
--- | Efficient removal of duplicate elements in O(n * log(n)).
---   The result list is ordered in ascending order.
-removeDup :: (Ord a) => [a] -> [a]
-removeDup = S.toAscList . S.fromList
 
 removeDupUndirectedEdges :: [LEdge EdgeType] -> [LEdge EdgeType]
 removeDupUndirectedEdges [] = []

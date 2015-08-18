@@ -11,9 +11,11 @@ module Control.Polymonad.Plugin.Utils (
   -- * General Utilities
   , eqTyVar, eqTyVar'
   , eqTyCon
+  , isAmbiguousType
   , atIndex
   , associations
   , subsets
+  , removeDup
   ) where
 
 import Data.Maybe ( listToMaybe, catMaybes )
@@ -30,6 +32,7 @@ import Type
   , mkTopTvSubst
   , eqType )
 import TyCon ( TyCon, tyConArity )
+import TcType ( isAmbiguousTyVar )
 
 -- -----------------------------------------------------------------------------
 -- Constraint and type inspection
@@ -110,6 +113,10 @@ eqTyCon tc = eqType (mkTyConTy tc)
 atIndex :: [a] -> Int -> Maybe a
 atIndex xs i = listToMaybe $ drop i xs
 
+-- | Checks if the given type is an ambiguous type variable.
+isAmbiguousType :: Type -> Bool
+isAmbiguousType ty = maybe False isAmbiguousTyVar $ getTyVar_maybe ty
+
 -- | Takes a list of keys and all of their possible values and returns a list
 --   of all possible associations between keys and values
 --   /Example:/
@@ -130,3 +137,8 @@ subsets s = case S.size s of
   _ -> let (x, s') = S.deleteFindMin s
            subs = subsets s'
        in S.map (S.insert x) subs `S.union` subs
+
+-- | Efficient removal of duplicate elements in O(n * log(n)).
+--   The result list is ordered in ascending order.
+removeDup :: (Ord a) => [a] -> [a]
+removeDup = S.toAscList . S.fromList

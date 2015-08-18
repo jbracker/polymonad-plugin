@@ -64,7 +64,7 @@ import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getIdentityTyCon, getPolymonadClass, getPolymonadInstances
   , getCurrentPolymonad
-  , getWantedConstraints
+  , getWantedConstraints, getGivenConstraints
   , printMsg, printObj, printErr )
 import Control.Polymonad.Plugin.Detect
   ( findPolymonadClass
@@ -78,6 +78,8 @@ import Control.Polymonad.Plugin.Core
   , pickInstanceForAppliedConstraint )
 import Control.Polymonad.Plugin.GraphView
   ( mkGraphView )
+import Control.Polymonad.Plugin.Solve
+  ( solve )
 import Control.Polymonad.Plugin.Ambiguity
   ( isAllUnambigious )
 import Control.Polymonad.Plugin.Simplification
@@ -172,8 +174,15 @@ polymonadSolve' _s = do
     if isAllUnambigious ctGraph then do
       printMsg "Constraint graph is unambigious proceed with solving..."
       -- TODO: Actually solve the constraints.
+      printObj =<< getPolymonadInstances
+      printObj =<< getGivenConstraints
       printMsg "TODO"
-      return noResult
+      --printObj ctGraph
+      printObj =<< getWantedConstraints
+      wantedCts <- getWantedConstraints
+      derivedSolution <- solve wantedCts
+      printObj derivedSolution
+      return $ TcPluginOk [] derivedSolution
     else do
       printMsg "Constraint graph is ambigious, unable to solve polymonad constraints..."
       return noResult
