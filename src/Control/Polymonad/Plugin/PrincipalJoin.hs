@@ -3,14 +3,15 @@ module Control.Polymonad.Plugin.PrincipalJoin
   ( principalJoin
   ) where
 
+import Data.List ( nubBy )
 import Data.Maybe ( isJust, catMaybes, listToMaybe )
 
 import Control.Monad ( forM, guard, mzero, filterM )
 
 import Type
-  ( Type, TvSubst
+  ( Type, TvSubst, TyVar
   , mkTyConTy
-  , eqTypes
+  , eqTypes, eqType
   , substTy )
 import InstEnv ( ClsInst(..), instanceBindFun )
 import TcRnTypes ( Ct, isGivenCt )
@@ -18,12 +19,32 @@ import Unify ( tcUnifyTys )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
+  , throwPluginError
+  , getCurrentPolymonad
   , getIdentityTyCon )
 import Control.Polymonad.Plugin.Instance
   ( instanceType, instancePolymonadTyArgs )
 import Control.Polymonad.Plugin.Core ( pickPolymonadInstance )
 import Control.Polymonad.Plugin.Constraint
-  ( constraintClassTyArgs, constraintPolymonadTyArgs )
+  ( constraintClassTyArgs, constraintPolymonadTyArgs', constraintPolymonadTyArgs )
+
+
+principalJoinFor :: TyVar -> PmPluginM (Maybe Type)
+principalJoinFor var = do
+  (_, _, pmInsts, givenCts) <- getCurrentPolymonad
+  let givenCtTys = constraintPolymonadTyArgs' givenCts
+
+  -- TODO
+  undefined
+  where
+    inTypes :: [(Type, Type, Type)] -> Type -> [(Type, Type)]
+    inTypes pmCts t = (\(t0, t1, _) -> (t0, t1)) <$>
+      filter (\(_, _, t2) -> eqType t2 t) pmCts
+
+    outTypes :: [(Type, Type, Type)] -> Type -> [Type]
+    outTypes pmCts t = nubBy eqType $ (\(_, _, t2) -> t2) <$>
+      filter (\(t0, t1, _) -> eqType t0 t || eqType t1 t) pmCts
+
 
 -- | Calculate the principal join of a set of unary type constructors.
 --   For this to work properly all of the given types need to be
@@ -43,8 +64,8 @@ import Control.Polymonad.Plugin.Constraint
 --   but it is the responsibility of the user to ensure that they actually
 --   represent type constructors.
 principalJoin :: ([ClsInst], [Ct]) -> [(Type, Type)] -> [Type] -> PmPluginM (Maybe Type)
-principalJoin (_, _) _ [] = return Nothing
-principalJoin (_, _) [] _ = return Nothing
+principalJoin (_, _) _ [] = throwPluginError "principalJoin: Missing outgoing types for join"
+principalJoin (_, _) [] _ = throwPluginError "principalJoin: Missing incoming types for join"
 principalJoin (insts, givenCts) f ms = if areGivenCts
   then do
     meetsPrecond <- checkPrincipalPrecondition
@@ -53,8 +74,8 @@ principalJoin (insts, givenCts) f ms = if areGivenCts
         joinCands <- findJoinCandidates
         joins <- filterM isPrincipalJoin joinCands
         return $ listToMaybe joins
-      else return Nothing
-  else return Nothing
+      else throwPluginError "principalJoin: Principality precondition not met"
+  else throwPluginError "principalJoin: Constraints are not given constraints"
   where
     -- Are all the constraints really given constraints.
     areGivenCts = all isGivenCt givenCts

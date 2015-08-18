@@ -174,8 +174,6 @@ polymonadSolve' _s = do
     if isAllUnambigious ctGraph then do
       printMsg "Constraint graph is unambigious proceed with solving..."
       -- TODO: Actually solve the constraints.
-      printObj =<< getPolymonadInstances
-      printObj =<< getGivenConstraints
       printMsg "TODO"
       --printObj ctGraph
       printObj =<< getWantedConstraints
