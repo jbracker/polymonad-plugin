@@ -74,8 +74,7 @@ import Control.Polymonad.Plugin.Constraint
   ( isClassConstraint, isFullyAppliedClassConstraint
   , mkDerivedTypeEqCt, constraintTopAmbiguousTyVars )
 import Control.Polymonad.Plugin.Core
-  ( getPolymonadTyConsInScope
-  , pickInstanceForAppliedConstraint )
+  ( pickInstanceForAppliedConstraint )
 import Control.Polymonad.Plugin.GraphView
   ( mkGraphView )
 import Control.Polymonad.Plugin.Solve

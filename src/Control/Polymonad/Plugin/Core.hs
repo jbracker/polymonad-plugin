@@ -1,9 +1,7 @@
 
 -- | Core functions the plugin relies on to interact with GHCs API.
 module Control.Polymonad.Plugin.Core
-  ( getPolymonadTyConsInScope
-  , pickInstanceForAppliedConstraint
-  , pickPolymonadInstance
+  ( pickInstanceForAppliedConstraint
   , findInstanceTopTyCons
   , findConstraintTopTyCons
   , findConstraintOrInstanceTyCons
@@ -14,7 +12,7 @@ import Data.Maybe ( isJust, isNothing, fromJust, catMaybes )
 import Data.List ( partition, find )
 import Data.Set ( Set )
 import qualified Data.Set as S
-import Control.Monad ( guard, forM, unless, when, MonadPlus(..) )
+import Control.Monad ( forM, unless, when )
 import Control.Monad.Trans.Class ( lift )
 
 import InstEnv
@@ -24,7 +22,7 @@ import InstEnv
   , lookupUniqueInstEnv )
 import TyCon ( TyCon )
 import Type
-  ( Type, TvSubst, TyVar
+  ( Type, TyVar
   , getClassPredTys_maybe
   , mkTopTvSubst, mkTyVarTy
   , substTys, substTy
@@ -39,10 +37,9 @@ import TcRnTypes ( Ct(..) )
 import TcPluginM ( tcLookupClass )
 import TcEvidence ( EvTerm(..) )
 
-import Control.Polymonad.Plugin.Log ( pprToStr )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
-  , getPolymonadClass, getPolymonadInstances, getInstEnvs
+  , getPolymonadClass, getInstEnvs
   , getGivenConstraints
   , throwPluginError
   , printObj )
@@ -53,31 +50,7 @@ import Control.Polymonad.Plugin.Constraint
 import Control.Polymonad.Plugin.Instance
   ( instanceTyCons, instanceTcVars )
 import Control.Polymonad.Plugin.Utils
-  ( isGroundUnaryTyCon, splitTyConApps )
-
--- | Returns the set of all type constructors in the current scope
---   that are part of a polymonad in Haskell. Uses the polymonad
---   instances to search for type constructors.
-getPolymonadTyConsInScope :: PmPluginM (Set TyCon)
-getPolymonadTyConsInScope = do
-  pmInsts <- getPolymonadInstances
-  S.unions <$> mapM findInstanceTopTyCons pmInsts
-
--- | Find all instances that could possible be applied for a given constraint.
---   Returns the applicable instance together with the necessary substitution
---   for unification.
---   TODO: Is this function useful?
-findMatchingInstancesForConstraint :: [ClsInst] -> Ct -> [(ClsInst, TvSubst)]
-findMatchingInstancesForConstraint insts ct = do
-  inst <- insts
-  case constraintClassType ct of
-    Just (cls, ctTys) -> do
-      let ctTyCon = classTyCon cls
-      guard $ classTyCon (is_cls inst) == ctTyCon
-      case tcUnifyTys instanceBindFun (is_tys inst) ctTys of
-        Just subst -> return (inst, subst)
-        Nothing -> mzero
-    Nothing -> mzero
+  ( splitTyConApps )
 
 -- | Search for all possible type constructors that could be
 --   used in the top-level position of the constraint arguments.
@@ -215,35 +188,6 @@ pickInstanceForAppliedConstraint ct = do
       return $ if any isNothing ctEvTerms
         then Nothing
         else Just $ EvDFunApp (is_dfun inst) tys (fromJust <$> ctEvTerms)
-
-
-
--- | Given a three ground unary type constructors it will pick the first
---   polymonad instance that matches these arguments. This is ok to do,
---   because for polymonads it does not make a difference which
---   bind-operation we pick if the type is equal.
-pickPolymonadInstance :: (Type, Type, Type) -> PmPluginM (Maybe ClsInst)
-pickPolymonadInstance (t0, t1, t2) = do
-  let args = [t0, t1, t2]
-  pmCls <- getPolymonadClass
-  -- Get the current instance environment
-  instEnvs <- getInstEnvs
-  -- Make sure that all of the given arguments are ground unary type constructors
-  if all isGroundUnaryTyCon args
-    -- Find matching instance for our arguments.
-    then case lookupInstEnv instEnvs pmCls args of
-        (matches, _, _) ->
-          -- Only keep those matches that actually found a type for every argument.
-          case filter (all isJust . snd) matches of
-            -- If we found more then one instance, just use the first.
-            -- Because we are talking about polymonads we can freely choose.
-            (foundInst, foundInstArgs) : _ -> do
-              -- Check if the constraints of the instance hold for the given arguments.
-              instCheck <- (fromJust <$> foundInstArgs) `isInstanceOf` foundInst
-              return $ if instCheck then Just foundInst else Nothing
-            _ -> return Nothing
-        _ -> return Nothing
-    else return Nothing
 
 -- | Checks if the given arguments types to the free variables in the
 --   class instance actually from a valid instantiation of that instance.
