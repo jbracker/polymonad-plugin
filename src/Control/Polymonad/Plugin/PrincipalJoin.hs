@@ -1,17 +1,21 @@
 
 module Control.Polymonad.Plugin.PrincipalJoin
   ( principalJoin
+  , principalJoinFor
   ) where
 
 import Data.List ( nubBy )
 import Data.Maybe ( isJust, catMaybes, listToMaybe )
+import qualified Data.Set as S
 
 import Control.Monad ( forM, guard, mzero, filterM )
+import Control.Arrow ( (***) )
 
 import Type
   ( Type, TvSubst, TyVar
   , mkTyConTy
   , eqTypes, eqType
+  , getTyVar_maybe
   , substTy )
 import InstEnv ( ClsInst(..), instanceBindFun )
 import TcRnTypes ( Ct, isGivenCt )
@@ -21,30 +25,57 @@ import Control.Polymonad.Plugin.Environment
   ( PmPluginM
   , throwPluginError
   , getCurrentPolymonad
-  , getIdentityTyCon )
+  , getIdentityTyCon
+  , printObj )
 import Control.Polymonad.Plugin.Instance
-  ( instanceType, instancePolymonadTyArgs )
-import Control.Polymonad.Plugin.Core ( pickPolymonadInstance )
+  ( matchInstanceTyVars
+  , instanceType, instancePolymonadTyArgs )
+import Control.Polymonad.Plugin.Core ( pickPolymonadInstance, isInstanceOf )
 import Control.Polymonad.Plugin.Constraint
   ( constraintClassTyArgs, constraintPolymonadTyArgs', constraintPolymonadTyArgs )
 
+principalJoinFor :: TyVar -> [(Type, Type)] -> [Type] -> PmPluginM (Maybe Type)
+principalJoinFor ambTv f m = do
+  idT <- mkTyConTy <$> getIdentityTyCon
+  (pmTyCons, pmTyVars, pmInsts, pmGivenCts) <- getCurrentPolymonad
+  let joinCands = pmTyVars ++ (mkTyConTy <$> S.toList pmTyCons)
+  mSuitableJoinCands <- forM joinCands $ \joinCand -> do
+    -- FIXME: Check join precondition
+    let substF = nubBy (\(t0, t1) (t0', t1') -> eqType t0 t0' && eqType t1 t1')
+               $ (substTopTyVar (ambTv, joinCand) *** substTopTyVar (ambTv, joinCand)) <$> f
+    let substM = nubBy eqType
+               $ substTopTyVar (ambTv, joinCand) <$> m
+    fMatches <- fmap and $ forM substF
+              $ \(t0, t1) -> hasMatch (t0, t1, joinCand) (pmInsts, pmGivenCts)
+    mMatches <- fmap and $ forM substM
+              $ \t2 -> hasMatch (joinCand, idT, t2) (pmInsts, pmGivenCts)
+    return $ if fMatches && mMatches then Just joinCand else Nothing
+  let suitableJoinCands = catMaybes mSuitableJoinCands
+  case length suitableJoinCands of
+    0 -> return Nothing
+    1 -> return $ Just $ head suitableJoinCands
+    _ -> do
+      throwPluginError "principalJoinFor: Found more then one join. FIXME"
 
-principalJoinFor :: TyVar -> PmPluginM (Maybe Type)
-principalJoinFor var = do
-  (_, _, pmInsts, givenCts) <- getCurrentPolymonad
-  let givenCtTys = constraintPolymonadTyArgs' givenCts
-
-  -- TODO
-  undefined
   where
-    inTypes :: [(Type, Type, Type)] -> Type -> [(Type, Type)]
-    inTypes pmCts t = (\(t0, t1, _) -> (t0, t1)) <$>
-      filter (\(_, _, t2) -> eqType t2 t) pmCts
+    substTopTyVar :: (TyVar, Type) -> Type -> Type
+    substTopTyVar (tv, ty) t = case getTyVar_maybe t of
+      Just tv' -> if tv == tv' then ty else t
+      Nothing -> t
 
-    outTypes :: [(Type, Type, Type)] -> Type -> [Type]
-    outTypes pmCts t = nubBy eqType $ (\(_, _, t2) -> t2) <$>
-      filter (\(t0, t1, _) -> eqType t0 t || eqType t1 t) pmCts
+    isPolymonadCtMatch :: (Type, Type, Type) -> Ct -> Bool
+    isPolymonadCtMatch (t0, t1, t2) ct
+      = maybe False (\(t0', t1', t2') -> eqType t0 t0' && eqType t1 t1' && eqType t2 t2')
+      $ constraintPolymonadTyArgs ct
 
+    hasMatch :: (Type, Type, Type) -> ([ClsInst], [Ct]) -> PmPluginM Bool
+    hasMatch tys@(t0, t1, t2) (pmInsts, pmCts) = do
+      instanceMatches <- forM pmInsts $ \pmInst -> do
+        case matchInstanceTyVars [t0, t1, t2] pmInst of
+          Just args -> args `isInstanceOf` pmInst
+          Nothing -> return False
+      let constraintMatches = any (isPolymonadCtMatch tys) pmCts
+      return $ or instanceMatches || constraintMatches
 
 -- | Calculate the principal join of a set of unary type constructors.
 --   For this to work properly all of the given types need to be

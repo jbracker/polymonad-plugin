@@ -2,7 +2,8 @@
 -- | Functions and utilities to work with and inspect class instances
 --   of the GHC API.
 module Control.Polymonad.Plugin.Instance
-  ( instanceClassTyCon
+  ( matchInstanceTyVars
+  , instanceClassTyCon
   , instanceTyArgs
   , instanceTyCons
   , instanceTcVars
@@ -14,17 +15,37 @@ import Data.Set ( Set )
 
 import InstEnv
   ( ClsInst(..)
-  , instanceSig )
+  , instanceSig
+  , instanceBindFun )
 import Type
-  ( Type, TyVar )
+  ( Type, TyVar
+  , mkTyVarTy
+  , substTy )
 import Class ( Class, classTyCon )
 import TyCon ( TyCon )
+import Unify ( tcUnifyTys, tcMatchTys )
+import VarSet ( mkVarSet )
 
 import Control.Polymonad.Plugin.Log
   ( missingCaseError )
 import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
   , collectTopTcVars )
+
+-- | Trys to see if the given arguments match the class instance
+--   arguments by unification. This only works if the number of arguments
+--   given is equal to the arguments taken by the class the instance is of.
+--   If the given arguments match the class arguments, a list with a type for
+--   each free variable in the instance is returned. This list is in the same
+--   order as the list of free variables that can be retrieved from the instance.
+--   This function is meant for use in conjunction with 'isInstanceOf'.
+matchInstanceTyVars :: [Type] -> ClsInst -> Maybe [Type]
+matchInstanceTyVars instArgs inst = do
+  let (instVars, _cts, _cls, tyArgs) = instanceSig inst
+  let instVarSet = mkVarSet instVars
+  subst <- tcMatchTys instVarSet tyArgs instArgs
+  --subst <- tcUnifyTys instanceBindFun instArgs tyArgs
+  return $ substTy subst . mkTyVarTy <$> instVars
 
 -- | Returns the type constructors of the class is instance instantiates.
 instanceClassTyCon :: ClsInst -> TyCon
