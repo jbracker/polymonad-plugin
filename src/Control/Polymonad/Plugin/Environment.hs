@@ -9,7 +9,7 @@ module Control.Polymonad.Plugin.Environment
   , getPolymonadClass, getPolymonadModule
   , getPolymonadInstances
   , getIdentityTyCon, getIdentityModule
-  , getGivenConstraints, getWantedConstraints
+  , getGivenPolymonadConstraints, getWantedPolymonadConstraints
   , getCurrentPolymonad
   , getInstEnvs
   , throwPluginError
@@ -139,15 +139,15 @@ getIdentityTyCon = asks pmEnvIdentityTyCon
 --   All of the returned constraints are guarenteed to be /given/ constraints
 --   and actual 'Control.Polymonad' constraints.
 --   The list of /given/ constraints may be empty.
-getGivenConstraints :: PmPluginM [Ct]
-getGivenConstraints = asks pmEnvGivenConstraints
+getGivenPolymonadConstraints :: PmPluginM [Ct]
+getGivenPolymonadConstraints = asks pmEnvGivenConstraints
 
 -- | Returns the wanted constraints of this plugin solver call.
 --   All of the returned constraints are guarenteed to be /wanted/ constraints
 --   and actual 'Control.Polymonad' constraints.
 --   The list /wanted/ of constraints will never be empty.
-getWantedConstraints :: PmPluginM [Ct]
-getWantedConstraints = asks pmEnvWantedConstraints
+getWantedPolymonadConstraints :: PmPluginM [Ct]
+getWantedPolymonadConstraints = asks pmEnvWantedConstraints
 
 -- | Returns the polymonad that the wanted constraints need solving for.
 --

@@ -64,7 +64,7 @@ import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getIdentityTyCon, getPolymonadClass, getPolymonadInstances
   , getCurrentPolymonad
-  , getWantedConstraints, getGivenConstraints
+  , getWantedPolymonadConstraints, getGivenPolymonadConstraints
   , printMsg, printObj, printErr )
 import Control.Polymonad.Plugin.Detect
   ( findPolymonadClass
@@ -140,7 +140,7 @@ polymonadSolve' _s = do
   --printObj =<< getCurrentPolymonad
   -- Simplification ------------------------------------------------------------
   printMsg "Try simplification of constraints..."
-  wanted <- getWantedConstraints
+  wanted <- getWantedPolymonadConstraints
   let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
 
   -- First, if we have any constraint that does not contain type variables,
@@ -176,8 +176,8 @@ polymonadSolve' _s = do
       -- TODO: Actually solve the constraints.
       printMsg "TODO"
       --printObj ctGraph
-      printObj =<< getWantedConstraints
-      wantedCts <- getWantedConstraints
+      printObj =<< getWantedPolymonadConstraints
+      wantedCts <- getWantedPolymonadConstraints
       derivedSolution <- solve wantedCts
       printObj derivedSolution
       return $ TcPluginOk [] derivedSolution

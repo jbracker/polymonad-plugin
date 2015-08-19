@@ -35,7 +35,7 @@ import Control.Polymonad.Plugin.Log ( pprToStr )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
   , getIdentityTyCon, getPolymonadInstances
-  , getGivenConstraints
+  , getGivenPolymonadConstraints
   , printErr, printObj, printMsg )
 import Control.Polymonad.Plugin.Utils
   ( eqTyVar', eqTyCon )
@@ -118,7 +118,7 @@ simplifyJoin ps rho = do
       let ms = flowsFrom ps rho
       if length ms == 2 || length ms == 1
         then do
-          givenCts <- getGivenConstraints
+          givenCts <- getGivenPolymonadConstraints
           mJoinM <- principalJoin (pmInsts, givenCts) f ms
           printMsg "Apply simplifyJoin:"
           printObj (pmInsts, givenCts)

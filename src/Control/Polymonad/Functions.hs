@@ -16,8 +16,8 @@
 -- | Collection of the ported monad-based prelude functions for polymonads.
 module Control.Polymonad.Functions
   ( (=<<)
-  , mapM, mapM_
-  , sequence, sequence_
+  , mapM --, mapM_
+  , sequence --, sequence_
   , when
   , liftM
   , join
@@ -69,11 +69,12 @@ join k = k >>= id
 
 void :: (Polymonad m Identity n) => m a -> n ()
 void = (>> return ())
-
+{-
 mapM_ :: ( Polymonad Identity Identity n, Polymonad n Identity n
          , Polymonad m n n, Polymonad n n n)
       => (a -> m b) -> [a] -> n ()
 mapM_ f = void . mapM f
+-}
 --mapM_ f m = mapM f m >> return ()
 {-
 sequence_ :: ( Polymonad Identity Identity n, Polymonad n Identity n
