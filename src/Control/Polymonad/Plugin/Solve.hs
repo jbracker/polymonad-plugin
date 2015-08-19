@@ -4,7 +4,6 @@ module Control.Polymonad.Plugin.Solve
   , solve
   ) where
 
-import Data.Maybe ( catMaybes )
 import Data.List ( nubBy, find )
 import Data.Graph.Inductive
   ( Graph(..), Gr
@@ -21,8 +20,6 @@ import TcRnTypes ( Ct(..), CtLoc, CtEvidence(..) )
 import Control.Polymonad.Plugin.Utils ( isAmbiguousType, removeDup )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
-  , printObj
-  , getCurrentPolymonad
   , throwPluginError )
 import Control.Polymonad.Plugin.PrincipalJoin ( principalJoinFor )
 import Control.Polymonad.Plugin.Constraint ( mkDerivedTypeEqCt', constraintPolymonadTyArgs' )

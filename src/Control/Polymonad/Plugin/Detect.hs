@@ -23,13 +23,11 @@ import Data.Maybe ( catMaybes, listToMaybe )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
-import Control.Monad ( filterM, forM, liftM )
-import Control.Monad.Trans.Class ( lift )
+import Control.Monad ( forM, liftM )
 
 import TcRnTypes
   ( Ct
   , isGivenCt, isWantedCt
-  , imp_mods
   , TcGblEnv(..)
   , TcTyThing(..) )
 import Type
@@ -52,10 +50,8 @@ import RdrName
   , lookupGlobalRdrEnv )
 import Module
   ( Module(..), PackageKey
-  , mainPackageKey, basePackageKey
-  , moduleEnvKeys
-  , moduleNameString
-  , mkModule, mkModuleName )
+  , basePackageKey
+  , mkModuleName )
 import Class
   ( Class(..)
   , className, classArity )

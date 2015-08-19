@@ -29,7 +29,6 @@ import TcRnTypes
 import Class ( Class(..) )
 import Type
   ( Type, TyVar
-  , splitTyConApp_maybe
   , mkTyVarTy
   , getTyVar_maybe
   , getClassPredTys_maybe

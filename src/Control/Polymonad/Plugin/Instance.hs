@@ -15,15 +15,14 @@ import Data.Set ( Set )
 
 import InstEnv
   ( ClsInst(..)
-  , instanceSig
-  , instanceBindFun )
+  , instanceSig )
 import Type
   ( Type, TyVar
   , mkTyVarTy
   , substTy )
 import Class ( Class, classTyCon )
 import TyCon ( TyCon )
-import Unify ( tcUnifyTys, tcMatchTys )
+import Unify ( tcMatchTys )
 import VarSet ( mkVarSet )
 
 import Control.Polymonad.Plugin.Log

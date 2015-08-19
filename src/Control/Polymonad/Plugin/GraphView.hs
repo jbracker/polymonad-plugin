@@ -26,7 +26,7 @@ module Control.Polymonad.Plugin.GraphView
   ) where
 
 import Data.Maybe ( catMaybes, listToMaybe )
-import Data.List ( sort, nubBy, find )
+import Data.List ( sort )
 import Data.Map ( Map )
 import qualified Data.Map as M
 import Data.Set ( Set )
@@ -37,16 +37,14 @@ import Data.Graph.Inductive
   , out, inn
   , esp )
 import Data.Graph.Inductive.Graph
-  ( delLEdge, delNode, hasLEdge
-  , indeg )
+  ( delLEdge, hasLEdge )
 
-import Type ( Type, TyVar, getTyVar_maybe, eqType )
+import Type ( Type, TyVar, getTyVar_maybe )
 import TcRnTypes ( Ct(..) )
 import TcType ( isAmbiguousTyVar )
 import Outputable ( Outputable(..) )
 import qualified Outputable as O
 
-import Control.Polymonad.Plugin.Log ( printTrace, printObjTrace )
 import Control.Polymonad.Plugin.Utils ( eqTyVar, removeDup )
 import Control.Polymonad.Plugin.Constraint
   ( constraintPolymonadTyArgs' )
@@ -226,6 +224,7 @@ nodeToPiNode n = case divMod n 3 of
   (i, 0) -> Pi0 i
   (i, 1) -> Pi1 i
   (i, 2) -> Pi2 i
+  _ -> error "nodeToPiNode: Impossible case"
 
 -- | Check if the two given nodes contain a type variable and if it is
 --   the same type variable in both nodes. Uses the given association map

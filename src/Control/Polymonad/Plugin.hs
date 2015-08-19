@@ -4,75 +4,26 @@ module Control.Polymonad.Plugin
 
 import Data.Maybe ( catMaybes )
 import Data.List ( partition )
-import Data.Set ( Set )
+--import Data.Set ( Set )
 import qualified Data.Set as S
 
-import Control.Monad ( guard, unless, MonadPlus(..) )
+import Control.Monad ( unless )
 
-import Debug.Trace ( trace )
+--import Debug.Trace ( trace )
 
 import Plugins ( Plugin(tcPlugin), defaultPlugin )
-
 import TcRnTypes
-
---import Unique ( getUnique, mkTcOccUnique )
-import Name
-  ( Name
-  , getName )
-import Type
-  ( Type, TvSubst
-  , EqRel(..)
-  --, eqType
-  --, isTyVarTy, isAlgType
-  , substTys )
-{-import Module
-  ( Module(..)
-  , mainPackageKey
-  --, moduleEnvToList
-  , moduleEnvKeys
-  , moduleNameString )-}
-import Class {-
-  ( Class
-  , className, classMethods, classArity
-  , classTyVars, classTyCon ) -}
---import FastString ( mkFastString )
---import SrcLoc ( noSrcSpan )
---import HscTypes ( typeEnvTyCons )
-import TcType
-  ( isClassPred
-  --, isDictLikeTy
-  , tcTyConAppTyCon, tcTyConAppArgs
-  , tcGetTyVar_maybe, tcSplitDFunTy
-  , topTcLevel
-  --, TvSubst
-  , substTyVar, notElemTvSubst
-  , TcTyVar, TcType )
---import TcEvidence ( EvTerm(..) )
-import InstEnv
-  ( ClsInst(..)
-  --, InstEnvs(..)
-  , DFunId
-  --, instanceSig
-  , instanceBindFun, instanceDFunId )
-import Unify ( tcUnifyTys )
---import PrelNames ( monadClassName )
-import Outputable ( Outputable )
+  ( Ct(..)
+  , TcPlugin(..), TcPluginResult(..) )
 import TcPluginM ( TcPluginM, tcPluginIO )
 
-import Control.Polymonad.Plugin.Log ( pprToStr )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
-  , getIdentityTyCon, getPolymonadClass, getPolymonadInstances
-  , getCurrentPolymonad
-  , getWantedPolymonadConstraints, getGivenPolymonadConstraints
-  , printMsg, printObj, printErr )
-import Control.Polymonad.Plugin.Detect
-  ( findPolymonadClass
-  , findIdentityModule
-  , findIdentityTyCon )
+  , getWantedPolymonadConstraints
+  , printMsg, printObj )
 import Control.Polymonad.Plugin.Constraint
-  ( isClassConstraint, isFullyAppliedClassConstraint
-  , mkDerivedTypeEqCt, constraintTopAmbiguousTyVars )
+  ( isFullyAppliedClassConstraint
+  , constraintTopAmbiguousTyVars )
 import Control.Polymonad.Plugin.Core
   ( pickInstanceForAppliedConstraint )
 import Control.Polymonad.Plugin.GraphView
@@ -127,7 +78,7 @@ polymonadSolve s given derived wanted = do
     Left errMsg -> do
       tcPluginIO $ putStrLn errMsg
       return noResult
-    Right solve -> return solve
+    Right slv -> return slv
 
 polymonadSolve' :: PolymonadState -> PmPluginM TcPluginResult
 polymonadSolve' _s = do
@@ -190,6 +141,10 @@ polymonadSolve' _s = do
 -- Utility Functions
 -- -----------------------------------------------------------------------------
 
+noResult :: TcPluginResult
+noResult = TcPluginOk [] []
+
+{-
 mkEqCtsFromSubst :: Ct -> TvSubst -> PmPluginM [Ct]
 mkEqCtsFromSubst wantedCt subst = do
   printMsg "=== mkEqCtsFromSubst ==="
@@ -209,10 +164,9 @@ mkEqCtsFromSubst wantedCt subst = do
       printObj inScopeVars
       flip mapM inScopeVars $ \var -> do -- type variables in
         return $ mkDerivedTypeEqCt wantedCt var (substTyVar subst var)
+-}
 
-noResult :: TcPluginResult
-noResult = TcPluginOk [] []
-
+{-
 ctName :: Ct -> Name
 ctName ct = case ct of
   CDictCan _ cls _ -> className cls
@@ -232,10 +186,7 @@ ctTyParams ct = case ct of
 
 ctEvidenceTyParams :: CtEvidence -> [Type]
 ctEvidenceTyParams evdnc = tcTyConAppArgs $ ctev_pred evdnc
-
-missingCaseError :: (Outputable o) => String -> Maybe o -> a
-missingCaseError funName (Just val) = error $ "Missing case in '" ++ funName ++ "' for " ++ pprToStr val
-missingCaseError funName Nothing    = error $ "Missing case in '" ++ funName ++ "'"
+-}
 
 -- -----------------------------------------------------------------------------
 -- Notes
