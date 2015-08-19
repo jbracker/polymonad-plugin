@@ -7,13 +7,14 @@ module Control.Polymonad.Plugin.Core
   , findInstanceTopTyCons
   , findConstraintTopTyCons
   , findConstraintOrInstanceTyCons
+  , isInstanceOf
   ) where
 
 import Data.Maybe ( isJust, isNothing, fromJust, catMaybes )
-import Data.List ( partition )
+import Data.List ( partition, find )
 import Data.Set ( Set )
 import qualified Data.Set as S
-import Control.Monad ( guard, forM, unless, MonadPlus(..) )
+import Control.Monad ( guard, forM, unless, when, MonadPlus(..) )
 import Control.Monad.Trans.Class ( lift )
 
 import InstEnv
@@ -29,6 +30,7 @@ import Type
   , substTys, substTy
   , splitTyConApp_maybe
   , getTyVar
+  , eqTypes
   , tyConAppTyCon )
 import Unify ( tcUnifyTys )
 import Class ( Class(..) )
@@ -41,6 +43,8 @@ import Control.Polymonad.Plugin.Log ( pprToStr )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
   , getPolymonadClass, getPolymonadInstances, getInstEnvs
+  , getGivenConstraints
+  , throwPluginError
   , printObj )
 import Control.Polymonad.Plugin.Constraint
   ( constraintClassType, constraintClassTyArgs
@@ -67,7 +71,8 @@ findMatchingInstancesForConstraint :: [ClsInst] -> Ct -> [(ClsInst, TvSubst)]
 findMatchingInstancesForConstraint insts ct = do
   inst <- insts
   case constraintClassType ct of
-    Just (ctTyCon, ctTys) -> do
+    Just (cls, ctTys) -> do
+      let ctTyCon = classTyCon cls
       guard $ classTyCon (is_cls inst) == ctTyCon
       case tcUnifyTys instanceBindFun (is_tys inst) ctTys of
         Just subst -> return (inst, subst)
@@ -79,7 +84,8 @@ findMatchingInstancesForConstraint insts ct = do
 --   Delivers a set of type constructors.
 findConstraintTopTyCons :: Ct -> PmPluginM (Set TyCon)
 findConstraintTopTyCons ct = case constraintClassType ct of
-  Just (tyCon, tyArgs) -> do
+  Just (cls, tyArgs) -> do
+    let tyCon = classTyCon cls
     let tcs = constraintTyCons ct
     foundTcs <- findConstraintOrInstanceTyCons (constraintTcVars ct) (tyCon, tyArgs)
     return $ tcs `S.union` foundTcs
@@ -233,37 +239,54 @@ pickPolymonadInstance (t0, t1, t2) = do
             -- Because we are talking about polymonads we can freely choose.
             (foundInst, foundInstArgs) : _ -> do
               -- Check if the constraints of the instance hold for the given arguments.
-              instCheck <- checkInstance foundInst (fromJust <$> foundInstArgs)
+              instCheck <- (fromJust <$> foundInstArgs) `isInstanceOf` foundInst
               return $ if instCheck then Just foundInst else Nothing
             _ -> return Nothing
         _ -> return Nothing
     else return Nothing
 
-  where
-    -- | Apply the given instance dictionary to the given type arguments
-    --   and check if it meets is constraints.
-    checkInstance :: ClsInst -> [Type] -> PmPluginM Bool
-    checkInstance inst tys = do
-      -- Get the instance type variables and constraints (by that we know
-      -- the numner of type arguments)
-      let (tyVars, cts, _cls, _tyArgs) = instanceSig inst -- ([TyVar], [Type], Class, [Type])
-      -- How the instance variables for the current instance are bound.
-      let varSubst = mkTopTvSubst $ zip tyVars tys
-      -- Split the constraints into their class and arguments.
-      -- We ignore constraints where this is not possible.
-      -- Don't know if this is the right thing to do.
-      let instCts = catMaybes $ fmap getClassPredTys_maybe cts
-      -- Now go over each constraint and find a suitable instance.
-      fmap and $ forM instCts $ \(ctCls, ctArgs) -> do
-        -- Substitute the variables to know what instance we are looking for.
-        let substArgs = substTys varSubst ctArgs
-        -- Get the current instance environment
-        instEnvs <- getInstEnvs
-        -- Look for suitable instance. Since we are not necessarily working
-        -- with polymonads anymore we need to find a unique one.
-        case lookupUniqueInstEnv instEnvs ctCls substArgs of
-          -- No instance found, too bad...
-          Left _err -> return False
-          -- We found one: Now we also need to check the found instance for
-          -- its preconditions.
-          Right (clsInst, instArgs) -> checkInstance clsInst instArgs
+-- | Checks if the given arguments types to the free variables in the
+--   class instance actually from a valid instantiation of that instance.
+--   The given arguments need to match up with the list of free type variables
+--   given for the class instance ('is_tvs').
+--
+--   Caveat: This currently only matches class constraints, but not type
+--   equality or type function constraints properly.
+isInstanceOf :: [Type] -> ClsInst -> PmPluginM Bool
+isInstanceOf tys inst = do
+  -- Get the instance type variables and constraints (by that we know
+  -- the numner of type arguments)
+  let (instVars, cts, _cls, _tyArgs) = instanceSig inst -- ([TyVar], [Type], Class, [Type])
+  -- Assert: We have a type for each variable in the instance.
+  when (length tys /= length instVars) $
+    throwPluginError "isInstanceOf: Number of type arguments does not match number of variables in instance"
+  -- How the instance variables for the current instance are bound.
+  let varSubst = mkTopTvSubst $ zip instVars tys
+  -- Split the constraints into their class and arguments.
+  -- FIXME: We ignore constraints where this is not possible.
+  -- Don't know if this is the right thing to do.
+  let instCts = catMaybes $ fmap getClassPredTys_maybe cts
+  -- Now go over each constraint and find a suitable instance.
+  fmap and $ forM instCts $ \(ctCls, ctArgs) -> do
+    -- Substitute the variables to know what instance we are looking for.
+    let substArgs = substTys varSubst ctArgs
+    -- Get the current instance environment
+    instEnvs <- getInstEnvs
+    -- Look for suitable instance. Since we are not necessarily working
+    -- with polymonads anymore we need to find a unique one.
+    case lookupUniqueInstEnv instEnvs ctCls substArgs of
+      -- No instance found, but maybe a given constraint will do the deed...
+      Left _err -> do
+        givenCts <- getGivenConstraints
+        -- Split the given constraints into their class and arguments.
+        -- FIXME: We ignore constraints where this is not possible.
+        let givenInstCts = catMaybes $ fmap constraintClassType givenCts
+        -- Define the predicate to check if a given constraint matches
+        -- the constraint we want to fulfill.
+        let eqInstCt (givenCls, givenArgs) = ctCls == givenCls && eqTypes substArgs givenArgs
+        -- If we find a given constraint that fulfills the constraint we are
+        -- searching for, return true, otherwise false.
+        return $ isJust $ find eqInstCt givenInstCts
+      -- We found one: Now we also need to check the found instance for
+      -- its preconditions.
+      Right (clsInst, instArgs) -> instArgs `isInstanceOf` clsInst

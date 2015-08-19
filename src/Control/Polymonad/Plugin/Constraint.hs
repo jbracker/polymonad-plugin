@@ -76,14 +76,14 @@ isFullyAppliedClassConstraint ct = case constraintClassTyArgs ct of
   Just tyArgs -> all S.null (collectTyVars <$> tyArgs)
   Nothing -> False
 
--- | Retrieves the type constructor and type arguments of the given
+-- | Retrieves the class and type arguments of the given
 --   type class constraint.
 --   Only works if the constraint is a type class constraint, otherwise
 --   returns 'Nothing'.
-constraintClassType :: Ct -> Maybe (TyCon, [Type])
+constraintClassType :: Ct -> Maybe (Class, [Type])
 constraintClassType ct = case ct of
-  CDictCan {} -> Just (classTyCon (cc_class ct), cc_tyargs ct)
-  CNonCanonical evdnc -> splitTyConApp_maybe $ ctev_pred evdnc
+  CDictCan {} -> Just (cc_class ct, cc_tyargs ct)
+  CNonCanonical evdnc -> getClassPredTys_maybe $ ctev_pred evdnc
   _ -> Nothing
 
 -- | Retrieves the arguments of the given constraints.
@@ -112,7 +112,7 @@ constraintPolymonadTyArgs ct = case constraintClassTyArgs ct of
 -- | Retrieves the type constructor of the given type class constraint.
 --   See 'constraintClassType'.
 constraintClassTyCon :: Ct -> Maybe TyCon
-constraintClassTyCon = fmap fst . constraintClassType
+constraintClassTyCon = fmap (classTyCon . fst) . constraintClassType
 
 -- | Collects the type constructors in the arguments of the constraint.
 --   Only works if the given constraint is a type class constraint.
