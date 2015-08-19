@@ -10,6 +10,7 @@ module Control.Polymonad.Plugin.Environment
   , getPolymonadInstances
   , getIdentityTyCon, getIdentityModule
   , getGivenPolymonadConstraints, getWantedPolymonadConstraints
+  , getGivenConstraints, getWantedConstraints
   , getCurrentPolymonad
   , getInstEnvs
   , throwPluginError
@@ -61,7 +62,9 @@ data PmPluginEnv = PmPluginEnv
   , pmEnvIdentityModule :: Module
   , pmEnvIdentityTyCon  :: TyCon
   , pmEnvGivenConstraints  :: [Ct]
+  , pmEnvGivenPolymonadConstraints :: [Ct]
   , pmEnvWantedConstraints :: [Ct]
+  , pmEnvWantedPolymonadConstraints :: [Ct]
   , pmEnvCurrentPolymonad  :: (Set TyCon, [Type], [ClsInst], [Ct])
   }
 
@@ -88,17 +91,18 @@ runPmPlugin givenCts wantedCts pmM = do
           let wantedPmCts = filter (\ct -> isWantedCt ct && isClassConstraint pmCls ct) wantedCts
           (pmTcs, pmTvs, pmBindClsInsts) <- selectPolymonadSubset idTyCon pmCls pmInsts (givenPmCts, wantedPmCts)
           let currPm = (pmTcs, nubBy eqType pmTvs, pmBindClsInsts, givenPmCts)
-          result <- runExceptT $ runReaderT pmM PmPluginEnv
+          runExceptT $ runReaderT pmM PmPluginEnv
             { pmEnvPolymonadModule = pmMdl
             , pmEnvPolymonadClass  = pmCls
             , pmEnvPolymonadInstances = pmInsts
             , pmEnvIdentityModule = idMdl
             , pmEnvIdentityTyCon  = idTyCon
-            , pmEnvGivenConstraints = givenPmCts
-            , pmEnvWantedConstraints = wantedPmCts
+            , pmEnvGivenConstraints = givenCts
+            , pmEnvWantedConstraints = wantedCts
+            , pmEnvGivenPolymonadConstraints = givenPmCts
+            , pmEnvWantedPolymonadConstraints = wantedPmCts
             , pmEnvCurrentPolymonad = currPm
             }
-          return $ result
         (Left errId, _) -> return $ Left
           $ pmErrMsg ("Could not find " ++ identityModuleName ++ " module:\n")
           ++ errId
@@ -140,14 +144,26 @@ getIdentityTyCon = asks pmEnvIdentityTyCon
 --   and actual 'Control.Polymonad' constraints.
 --   The list of /given/ constraints may be empty.
 getGivenPolymonadConstraints :: PmPluginM [Ct]
-getGivenPolymonadConstraints = asks pmEnvGivenConstraints
+getGivenPolymonadConstraints = asks pmEnvGivenPolymonadConstraints
 
 -- | Returns the wanted constraints of this plugin solver call.
 --   All of the returned constraints are guarenteed to be /wanted/ constraints
 --   and actual 'Control.Polymonad' constraints.
---   The list /wanted/ of constraints will never be empty.
+--   The list of /wanted/ constraints will never be empty.
 getWantedPolymonadConstraints :: PmPluginM [Ct]
-getWantedPolymonadConstraints = asks pmEnvWantedConstraints
+getWantedPolymonadConstraints = asks pmEnvWantedPolymonadConstraints
+
+-- | Returns all of the given constraints of this plugin call.
+--   This will also include the polymonad constraints that are
+--   delivered by 'getGivenPolymonadConstraints'.
+getGivenConstraints :: PmPluginM [Ct]
+getGivenConstraints = asks pmEnvGivenConstraints
+
+-- | Returns all of the wanted constraints of this plugin call.
+--   This will also include the polymonad constraints that are
+--   delivered by 'getWantedPolymonadConstraints'.
+getWantedConstraints :: PmPluginM [Ct]
+getWantedConstraints = asks pmEnvWantedConstraints
 
 -- | Returns the polymonad that the wanted constraints need solving for.
 --
