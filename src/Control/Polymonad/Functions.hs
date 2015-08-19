@@ -75,8 +75,6 @@ mapM_ :: ( Polymonad Identity Identity n, Polymonad n Identity n
       => (a -> m b) -> [a] -> n ()
 mapM_ f = void . mapM f
 
---mapM_ f m = mapM f m >> return ()
-
 sequence_ :: ( Polymonad Identity Identity n, Polymonad n Identity n
              , Polymonad m n n, Polymonad n n n)
           => [m b] -> n ()
