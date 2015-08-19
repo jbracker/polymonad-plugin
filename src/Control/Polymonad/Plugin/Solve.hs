@@ -76,9 +76,6 @@ solve wantedCts = do
           -- Calculate the principal join. Be sure the
           -- already solved type variables are replaced with their solution
           -- before calculating the principal join.
-          printObj =<< getCurrentPolymonad
-          printObj inTys
-          printObj outTys
           mJoin <- principalJoinFor tv inTys outTys
           case mJoin of
             Just join -> do

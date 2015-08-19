@@ -173,12 +173,11 @@ polymonadSolve' _s = do
     let ctGraph = mkGraphView wanted
     if isAllUnambigious ctGraph then do
       printMsg "Constraint graph is unambigious proceed with solving..."
-      -- TODO: Actually solve the constraints.
-      printMsg "TODO"
-      --printObj ctGraph
-      printObj =<< getWantedPolymonadConstraints
       wantedCts <- getWantedPolymonadConstraints
+      printMsg "Constraints to solve:"
+      printObj wantedCts
       derivedSolution <- solve wantedCts
+      printMsg "Derived solutions:"
       printObj derivedSolution
       return $ TcPluginOk [] derivedSolution
     else do
