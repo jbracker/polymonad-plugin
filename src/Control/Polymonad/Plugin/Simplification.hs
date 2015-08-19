@@ -43,7 +43,7 @@ import Control.Polymonad.Plugin.Constraint
   ( constraintPolymonadTyArgs, constraintPolymonadTyArgs'
   , mkDerivedTypeEqCt )
 import Control.Polymonad.Plugin.PrincipalJoin
-  ( principalJoin )
+  ( principalJoinFor )
 
 -- HLint: Please, ignore the unused template haskell pragma at the beginning.
 -- For some reason this needs to be added here:
@@ -119,7 +119,7 @@ simplifyJoin ps rho = do
       if length ms == 2 || length ms == 1
         then do
           givenCts <- getGivenPolymonadConstraints
-          mJoinM <- principalJoin (pmInsts, givenCts) f ms
+          mJoinM <- principalJoinFor Nothing f ms
           printMsg "Apply simplifyJoin:"
           printObj (pmInsts, givenCts)
           printObj f
