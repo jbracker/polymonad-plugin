@@ -8,6 +8,7 @@ import qualified Data.Set as S
 
 import Type ( TyVar )
 
+import Control.Polymonad.Plugin.Log ( printTrace, printObjTrace )
 import Control.Polymonad.Plugin.GraphView
 
 -- | Check if the given 'GraphView' is unambiguous in sense of
@@ -28,7 +29,7 @@ isUnambiguous gv =
       -- Get nodes of ambiguous type variables.
       ambNodes :: Set PiNode
       ambNodes = S.filter (\node -> tyVarIsIn gv node ambTvs) (gvPiNodes gv)
-  -- Check the ambiguity conditions:
+  -- Check the ambiguity conditions:https://www.magickartenmarkt.de/Products/Storage/Magic+2013+Storage+box+for+2000+cards
   --   1. No paths from a Pi.2 to a Pi.0 or Pi.1.
   --   2. For all nodes with an ambiguous type variable there exists a connected flow edge.
   in noPaths && all ((>= 1) . flowEdgeCountAtNode gv) ambNodes
@@ -58,27 +59,39 @@ isAllUnambigious gvOrig = isAllUnambigious' gvSmall
 
     -- Assumes the graph has already been minified as in 'gvSmall'.
     isAllUnambigious' :: GraphView -> Bool
-    isAllUnambigious' gv = isUnambiguous gv || maybe False isAllUnambigious' reduceBadPaths
+    isAllUnambigious' gv = isUnambiguous gv || reduceBadPaths ambBadPaths
       where
+        ambBadPaths :: [[PiNode]]
+        ambBadPaths = ambigiousBadPaths gv
+
+        tryReduceAmbGraph :: [PiNode] -> GraphView -> Maybe (GraphView, [PiNode])
+        tryReduceAmbGraph [] _g = Nothing -- We could not break up the path: Fail
+        tryReduceAmbGraph [_] _g = Nothing -- We could not break up the path: Fail
+        tryReduceAmbGraph (p:q:ps) g =
+          case (isEdge gv p q Unif, isFlowEdge gv p q) of
+            -- We found a flow edge. We may only remove it if the number of flow edges at each node is big enough.
+            (True, True) -> case (flowEdgeCountAtNode gv p, flowEdgeCountAtNode gv q) of
+              (i, j) | i > 1 && j > 1 -> Just (removeLEdge (piNodeToNode p, piNodeToNode q, Unif) gv, q : ps)
+              (_, _) -> tryReduceAmbGraph (q:ps) g
+            -- A unification but no flow edge: We can remove it safly to interrupt the path.
+            -- This case probably is never used because we work on gvSmall from the beginning.
+            (True, False) -> Just (removeLEdge (piNodeToNode p, piNodeToNode q, Unif) gv, q : ps)
+            -- This is a bind edge or no edge at all, either way we can't remove it
+            (False, _) -> tryReduceAmbGraph (q:ps) g
+
         -- Look at all the paths from a pi.2 to a pi.0 or pi.1 node.
         -- They cause the graph to be ambigious. Try to break up those
         -- paths without removing flow edges that are essential for its
         -- unambigiuity.
-        reduceBadPaths :: Maybe GraphView
-        reduceBadPaths = do
-            gvReduced <- foldr f (Just gv) (ambigiousBadPaths gv)
-            if gvGraph gv == gvGraph gvReduced then Nothing else return gvReduced
-          where f :: [PiNode] -> Maybe GraphView -> Maybe GraphView
-                f _ Nothing = Nothing -- We failed in reducing, so we remain failing.
-                f [] _g = Nothing -- We could not break up the path: Fail
-                f [_] _g = Nothing -- We could not break up the path: Fail
-                f (p:q:ps) (Just g) = case (isEdge gv p q Unif, isFlowEdge gv p q) of
-                  -- We found a flow edge. We may only remove it if the number of flow edges at each node is big enough.
-                  (True, True) -> case (flowEdgeCountAtNode gv p, flowEdgeCountAtNode gv q) of
-                    (i, j) | i > 1 && j > 1 -> Just $ removeLEdge (piNodeToNode p, piNodeToNode q, Unif) gv
-                    (_, _) -> f (q:ps) (Just g)
-                  -- A unification but no flow edge: We can remove it safly to interrupt the path.
-                  -- This case probably is never used because we work on gvSmall from the beginning.
-                  (True, False) -> Just $ removeLEdge (piNodeToNode p, piNodeToNode q, Unif) gv
-                  -- This is a bind edge or no edge at all, either way we can't remove it
-                  (False, _) -> f (q:ps) (Just g)
+        reduceBadPaths :: [[PiNode]] -> Bool -- Maybe GraphView
+        -- There are no bad paths, just check if the graph is unambiguous
+        reduceBadPaths [] = isUnambiguous gv
+        -- There is at least on bad path, try to reduce the graph on it.
+        reduceBadPaths (p : ps) = case tryReduceAmbGraph p gv of
+          -- We are not able to break up this path, the graph remain ambiguous.
+          Nothing -> False
+          Just (reducedGv, restP)
+            -> isAllUnambigious' reducedGv -- If the reduced GV is unambiguous we are done.
+            || reduceBadPaths (restP : ps) -- If breaking up one edge
+                                           -- does not work, we can try to
+                                           -- remove a different edge of the path.
