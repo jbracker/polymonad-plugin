@@ -68,6 +68,9 @@ data EdgeType
          --   same bind constraints.
   deriving ( Eq, Ord, Show )
 
+instance O.Outputable EdgeType where
+  ppr = O.text . show
+
 -- | Graph-view of a constraint bag.
 --   See 'mkGraphView' and definition 5 of the paper
 --   "Polymonad Programming" (Hicks 2014).
