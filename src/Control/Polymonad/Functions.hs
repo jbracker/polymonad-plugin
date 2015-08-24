@@ -88,9 +88,6 @@ sequence :: ( Polymonad Identity Identity n, Polymonad n Identity n
          => [m b] -> n [b]
 sequence = mapM id
 
-liftM :: (Polymonad m Identity n) => (a -> r) -> m a -> n r
-liftM f m = m >>= (return . f)
-
 join :: (Polymonad m n p) => m (n a) -> p a
 join k = k >>= id
 
@@ -116,7 +113,7 @@ forever :: Polymonad m m m => m a -> m b
 forever ma = ma >> forever ma
 
 
-filterM :: forall n m a b. ( Polymonad n m m, Polymonad m m m
+filterM :: ( Polymonad n m m, Polymonad m m m
            , Polymonad m Identity m, Polymonad Identity Identity m)
         => (a -> n Bool) -> [a] -> m [a]
 filterM f [] = return []
@@ -125,5 +122,22 @@ filterM f (x : xs) = do
   if keep
     then filterM f xs >>= (return . (x :))
     else filterM f xs
+
+liftM :: (Polymonad m Identity n) => (a -> b) -> m a -> n b
+liftM f ma = ma >>= (return . f)
+
+liftM2 :: (Polymonad m n p, Polymonad n Identity n) => (a -> b -> c) -> m a -> n b -> p c
+liftM2 f ma nb = do
+  a <- ma
+  b <- nb
+  return $ f a b
+
+liftM3 :: (Polymonad m n q, Polymonad n p n, Polymonad p Identity p) => (a -> b -> c -> d) -> m a -> n b -> p c -> q d
+liftM3 f ma nb pc = ma >>= (\a -> nb >>= (\b -> pc >>= (\c -> return $ f a b c)))
+  {-do
+  a <- ma
+  b <- nb
+  c <- pc
+  return $ f a b c-}
 
 -- TODO: Generalize all the other functions in Control.Monad.
