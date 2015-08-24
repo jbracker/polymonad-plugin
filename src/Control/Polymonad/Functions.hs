@@ -37,7 +37,7 @@ import Prelude
   ( Bool(..)
   , (.), ($)
   , id, const, flip
-  , otherwise )
+  , otherwise, not )
 import Data.Foldable ( Foldable(..) )
 import Data.Functor.Identity ( Identity )
 
@@ -61,10 +61,12 @@ f =<< ma = ma >>= f
 (<=<) :: Polymonad m n p => (b -> n c) -> (a -> m b) -> a -> p c
 (<=<) g f x = f x >>= g
 
-when :: (Polymonad Identity Identity m) => Bool -> m () -> m ()
-when p s = case p of
-  True -> s
-  False -> return ()
+when :: (Polymonad n Identity m, Polymonad Identity Identity m) => Bool -> n () -> m ()
+when True  s = void s
+when False _ = return ()
+
+unless :: (Polymonad n Identity m, Polymonad Identity Identity m) => Bool -> n () -> m ()
+unless b = when (not b)
 
 mapM :: ( Polymonad Identity Identity n, Polymonad n Identity n
         , Polymonad m n n, Polymonad n n n)
