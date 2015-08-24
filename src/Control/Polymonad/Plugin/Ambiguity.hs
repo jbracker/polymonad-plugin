@@ -64,6 +64,10 @@ isAllUnambigious gvOrig = isAllUnambigious' gvSmall
         ambBadPaths :: [[PiNode]]
         ambBadPaths = ambigiousBadPaths gv
 
+        -- Try to break up the given ambiguous path in the graph view. If
+        -- we are able to remove one edge of the path (looking through the
+        -- path from beginning to end), we return the reduced graph view
+        -- together with the rest of the path that was not looked at.
         tryReduceAmbGraph :: [PiNode] -> GraphView -> Maybe (GraphView, [PiNode])
         tryReduceAmbGraph [] _g = Nothing -- We could not break up the path: Fail
         tryReduceAmbGraph [_] _g = Nothing -- We could not break up the path: Fail

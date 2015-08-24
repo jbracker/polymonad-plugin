@@ -114,7 +114,7 @@ forever :: Polymonad m m m => m a -> m b
 forever ma = ma >> forever ma
 
 
-filterM :: ( Polymonad n m m, Polymonad m m m
+filterM :: forall n m a b. ( Polymonad n m m, Polymonad m m m
            , Polymonad m Identity m, Polymonad Identity Identity m)
         => (a -> n Bool) -> [a] -> m [a]
 filterM f [] = return []

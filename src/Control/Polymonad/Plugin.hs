@@ -19,7 +19,7 @@ import TcPluginM ( TcPluginM, tcPluginIO )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
-  , getWantedPolymonadConstraints
+  , getWantedPolymonadConstraints, getGivenPolymonadConstraints
   , printMsg, printObj )
 import Control.Polymonad.Plugin.Constraint
   ( isFullyAppliedClassConstraint
@@ -83,9 +83,9 @@ polymonadSolve s given derived wanted = do
 polymonadSolve' :: PolymonadState -> PmPluginM TcPluginResult
 polymonadSolve' _s = do
   --printMsg "Given constraints:"
-  --printObj given
+  --printObj =<< getGivenPolymonadConstraints
   --printMsg "Wanted constraints:"
-  --printObj wanted
+  --printObj =<< getWantedPolymonadConstraints
   --printMsg "Selected Polymonad:"
   --printObj =<< getCurrentPolymonad
   -- Simplification ------------------------------------------------------------
@@ -117,24 +117,31 @@ polymonadSolve' _s = do
 
   -- Lets see if we made progress through simplification or if we need to
   -- move on to actually trying to solve things.
-  if null wantedEvidence && null eqUpDownCts && null eqJoinCts then do
+  -- Note: It seems that non-empty evidence and empty derived constraints
+  -- leads the constraint solver to stop asking for further help, though there
+  -- still is ambiguity. Therefore we ignore the wanted evidence in this test
+  -- and always deliver it.
+  if null eqUpDownCts && null eqJoinCts then do
     printMsg "Simplification could not solve all constraints."
     printMsg "Moving on to solving..."
     let ctGraph = mkGraphView wanted
     if isAllUnambigious ctGraph then do
       printMsg "Constraint graph is unambigious proceed with solving..."
       wantedCts <- getWantedPolymonadConstraints
-      printMsg "Constraints to solve:"
-      printObj wantedCts
+      --printMsg "Constraints to solve:"
+      --printObj wantedCts
       derivedSolution <- solve wantedCts
       printMsg "Derived solutions:"
       printObj derivedSolution
-      return $ TcPluginOk [] derivedSolution
+      return $ TcPluginOk wantedEvidence derivedSolution
     else do
       printMsg "Constraint graph is ambigious, unable to solve polymonad constraints..."
-      return noResult
+      --printObj ctGraph
+      return $ {-TcPluginContradiction wanted -} TcPluginOk wantedEvidence []
   else do
     printMsg "Simplification made progress. Not solving."
+    --printObj $ wantedEvidence
+    --printObj $ eqUpDownCts ++ eqJoinCts
     return $ TcPluginOk wantedEvidence (eqUpDownCts ++ eqJoinCts)
 
 -- -----------------------------------------------------------------------------

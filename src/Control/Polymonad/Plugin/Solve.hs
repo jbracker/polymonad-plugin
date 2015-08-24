@@ -63,7 +63,13 @@ solve wantedCts = do
     calcSubst subst [] = return subst
     calcSubst subst (tv:tvs) = do
       -- Get the outgoing types of the current type.
-      let outTys = (applySubst subst) <$> outTypes tv
+      let outTys -- Make sure that if there are is another ambiguous type variables
+                 -- among the outgoing types to remove it. This is important,
+                 -- because that other ambigous type variable will never match
+                 -- any instances. FIXME: This is a hack. I do not know if this is the right thing to do.
+                 = filter (\t -> not (isAmbiguousType t && not (eqType t $ mkTyVarTy tv)))
+                   -- Get the outgoing types of the current type.
+                 $ (applySubst subst) <$> outTypes tv
       -- Check of there are exactly one or two outgoing types.
       if null outTys || length outTys > 2
         then
