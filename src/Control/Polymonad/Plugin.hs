@@ -31,7 +31,7 @@ import Control.Polymonad.Plugin.GraphView
 import Control.Polymonad.Plugin.Solve
   ( solve )
 import Control.Polymonad.Plugin.Ambiguity
-  ( isAllUnambigious )
+  ( isAllUnambiguous )
 import Control.Polymonad.Plugin.Simplification
   ( simplifyAllUpDown, simplifyAllJoin
   , simplifiedTvsToConstraints )
@@ -125,8 +125,8 @@ polymonadSolve' _s = do
     printMsg "Simplification could not solve all constraints."
     printMsg "Moving on to solving..."
     let ctGraph = mkGraphView wanted
-    if isAllUnambigious ctGraph then do
-      printMsg "Constraint graph is unambigious proceed with solving..."
+    if isAllUnambiguous ctGraph then do
+      printMsg "Constraint graph is unambiguous proceed with solving..."
       wantedCts <- getWantedPolymonadConstraints
       --printMsg "Constraints to solve:"
       --printObj wantedCts
@@ -135,7 +135,7 @@ polymonadSolve' _s = do
       printObj derivedSolution
       return $ TcPluginOk wantedEvidence derivedSolution
     else do
-      printMsg "Constraint graph is ambigious, unable to solve polymonad constraints..."
+      printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."
       --printObj ctGraph
       return $ {-TcPluginContradiction wanted -} TcPluginOk wantedEvidence []
   else do
