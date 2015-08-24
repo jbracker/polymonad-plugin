@@ -3,15 +3,28 @@
 module Control.Polymonad.Plugin.Log
   ( pprToStr, missingCaseError
   , pmErrMsg, pmDebugMsg, pmObjMsg
+  , groupFormatSrcSpans
   -- * Debug Functions
   , printTrace, printObjTrace
   ) where
 
+import Data.List ( groupBy, intercalate )
+
 import Debug.Trace ( trace )
 
+import SrcLoc
+  ( SrcSpan(..)
+  , srcSpanFileName_maybe
+  , isOneLineSpan
+  , srcSpanStartLine, srcSpanEndLine
+  , srcSpanStartCol, srcSpanEndCol
+  , srcSpanStart, srcSpanEnd )
 import Outputable
   ( Outputable( ppr )
   , showSDocUnsafe )
+import FastString ( unpackFS )
+
+import Control.Polymonad.Plugin.Utils ( removeDup )
 
 -- | Convert some generic outputable to a string (Unsafe).
 pprToStr :: Outputable o => o -> String
@@ -45,6 +58,30 @@ missingCaseError :: (Outputable o) => String -> Maybe o -> a
 missingCaseError funName (Just val) = error $ "Missing case in '" ++ funName ++ "' for " ++ pprToStr val
 missingCaseError funName Nothing    = error $ "Missing case in '" ++ funName ++ "'"
 
+-- | Format a list of source spans by grouping spans in the same file together.
+groupFormatSrcSpans :: [SrcSpan] -> String
+groupFormatSrcSpans spans = unwords $ fmap formatSpanGroup groupedSpans
+  where
+    formatSpanGroup :: [SrcSpan] -> String
+    formatSpanGroup [] = ""
+    formatSpanGroup ss@(s:_) =
+      case srcSpanFileName_maybe s of
+        Nothing -> intercalate ", " $ fmap formatSpan ss
+        Just file -> unpackFS file ++ ": " ++ intercalate ", " (fmap formatSpan ss) ++ ";"
+
+    groupedSpans = groupBy eqFileName $ removeDup spans
+    eqFileName s1 s2 = srcSpanFileName_maybe s1 == srcSpanFileName_maybe s2
+
+    formatSpan :: SrcSpan -> String
+    formatSpan (UnhelpfulSpan str) = unpackFS str
+    formatSpan (RealSrcSpan s) =
+      show (srcSpanStartLine s) ++ ":" ++
+      show (srcSpanStartCol s) ++ "-" ++
+      (if srcSpanStartLine s /= srcSpanEndLine s then show (srcSpanEndLine s) ++ ":" else "") ++
+      show (srcSpanEndCol s)
+
+
+-- ++ (intercalate ", " . fmap pprToStr . removeDup . )
 -- -----------------------------------------------------------------------------
 -- Debug Functions
 -- -----------------------------------------------------------------------------

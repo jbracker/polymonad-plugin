@@ -3,7 +3,7 @@ module Control.Polymonad.Plugin
   ( plugin ) where
 
 import Data.Maybe ( catMaybes )
-import Data.List ( partition )
+import Data.List ( partition, intercalate )
 --import Data.Set ( Set )
 import qualified Data.Set as S
 
@@ -17,13 +17,15 @@ import TcRnTypes
   , TcPlugin(..), TcPluginResult(..) )
 import TcPluginM ( TcPluginM, tcPluginIO )
 
+import Control.Polymonad.Plugin.Log ( groupFormatSrcSpans )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getWantedPolymonadConstraints, getGivenPolymonadConstraints
   , printMsg, printObj )
 import Control.Polymonad.Plugin.Constraint
   ( isFullyAppliedClassConstraint
-  , constraintTopAmbiguousTyVars )
+  , constraintTopAmbiguousTyVars
+  , constraintSourceLocation )
 import Control.Polymonad.Plugin.Core
   ( pickInstanceForAppliedConstraint )
 import Control.Polymonad.Plugin.GraphView
@@ -91,6 +93,7 @@ polymonadSolve' _s = do
   -- Simplification ------------------------------------------------------------
   printMsg "Try simplification of constraints..."
   wanted <- getWantedPolymonadConstraints
+  printMsg $ "Wanted constraints from: " ++ (groupFormatSrcSpans . fmap constraintSourceLocation $ wanted)
   let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
 
   -- First, if we have any constraint that does not contain type variables,
@@ -122,22 +125,19 @@ polymonadSolve' _s = do
   -- still is ambiguity. Therefore we ignore the wanted evidence in this test
   -- and always deliver it.
   if null eqUpDownCts && null eqJoinCts then do
-    printMsg "Simplification could not solve all constraints."
-    printMsg "Moving on to solving..."
+    printMsg "Simplification could not solve all constraints. Solving..."
     let ctGraph = mkGraphView wanted
     if isAllUnambiguous ctGraph then do
       printMsg "Constraint graph is unambiguous proceed with solving..."
       wantedCts <- getWantedPolymonadConstraints
-      --printMsg "Constraints to solve:"
-      --printObj wantedCts
       derivedSolution <- solve wantedCts
-      printMsg "Derived solutions:"
-      printObj derivedSolution
+      unless (null derivedSolution) $ do
+        printMsg "Derived solutions:"
+        printObj derivedSolution
       return $ TcPluginOk wantedEvidence derivedSolution
     else do
       printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."
-      --printObj ctGraph
-      return $ {-TcPluginContradiction wanted -} TcPluginOk wantedEvidence []
+      return $ TcPluginOk wantedEvidence []
   else do
     printMsg "Simplification made progress. Not solving."
     --printObj $ wantedEvidence
@@ -171,28 +171,6 @@ mkEqCtsFromSubst wantedCt subst = do
       printObj inScopeVars
       flip mapM inScopeVars $ \var -> do -- type variables in
         return $ mkDerivedTypeEqCt wantedCt var (substTyVar subst var)
--}
-
-{-
-ctName :: Ct -> Name
-ctName ct = case ct of
-  CDictCan _ cls _ -> className cls
-  CNonCanonical evdnc -> ctEvidenceName evdnc
-  v -> missingCaseError "ctName" $ Just v
-
-ctEvidenceName :: CtEvidence -> Name
-ctEvidenceName evdnc = case evdnc of
-  CtWanted predTy _ _ -> getName (tcTyConAppTyCon predTy)
-  v -> missingCaseError "ctEvidenceName" $ Just v
-
-ctTyParams :: Ct -> [Type]
-ctTyParams ct = case ct of
-  CDictCan _ _ _ -> cc_tyargs ct
-  CNonCanonical evdnc -> ctEvidenceTyParams evdnc
-  v -> missingCaseError "ctTyParams" $ Just v
-
-ctEvidenceTyParams :: CtEvidence -> [Type]
-ctEvidenceTyParams evdnc = tcTyConAppArgs $ ctev_pred evdnc
 -}
 
 -- -----------------------------------------------------------------------------

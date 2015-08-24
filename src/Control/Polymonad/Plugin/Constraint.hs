@@ -16,15 +16,18 @@ module Control.Polymonad.Plugin.Constraint
   , constraintTyCons
   , constraintTcVars
   , constraintTopAmbiguousTyVars
+  , constraintLocation
+  , constraintSourceLocation
   ) where
 
 import Data.Maybe ( isJust, catMaybes, fromMaybe )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
+import SrcLoc ( SrcSpan )
 import TcRnTypes
-  ( Ct(..), CtLoc, CtEvidence(..)
-  , ctev_pred
+  ( Ct(..), CtLoc(..), CtEvidence(..)
+  , TcLclEnv( tcl_loc )
   , mkNonCanonical )
 import Class ( Class(..) )
 import Type
@@ -137,3 +140,7 @@ constraintTopAmbiguousTyVars ct = ambTvs
 -- | Retrieve the source location the given constraint originated from.
 constraintLocation :: Ct -> CtLoc
 constraintLocation ct = ctev_loc $ cc_ev ct
+
+-- | Returns the source code location of the given constraint.
+constraintSourceLocation :: Ct -> SrcSpan
+constraintSourceLocation = tcl_loc . ctl_env . constraintLocation
