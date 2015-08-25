@@ -37,7 +37,7 @@ import Type ( Type, eqType )
 import TyCon ( TyCon )
 import TcRnTypes
   ( Ct
-  , isGivenCt, isWantedCt )
+  , isGivenCt, isWantedCt, isDerivedCt )
 import TcPluginM ( TcPluginM, tcPluginIO )
 import qualified TcPluginM
 import Outputable ( Outputable )
@@ -74,13 +74,13 @@ data PmPluginEnv = PmPluginEnv
   , pmEnvDebugEnabled :: Bool
   }
 
--- | @runPmPlugin given wanted m@ runs the given polymonad plugin solver @m@
---   within the type checker plugin monad. The /given/ constraints are
---   passed in through @given@ and the /wanted/ constraints are passed in
+-- | @runPmPlugin givenAndDerived wanted m@ runs the given polymonad plugin solver @m@
+--   within the type checker plugin monad. The /given/ and /derived/ constraints are
+--   passed in through @givenAndDerived@ and the /wanted/ constraints are passed in
 --   through @wanted@.
 --
 --   The function will make sure that only the polymonad constraints
---   and actually /given/ or /wanted/ constraints
+--   and actually /given/, /derived/ or /wanted/ constraints
 --   are kept, respectivly.
 runPmPlugin :: [Ct] -> [Ct] -> PmPluginM a -> TcPluginM (Either String a)
 runPmPlugin givenCts wantedCts pmM = do
@@ -93,7 +93,7 @@ runPmPlugin givenCts wantedCts pmM = do
       case (mIdMdl, mIdTyCon) of
         (Right idMdl, Just idTyCon) -> do
           pmInsts <- findPolymonadInstancesInScope
-          let givenPmCts  = filter (\ct -> isGivenCt ct  && isClassConstraint pmCls ct) givenCts
+          let givenPmCts  = filter (\ct -> (isGivenCt ct || isDerivedCt ct) && isClassConstraint pmCls ct) givenCts
           let wantedPmCts = filter (\ct -> isWantedCt ct && isClassConstraint pmCls ct) wantedCts
           (pmTcs, pmTvs, pmBindClsInsts) <- selectPolymonadSubset idTyCon pmCls pmInsts (givenPmCts, wantedPmCts)
           let currPm = (pmTcs, nubBy eqType pmTvs, pmBindClsInsts, givenPmCts)
@@ -146,10 +146,12 @@ getIdentityModule = asks pmEnvIdentityModule
 getIdentityTyCon :: PmPluginM TyCon
 getIdentityTyCon = asks pmEnvIdentityTyCon
 
--- | Returns the given constraints of this plugin solver call.
---   All of the returned constraints are guarenteed to be /given/ constraints
---   and actual 'Control.Polymonad' constraints.
---   The list of /given/ constraints may be empty.
+-- | Returns the /given/ and /derived/ constraints of this plugin solver call.
+--   All of the returned constraints are guarenteed to be /given/ or /derived/ constraints
+--   and actual 'Control.Polymonad' constraints. The derived constraints
+--   are included since they are constraints that result from the given constraints
+--   and therefore can also be seen as given.
+--   The list of /given/ and /derived/ constraints may be empty.
 getGivenPolymonadConstraints :: PmPluginM [Ct]
 getGivenPolymonadConstraints = asks pmEnvGivenPolymonadConstraints
 
@@ -160,7 +162,7 @@ getGivenPolymonadConstraints = asks pmEnvGivenPolymonadConstraints
 getWantedPolymonadConstraints :: PmPluginM [Ct]
 getWantedPolymonadConstraints = asks pmEnvWantedPolymonadConstraints
 
--- | Returns all of the given constraints of this plugin call.
+-- | Returns all of the /given/ and /derived/ constraints of this plugin call.
 --   This will also include the polymonad constraints that are
 --   delivered by 'getGivenPolymonadConstraints'.
 getGivenConstraints :: PmPluginM [Ct]

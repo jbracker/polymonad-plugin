@@ -27,7 +27,7 @@ import Control.Monad ( forM, liftM )
 
 import TcRnTypes
   ( Ct
-  , isGivenCt, isWantedCt
+  , isGivenCt, isWantedCt, isDerivedCt
   , TcGblEnv(..)
   , TcTyThing(..) )
 import Type
@@ -174,7 +174,7 @@ selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
   relevantInsts <- filterApplicableInstances pmInsts pmTyCons
   return (pmTyCons, varTyCons, relevantInsts)
   where
-    givenPmCts = filter (\ct -> isClassConstraint pmCls ct && isGivenCt ct) givenCts
+    givenPmCts = filter (\ct -> isClassConstraint pmCls ct && (isDerivedCt ct || isGivenCt ct)) givenCts
     wantedPmCts = filter (\ct -> isClassConstraint pmCls ct && isWantedCt ct) wantedCts
 
     -- TODO

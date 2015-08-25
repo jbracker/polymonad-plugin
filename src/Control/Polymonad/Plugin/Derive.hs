@@ -2,7 +2,7 @@
 module Control.Polymonad.Plugin.Derive
   ( derivePolymonadConstraints ) where
 
-import Data.Maybe ( catMaybes, isJust )
+import Data.Maybe ( catMaybes, isNothing )
 import Data.List ( nubBy, find )
 
 import TcRnTypes
@@ -19,8 +19,6 @@ import TcType ( isAmbiguousTyVar )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
-  , assert
-  , printDebugObj
   , getGivenPolymonadConstraints
   , getIdentityTyCon, getPolymonadClass )
 import Control.Polymonad.Plugin.Constraint
@@ -51,10 +49,13 @@ derivePolymonadConstraints =  do
   let derivedFunctorCts = fmap (\(t, loc) -> mkDerivedClassCt loc pmCls [t, idTc, t]) tcvs
   -- Filter constraints that were created but already existed in the set of
   -- given constraints.
-  return $ filter (\dCt -> isJust $ find (\gCt -> eqType (ctPred gCt) (ctPred dCt)) givenCts) derivedFunctorCts
+  return $ filter (\dCt -> isNothing $ find (eqClassCt dCt) givenCts) derivedFunctorCts
   where
     eqTy :: (Type, a) -> (Type, b) -> Bool
     eqTy (t0, _) (t1, _) = eqType t0 t1
+
+    eqClassCt :: Ct -> Ct -> Bool
+    eqClassCt ct0 ct1 = eqType (ctPred ct0) (ctPred ct1)
 
 
 -- | Returns the unary type constructor variables and partially applied
@@ -68,7 +69,7 @@ constraintPolymonadUnambiguousUnaryTyConVars :: Ct -> Maybe [(Type, CtLoc)]
 constraintPolymonadUnambiguousUnaryTyConVars ct = do
   (t0, t1, t2) <- constraintPolymonadTyArgs ct
   let loc = constraintLocation ct
-  return $ fmap (\t -> (t, loc)) $ filter f [t0, t1, t2]
+  return $ (\t -> (t, loc)) <$> filter f [t0, t1, t2]
   where
     f :: Type -> Bool
     f t = case getTyVar_maybe $ fst $ splitAppTys t of
