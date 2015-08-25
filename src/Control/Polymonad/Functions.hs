@@ -20,11 +20,12 @@ module Control.Polymonad.Functions
   , mapM, mapM_
   , forM, forM_
   , sequence, sequence_
-  , when
-  , liftM
-  , join
+  , when, unless
+  , liftM, liftM2, liftM3
+  , join, ap
   , forever
   , filterM
+  , (<$!>)
   ) where
 {-
 import Prelude
@@ -119,7 +120,7 @@ forever ma = ma >> forever ma
 filterM :: ( Polymonad n m m, Polymonad m m m
            , Polymonad m Identity m, Polymonad Identity Identity m)
         => (a -> n Bool) -> [a] -> m [a]
-filterM f [] = return []
+filterM _f [] = return []
 filterM f (x : xs) = do
   keep <- f x
   if keep
