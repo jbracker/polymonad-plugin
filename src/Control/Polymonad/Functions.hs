@@ -6,7 +6,7 @@
 -- To defer errors of ambiguity in utility function to their use-sight.
 --{-# LANGUAGE AllowAmbiguousTypes #-}
 -- Not sure if this is needed yet. Sometimes useful.
-{-# LANGUAGE ScopedTypeVariables #-}
+--{-# LANGUAGE ScopedTypeVariables #-}
 
 -- Plugin ----------------------------------------------------------------------
 
@@ -27,12 +27,7 @@ module Control.Polymonad.Functions
   , filterM
   , (<$!>)
   ) where
-{-
-import Prelude
-  ( String
-  , (.), ($)
-  , error
-  )-}
+
 import qualified Prelude as P
 import Prelude
   ( Bool(..)
