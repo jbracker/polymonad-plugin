@@ -15,10 +15,8 @@ import Debug.Trace ( trace )
 import SrcLoc
   ( SrcSpan(..)
   , srcSpanFileName_maybe
-  , isOneLineSpan
   , srcSpanStartLine, srcSpanEndLine
-  , srcSpanStartCol, srcSpanEndCol
-  , srcSpanStart, srcSpanEnd )
+  , srcSpanStartCol, srcSpanEndCol )
 import Outputable
   ( Outputable( ppr )
   , showSDocUnsafe )
