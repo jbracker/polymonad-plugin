@@ -5,6 +5,7 @@ module Control.Polymonad.Plugin.Constraint
   ( -- * Constraint Creation
     mkDerivedTypeEqCt
   , mkDerivedTypeEqCt'
+  , mkDerivedClassCt
     -- * Constraint inspection
   , isClassConstraint
   , isFullyAppliedClassConstraint
@@ -32,7 +33,7 @@ import TcRnTypes
 import Class ( Class(..) )
 import Type
   ( Type, TyVar
-  , mkTyVarTy
+  , mkTyVarTy, mkAppTys, mkTyConTy
   , getTyVar_maybe
   , getClassPredTys_maybe
   )
@@ -54,6 +55,14 @@ mkDerivedTypeEqCt ct = mkDerivedTypeEqCt' (constraintLocation ct)
 mkDerivedTypeEqCt' :: CtLoc -> TyVar -> Type -> Ct
 mkDerivedTypeEqCt' loc tv ty = mkNonCanonical CtDerived
   { ctev_pred = mkTcEqPred (mkTyVarTy tv) ty
+  , ctev_loc = loc }
+
+-- | Creates a derived class constraint using the given location
+--   as origin. It is the programmers responsibility to supply the
+--   correct number of type arguments for the given class.
+mkDerivedClassCt :: CtLoc -> Class -> [Type] -> Ct
+mkDerivedClassCt loc cls ts = mkNonCanonical CtDerived
+  { ctev_pred = mkAppTys (mkTyConTy $ classTyCon cls) ts
   , ctev_loc = loc }
 
 -- -----------------------------------------------------------------------------
@@ -89,6 +98,7 @@ constraintClassType ct = case ct of
   _ -> Nothing
 
 -- | Retrieves the arguments of the given constraints.
+--   Only works if the given constraint is a type class constraint.
 --   See 'constraintClassType'.
 constraintClassTyArgs :: Ct -> Maybe [Type]
 constraintClassTyArgs = fmap snd . constraintClassType
