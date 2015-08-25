@@ -137,11 +137,22 @@ liftM2 f ma nb = do
 
 liftM3 :: ( Polymonad m q q, Polymonad n p q, Polymonad p Identity p, Polymonad q Identity q)
        => (a -> b -> c -> d) -> m a -> n b -> p c -> q d
-liftM3 f ma nb pc = --ma >>= (\a -> nb >>= (\b -> pc >>= (\c -> return $ f a b c)))
-  do
+liftM3 f ma nb pc = do --ma >>= (\a -> nb >>= (\b -> pc >>= (\c -> return $ f a b c)))
   a <- ma
   b <- nb
   c <- pc
   return $ f a b c
+
+ap :: (Polymonad m n p, Polymonad n Identity n) => m (a -> b) -> n a -> p b
+ap mf na = do
+  f <- mf
+  a <- na
+  return $ f a
+
+(<$!>) :: Polymonad m Identity n => (a -> b) -> m a -> n b
+f <$!> m = do
+  x <- m
+  let z = f x
+  z `P.seq` return z
 
 -- TODO: Generalize all the other functions in Control.Monad.
