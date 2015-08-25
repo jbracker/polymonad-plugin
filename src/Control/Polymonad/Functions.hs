@@ -116,9 +116,8 @@ sequence_ = void . sequence
 forever :: Polymonad m m m => m a -> m b
 forever ma = ma >> forever ma
 
-
 filterM :: ( Polymonad n m m, Polymonad m m m
-           , Polymonad m Identity m, Polymonad Identity Identity m)
+           , Polymonad Identity Identity m, Polymonad m Identity m)
         => (a -> n Bool) -> [a] -> m [a]
 filterM _f [] = return []
 filterM f (x : xs) = do
@@ -136,7 +135,7 @@ liftM2 f ma nb = do
   b <- nb
   return $ f a b
 
-liftM3 :: ( Polymonad m q q, Polymonad n p q, Polymonad p Identity p, Polymonad q Identity q)
+liftM3 :: (Polymonad m q q, Polymonad n p q, Polymonad p Identity p, Polymonad q Identity q)
        => (a -> b -> c -> d) -> m a -> n b -> p c -> q d
 liftM3 f ma nb pc = do --ma >>= (\a -> nb >>= (\b -> pc >>= (\c -> return $ f a b c)))
   a <- ma
@@ -150,7 +149,7 @@ ap mf na = do
   a <- na
   return $ f a
 
-(<$!>) :: Polymonad m Identity n => (a -> b) -> m a -> n b
+(<$!>) :: (Polymonad m Identity n) => (a -> b) -> m a -> n b
 f <$!> m = do
   x <- m
   let z = f x

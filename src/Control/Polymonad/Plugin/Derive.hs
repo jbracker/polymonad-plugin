@@ -8,6 +8,7 @@ import Data.List ( nubBy, find )
 import TcRnTypes
   ( Ct, CtLoc
   , ctPred
+  , isDerivedCt
   )
 import Type
   ( Type
@@ -20,7 +21,8 @@ import TcType ( isAmbiguousTyVar )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
   , getGivenPolymonadConstraints
-  , getIdentityTyCon, getPolymonadClass )
+  , getIdentityTyCon, getPolymonadClass
+  , printObj )
 import Control.Polymonad.Plugin.Constraint
   ( mkDerivedClassCt
   , constraintLocation, constraintPolymonadTyArgs )
@@ -36,26 +38,31 @@ derivePolymonadConstraints :: PmPluginM [Ct]
 derivePolymonadConstraints =  do
   -- Get the given polymonad constraints to derive from.
   givenCts <- getGivenPolymonadConstraints
-  -- Get a list of all unary (partially applied) unambigous type constructors
-  -- in the given constraints, e.g., @n a b@ or @m@. Also delivers the location
-  -- of the constraints they were extracted from.
-  let tcvs = nubBy eqTy $ concat $ catMaybes
-           $ fmap constraintPolymonadUnambiguousUnaryTyConVars givenCts
-  -- Get the identity type constructor and the polymonad class.
-  idTc <- mkTyConTy <$> getIdentityTyCon
-  pmCls <- getPolymonadClass
-  -- Create derived functor constraints for each unique (duplicates already removed)
-  -- type constructor.
-  let derivedFunctorCts = fmap (\(t, loc) -> mkDerivedClassCt loc pmCls [t, idTc, t]) tcvs
-  -- Filter constraints that were created but already existed in the set of
-  -- given constraints.
-  return $ filter (\dCt -> isNothing $ find (eqClassCt dCt) givenCts) derivedFunctorCts
-  where
-    eqTy :: (Type, a) -> (Type, b) -> Bool
-    eqTy (t0, _) (t1, _) = eqType t0 t1
+  printObj givenCts
+  -- Only proceed of there are no derived constraints yet.
+  if any isDerivedCt givenCts
+    then return []
+    else do
+      -- Get a list of all unary (partially applied) unambigous type constructors
+      -- in the given constraints, e.g., @n a b@ or @m@. Also delivers the location
+      -- of the constraints they were extracted from.
+      let tcvs = nubBy eqTy $ concat $ catMaybes
+               $ fmap constraintPolymonadUnambiguousUnaryTyConVars givenCts
+      -- Get the identity type constructor and the polymonad class.
+      idTc <- mkTyConTy <$> getIdentityTyCon
+      pmCls <- getPolymonadClass
+      -- Create derived functor constraints for each unique (duplicates already removed)
+      -- type constructor.
+      let derivedFunctorCts = fmap (\(t, loc) -> mkDerivedClassCt loc pmCls [t, idTc, t]) tcvs
+      -- Filter constraints that were created but already existed in the set of
+      -- given constraints.
+      return $ filter (\dCt -> isNothing $ find (eqClassCt dCt) givenCts) $ derivedFunctorCts
+      where
+        eqTy :: (Type, a) -> (Type, b) -> Bool
+        eqTy (t0, _) (t1, _) = eqType t0 t1
 
-    eqClassCt :: Ct -> Ct -> Bool
-    eqClassCt ct0 ct1 = eqType (ctPred ct0) (ctPred ct1)
+        eqClassCt :: Ct -> Ct -> Bool
+        eqClassCt ct0 ct1 = eqType (ctPred ct0) (ctPred ct1)
 
 
 -- | Returns the unary type constructor variables and partially applied

@@ -90,6 +90,13 @@ polymonadSolve' _s = do
   --printMsg "Selected Polymonad:"
   --printObj =<< getCurrentPolymonad
   -- Derive Constraints --------------------------------------------------------
+  -- Deriving constraints is ignored for now, because for some reason GHCs
+  -- constraint solver throws some of the derived constraints away and says
+  -- there are overlapping instances for them (which does not make sense?).
+  -- This only makes definitions easier, since the programmer does not have
+  -- to list all of the constraints necessary, but is not essential for the
+  -- plugin.
+  {-
   derivedPmCts <- derivePolymonadConstraints
   if not $ null derivedPmCts
     then do
@@ -97,59 +104,60 @@ polymonadSolve' _s = do
       printObj derivedPmCts
       return $ TcPluginOk [] derivedPmCts
     else do
-      -- Simplification ------------------------------------------------------------
-      printMsg "Try simplification of constraints..."
-      wanted <- getWantedPolymonadConstraints
-      printMsg $ "Wanted constraints from: " ++ (groupFormatSrcSpans . fmap constraintSourceLocation $ wanted)
-      let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
+  -}
+  -- Simplification ------------------------------------------------------------
+  printMsg "Try simplification of constraints..."
+  wanted <- getWantedPolymonadConstraints
+  printMsg $ "Wanted constraints from: " ++ (groupFormatSrcSpans . fmap constraintSourceLocation $ wanted)
+  let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
 
-      -- First, if we have any constraint that does not contain type variables,
-      -- we are allowed to just pick an applicable instance, since we are talking
-      -- about polymonads.
-      --printMsg "Solve wanted completes:"
-      --printObj wantedApplied
-      wantedEvidence <- catMaybes <$> mapM pickInstanceForAppliedConstraint wantedApplied
-      --printObj wantedEvidence
+  -- First, if we have any constraint that does not contain type variables,
+  -- we are allowed to just pick an applicable instance, since we are talking
+  -- about polymonads.
+  --printMsg "Solve wanted completes:"
+  --printObj wantedApplied
+  wantedEvidence <- catMaybes <$> mapM pickInstanceForAppliedConstraint wantedApplied
+  --printObj wantedEvidence
 
-      -- Second, we have to look at those constraints that are not yet fully applied.
-      -- We can now try to simplify these constraints using the S-Up and S-Down rules.
-      --printMsg "Solve wanted incompletes:"
-      --printObj wantedIncomplete
-      let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wantedIncomplete
-      eqUpDownCtData <- simplifyAllUpDown wantedIncomplete ambTvs
-      let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
-      --printObj eqUpDownCts
-      -- Calculate type variables that still require solving and then
-      -- try to solve them using the S-Join rule.
-      let ambTvs' = ambTvs S.\\ S.fromList (fmap fst eqUpDownCtData)
-      eqJoinCts <- simplifiedTvsToConstraints <$> simplifyAllJoin wantedIncomplete ambTvs'
-      --printObj eqJoinCts
+  -- Second, we have to look at those constraints that are not yet fully applied.
+  -- We can now try to simplify these constraints using the S-Up and S-Down rules.
+  --printMsg "Solve wanted incompletes:"
+  --printObj wantedIncomplete
+  let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wantedIncomplete
+  eqUpDownCtData <- simplifyAllUpDown wantedIncomplete ambTvs
+  let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
+  --printObj eqUpDownCts
+  -- Calculate type variables that still require solving and then
+  -- try to solve them using the S-Join rule.
+  let ambTvs' = ambTvs S.\\ S.fromList (fmap fst eqUpDownCtData)
+  eqJoinCts <- simplifiedTvsToConstraints <$> simplifyAllJoin wantedIncomplete ambTvs'
+  --printObj eqJoinCts
 
-      -- Lets see if we made progress through simplification or if we need to
-      -- move on to actually trying to solve things.
-      -- Note: It seems that non-empty evidence and empty derived constraints
-      -- leads the constraint solver to stop asking for further help, though there
-      -- still is ambiguity. Therefore we ignore the wanted evidence in this test
-      -- and always deliver it.
-      if null eqUpDownCts && null eqJoinCts then do
-        printMsg "Simplification could not solve all constraints. Solving..."
-        let ctGraph = mkGraphView wanted
-        if isAllUnambiguous ctGraph then do
-          printMsg "Constraint graph is unambiguous proceed with solving..."
-          wantedCts <- getWantedPolymonadConstraints
-          derivedSolution <- solve wantedCts
-          unless (null derivedSolution) $ do
-            printMsg "Derived solutions:"
-            printObj derivedSolution
-          return $ TcPluginOk wantedEvidence derivedSolution
-        else do
-          printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."
-          return $ TcPluginOk wantedEvidence []
-      else do
-        printMsg "Simplification made progress. Not solving."
-        --printObj $ wantedEvidence
-        --printObj $ eqUpDownCts ++ eqJoinCts
-        return $ TcPluginOk wantedEvidence (eqUpDownCts ++ eqJoinCts)
+  -- Lets see if we made progress through simplification or if we need to
+  -- move on to actually trying to solve things.
+  -- Note: It seems that non-empty evidence and empty derived constraints
+  -- leads the constraint solver to stop asking for further help, though there
+  -- still is ambiguity. Therefore we ignore the wanted evidence in this test
+  -- and always deliver it.
+  if null eqUpDownCts && null eqJoinCts then do
+    printMsg "Simplification could not solve all constraints. Solving..."
+    let ctGraph = mkGraphView wanted
+    if isAllUnambiguous ctGraph then do
+      printMsg "Constraint graph is unambiguous proceed with solving..."
+      wantedCts <- getWantedPolymonadConstraints
+      derivedSolution <- solve wantedCts
+      unless (null derivedSolution) $ do
+        printMsg "Derived solutions:"
+        printObj derivedSolution
+      return $ TcPluginOk wantedEvidence derivedSolution
+    else do
+      printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."
+      return $ TcPluginOk wantedEvidence []
+  else do
+    printMsg "Simplification made progress. Not solving."
+    --printObj $ wantedEvidence
+    --printObj $ eqUpDownCts ++ eqJoinCts
+    return $ TcPluginOk wantedEvidence (eqUpDownCts ++ eqJoinCts)
 
 -- -----------------------------------------------------------------------------
 -- Utility Functions
