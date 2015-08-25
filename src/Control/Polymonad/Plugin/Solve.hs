@@ -20,6 +20,7 @@ import TcRnTypes ( Ct(..), CtLoc, CtEvidence(..) )
 import Control.Polymonad.Plugin.Utils ( isAmbiguousType, removeDup )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
+  , assert
   , throwPluginError )
 import Control.Polymonad.Plugin.PrincipalJoin ( principalJoinFor )
 import Control.Polymonad.Plugin.Constraint ( mkDerivedTypeEqCt', constraintPolymonadTyArgs' )
@@ -71,22 +72,20 @@ solve wantedCts = do
                    -- Get the outgoing types of the current type.
                  $ (applySubst subst) <$> outTypes tv
       -- Check of there are exactly one or two outgoing types.
-      if null outTys || length outTys > 2
-        then
-          throwPluginError "solve: There are either no or more then two outgoing types of a type variable."
-        else do
-          let inTys = (applySubst subst *** applySubst subst) <$> inTypes tv
-          -- Calculate the principal join. Be sure the
-          -- already solved type variables are replaced with their solution
-          -- before calculating the principal join.
-          mJoin <- principalJoinFor (Just tv) inTys outTys
-          case mJoin of
-            Just join -> do
-              -- We found a principal join, proceed solving the other variables.
-              restSubst <- calcSubst ((tv, join) : subst) tvs
-              -- Returns the full subtitution.
-              return $ (tv, join) : restSubst
-            Nothing -> throwPluginError "solve: Could not find a principal join."
+      assert (length outTys == 1 || length outTys == 2)
+        "solve: There are either no or more then two outgoing types of a type variable."
+      let inTys = (applySubst subst *** applySubst subst) <$> inTypes tv
+      -- Calculate the principal join. Be sure the
+      -- already solved type variables are replaced with their solution
+      -- before calculating the principal join.
+      mJoin <- principalJoinFor (Just tv) inTys outTys
+      case mJoin of
+        Just join -> do
+          -- We found a principal join, proceed solving the other variables.
+          restSubst <- calcSubst ((tv, join) : subst) tvs
+          -- Returns the full subtitution.
+          return $ (tv, join) : restSubst
+        Nothing -> throwPluginError "solve: Could not find a principal join."
 
 
 -- | Calculate the topological order of the type constructors involved with

@@ -20,6 +20,7 @@ import TcRnTypes ( Ct )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
+  , assert
   , throwPluginError
   , getCurrentPolymonad
   , getIdentityTyCon
@@ -49,9 +50,9 @@ import Control.Polymonad.Plugin.Constraint ( constraintPolymonadTyArgs )
 principalJoinFor :: Maybe TyVar -> [(Type, Type)] -> [Type] -> PmPluginM (Maybe Type)
 principalJoinFor mAmbTv f m = do
   -- Assert
-  when (null f) $ throwPluginError "principalJoinFor: F is empty"
-  when (null m) $ throwPluginError "principalJoinFor: m is empty"
-  when (length m > 2) $ throwPluginError "principalJoinFor: m contains more then two elements"
+  assert (not $ null f) "principalJoinFor: F is empty"
+  assert (not $ null m) "principalJoinFor: m is empty"
+  assert (length m <= 2) "principalJoinFor: m contains more then two elements"
   -- Get the type of the identity type constructor
   idT <- mkTyConTy <$> getIdentityTyCon
   -- The polymonad we want to work with

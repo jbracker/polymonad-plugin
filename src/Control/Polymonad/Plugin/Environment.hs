@@ -17,6 +17,7 @@ module Control.Polymonad.Plugin.Environment
   , withDebug, withoutDebug
   , throwPluginError
     -- * Debug and Error Output
+  , assert
   , printErr, printMsg, printObj
   , printDebug, printDebugObj
   ) where
@@ -24,7 +25,7 @@ module Control.Polymonad.Plugin.Environment
 import Data.Set ( Set )
 import Data.List ( nubBy )
 
-import Control.Monad ( when )
+import Control.Monad ( when, unless )
 import Control.Monad.Trans.Reader ( ReaderT, runReaderT, asks, local )
 import Control.Monad.Trans.Except ( ExceptT, runExceptT, throwE )
 import Control.Monad.Trans.Class ( lift )
@@ -202,6 +203,9 @@ withoutDebug = local (\env -> env { pmEnvDebugEnabled = False })
 -- -----------------------------------------------------------------------------
 -- Plugin debug and error printing
 -- -----------------------------------------------------------------------------
+
+assert :: Bool -> String -> PmPluginM ()
+assert cond msg = unless cond $ throwPluginError msg
 
 throwPluginError :: String -> PmPluginM a
 throwPluginError = lift . throwE
