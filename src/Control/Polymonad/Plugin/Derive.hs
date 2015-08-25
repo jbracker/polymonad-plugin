@@ -32,7 +32,8 @@ import Control.Polymonad.Plugin.Constraint
 --   Only returns the newly derived constraints. The argument constraints
 --   need to be given polymonad constraints.
 --
---   Note: Currently only functor constraints are derived.
+--   Note: Currently only functor constraints are derived. The existance of these
+--   instances is given by the functor law for each polymonad.
 derivePolymonadConstraints :: PmPluginM [Ct]
 derivePolymonadConstraints =  do
   -- Get the given polymonad constraints to derive from.
