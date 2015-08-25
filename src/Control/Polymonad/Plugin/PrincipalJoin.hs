@@ -99,7 +99,7 @@ principalJoinFor mAmbTv f m = do
 
     hasMatch :: (Type, Type, Type) -> ([ClsInst], [Ct]) -> PmPluginM Bool
     hasMatch tys@(t0, t1, t2) (pmInsts, pmCts) = do
-      instanceMatches <- forM pmInsts $ \pmInst -> do
+      instanceMatches <- forM pmInsts $ \pmInst ->
         case matchInstanceTyVars [t0, t1, t2] pmInst of
           Just args -> args `isInstanceOf` pmInst
           Nothing -> return False
