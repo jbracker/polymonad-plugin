@@ -13,15 +13,19 @@ module Control.Polymonad.Plugin.Environment
   , getGivenConstraints, getWantedConstraints
   , getCurrentPolymonad
   , getInstEnvs
+  , isDebugEnabled
+  , withDebug, withoutDebug
   , throwPluginError
     -- * Debug and Error Output
   , printErr, printMsg, printObj
+  , printDebug, printDebugObj
   ) where
 
 import Data.Set ( Set )
 import Data.List ( nubBy )
 
-import Control.Monad.Trans.Reader ( ReaderT, runReaderT, asks )
+import Control.Monad ( when )
+import Control.Monad.Trans.Reader ( ReaderT, runReaderT, asks, local )
 import Control.Monad.Trans.Except ( ExceptT, runExceptT, throwE )
 import Control.Monad.Trans.Class ( lift )
 
@@ -66,6 +70,7 @@ data PmPluginEnv = PmPluginEnv
   , pmEnvWantedConstraints :: [Ct]
   , pmEnvWantedPolymonadConstraints :: [Ct]
   , pmEnvCurrentPolymonad  :: (Set TyCon, [Type], [ClsInst], [Ct])
+  , pmEnvDebugEnabled :: Bool
   }
 
 -- | @runPmPlugin given wanted m@ runs the given polymonad plugin solver @m@
@@ -102,6 +107,7 @@ runPmPlugin givenCts wantedCts pmM = do
             , pmEnvGivenPolymonadConstraints = givenPmCts
             , pmEnvWantedPolymonadConstraints = wantedPmCts
             , pmEnvCurrentPolymonad = currPm
+            , pmEnvDebugEnabled = False
             }
         (Left errId, _) -> return $ Left
           $ pmErrMsg ("Could not find " ++ identityModuleName ++ " module:\n")
@@ -182,6 +188,17 @@ getCurrentPolymonad = asks pmEnvCurrentPolymonad
 getInstEnvs :: PmPluginM InstEnvs
 getInstEnvs = lift $ lift TcPluginM.getInstEnvs
 
+-- | Checks wether debugging mode is enabled.
+--   Debug mode allows debug messages to be printed.
+isDebugEnabled :: PmPluginM Bool
+isDebugEnabled = asks pmEnvDebugEnabled
+
+withDebug :: PmPluginM a -> PmPluginM a
+withDebug = local (\env -> env { pmEnvDebugEnabled = True })
+
+withoutDebug :: PmPluginM a -> PmPluginM a
+withoutDebug = local (\env -> env { pmEnvDebugEnabled = False })
+
 -- -----------------------------------------------------------------------------
 -- Plugin debug and error printing
 -- -----------------------------------------------------------------------------
@@ -200,6 +217,16 @@ printMsg = internalPrint . pmDebugMsg
 -- | Print a error message from the plugin.
 printErr :: String -> PmPluginM ()
 printErr = internalPrint . pmErrMsg
+
+printDebug :: String -> PmPluginM ()
+printDebug msg = do
+  debug <- isDebugEnabled
+  when debug $ internalPrint $ pmDebugMsg msg
+
+printDebugObj :: (Outputable o) => o -> PmPluginM ()
+printDebugObj obj = do
+  debug <- isDebugEnabled
+  when debug $ internalPrint $ pmObjMsg $ pprToStr obj
 
 -- | Internal function for printing from within the monad.
 internalPrint :: String -> PmPluginM ()
