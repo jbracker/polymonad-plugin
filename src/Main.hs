@@ -1,7 +1,7 @@
 
 -- General Polymonads ----------------------------------------------------------
 {-# LANGUAGE MultiParamTypeClasses #-}
--- {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -133,6 +133,24 @@ testId = do
   idOp True -- :: Identity ()
   _ <- return 'a'-- :: Identity P.Char
   return () -- :: Identity ()
+
+
+test1 :: P.Maybe [Int]
+test1 = do
+  i <- P.Just 300
+  j <- P.Just $ do
+    k <- [1,2,3]
+    l <- [4,5,6]
+    return $ k * l
+  return $ j P.++ [400,500,i]
+
+test2 :: (Polymonad m n p, Polymonad n Identity n) => (a -> b -> Int -> c) -> m a -> n b -> p [(c, Int)]
+test2 f ma nb = do
+  a <- ma
+  b <- nb
+  return $ do
+    i <- [1..3]
+    return (f a b i, i)
 
 
 {-
