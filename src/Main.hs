@@ -77,10 +77,7 @@ recv = SessionM undefined
 instance HoareMonad SessionM where
   hoareBind (SessionM a) f = let SessionM b = f a in SessionM b
   hoareRet a = SessionM a
-{-
-sequence3 :: forall m n p' p q a b c d. (Polymonad m n p', Polymonad p' p q) => m a -> n b -> p c -> q c
-sequence3 m n p = ((m >> n){- :: p' b -}) >> p
--}
+
 {-
 instance Polymonad IO IO IO where
   (>>=) = (P.>>=)
@@ -95,34 +92,6 @@ instance Polymonad Identity IO IO where
   (Identity a) >>= f = f a
 -}
 
-{-
-instance Polymonad (SessionM p q) (SessionM q r) (SessionM p r) where
-  (SessionM a) >>= f = let SessionM b = f a in SessionM b
-
-instance Polymonad (SessionM p q) Identity (SessionM p q) where
-  (SessionM a) >>= f = let Identity b = f a in SessionM b
-
---instance Polymonad Identity Identity (SessionM p p) where
---  (Identity a) >>= f = let Identity b = f a in SessionM b
-
-instance Polymonad Identity (SessionM p q) (SessionM p q) where
-  (Identity a) >>= f = let SessionM b = f a in SessionM b
--}
-{-
-testSession1 :: SessionM (Send Bool (Recv () End)) End ()
-testSession1 = do
-  send True -- :: SessionM (Send Bool (Recv () End)) (Recv () End) ()
-  () <- recv -- :: SessionM (Recv () End) End ()
-  return () -- :: SessionM End End ()
--}
-
-{-
-testSession2 :: SessionM (Send Bool (Recv () End)) End ()
-testSession2 =
-  (send True :: SessionM (Send Bool (Recv () End)) (Recv () End) ()) >>= \_ ->
-  (recv :: SessionM (Recv () End) End ()) >>= \_ ->
-  (return () :: SessionM End End ())
--}
 
 {- TODO: Temporary while writing library -}
 idOp :: a -> Identity ()
@@ -151,11 +120,3 @@ test2 f ma nb = do
   return $ do
     i <- [1..3]
     return (f a b i, i)
-
-
-{-
-test :: Identity Bool
-test = do
-  x <- return True
-  return x
--}
