@@ -17,11 +17,12 @@ import TcRnTypes
   , TcPlugin(..), TcPluginResult(..) )
 import TcPluginM ( TcPluginM, tcPluginIO )
 
-import Control.Polymonad.Plugin.Log ( groupFormatSrcSpans )
+import Control.Polymonad.Plugin.Log ( formatGroupSrcSpans )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getWantedPolymonadConstraints, getGivenPolymonadConstraints
-  , printMsg, printObj )
+  , printMsg, printObj
+  , printConstraints )
 import Control.Polymonad.Plugin.Constraint
   ( isFullyAppliedClassConstraint
   , constraintTopAmbiguousTyVars
@@ -83,12 +84,12 @@ polymonadSolve s given derived wanted = do
 
 polymonadSolve' :: PolymonadState -> PmPluginM TcPluginResult
 polymonadSolve' _s = do
-  --printMsg "Given constraints:"
-  --printObj =<< getGivenPolymonadConstraints
-  --printMsg "Wanted constraints:"
-  --printObj =<< getWantedPolymonadConstraints
+  printMsg "Given constraints:"
+  printConstraints False =<< getGivenPolymonadConstraints
+  printMsg "Wanted constraints:"
+  printConstraints False =<< getWantedPolymonadConstraints
   --printMsg "Selected Polymonad:"
-  --printObj =<< getCurrentPolymonad
+  --printConstraints False =<< getCurrentPolymonad
   -- Derive Constraints --------------------------------------------------------
   -- Deriving constraints is ignored for now, because for some reason GHCs
   -- constraint solver throws some of the derived constraints away and says
@@ -108,7 +109,6 @@ polymonadSolve' _s = do
   -- Simplification ------------------------------------------------------------
   printMsg "Try simplification of constraints..."
   wanted <- getWantedPolymonadConstraints
-  printMsg $ "Wanted constraints from: " ++ (groupFormatSrcSpans . fmap constraintSourceLocation $ wanted)
   let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
 
   -- First, if we have any constraint that does not contain type variables,
@@ -148,7 +148,7 @@ polymonadSolve' _s = do
       derivedSolution <- solve wantedCts
       unless (null derivedSolution) $ do
         printMsg "Derived solutions:"
-        printObj derivedSolution
+        printConstraints False derivedSolution
       return $ TcPluginOk wantedEvidence derivedSolution
     else do
       printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."

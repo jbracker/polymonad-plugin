@@ -20,12 +20,13 @@ module Control.Polymonad.Plugin.Environment
   , assert
   , printErr, printMsg, printObj
   , printDebug, printDebugObj
+  , printConstraints
   ) where
 
 import Data.Set ( Set )
-import Data.List ( nubBy )
+import Data.List ( nubBy, intercalate, groupBy )
 
-import Control.Monad ( when, unless )
+import Control.Monad ( when, unless, forM_ )
 import Control.Monad.Trans.Reader ( ReaderT, runReaderT, asks, local )
 import Control.Monad.Trans.Except ( ExceptT, runExceptT, throwE )
 import Control.Monad.Trans.Class ( lift )
@@ -41,11 +42,15 @@ import TcRnTypes
 import TcPluginM ( TcPluginM, tcPluginIO )
 import qualified TcPluginM
 import Outputable ( Outputable )
+import SrcLoc ( srcSpanFileName_maybe )
+import FastString ( unpackFS )
 
 import Control.Polymonad.Plugin.Log
-  ( pmErrMsg, pmDebugMsg, pmObjMsg, pprToStr )
+  ( pmErrMsg, pmDebugMsg, pmObjMsg
+  , pprToStr
+  , formatConstraint )
 import Control.Polymonad.Plugin.Constraint
-  ( isClassConstraint )
+  ( isClassConstraint, constraintSourceLocation )
 import Control.Polymonad.Plugin.Detect
   ( polymonadModuleName, polymonadClassName
   , identityModuleName, identityTyConName
@@ -237,3 +242,18 @@ printDebugObj obj = do
 -- | Internal function for printing from within the monad.
 internalPrint :: String -> PmPluginM ()
 internalPrint = lift . lift . tcPluginIO . putStr
+
+printFormattedObj :: Bool -> String -> PmPluginM ()
+printFormattedObj isDebug obj = do
+  debug <- isDebugEnabled
+  when (not isDebug || debug) $ internalPrint $ pmObjMsg obj
+
+printConstraints :: Bool -> [Ct] -> PmPluginM ()
+printConstraints debug cts = do
+  forM_ groupedCts $ \(file, ctGroup) -> do
+    printFormattedObj debug $ maybe "From unknown file:" (("From " ++) . (++":") . unpackFS) file
+    mapM_ (printFormattedObj debug . formatConstraint) ctGroup
+  where
+    groupedCts = (\ctGroup -> (getCtFile $ head ctGroup, ctGroup)) <$> groupBy eqFileName cts
+    eqFileName ct1 ct2 = getCtFile ct1 == getCtFile ct2
+    getCtFile = srcSpanFileName_maybe . constraintSourceLocation

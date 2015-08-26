@@ -3,7 +3,8 @@
 module Control.Polymonad.Plugin.Log
   ( pprToStr, missingCaseError
   , pmErrMsg, pmDebugMsg, pmObjMsg
-  , groupFormatSrcSpans
+  , formatGroupSrcSpans
+  , formatConstraint, formatSpan
   -- * Debug Functions
   , printTrace, printObjTrace
   ) where
@@ -21,8 +22,12 @@ import Outputable
   ( Outputable( ppr )
   , showSDocUnsafe )
 import FastString ( unpackFS )
+import TcRnTypes
+  ( Ct(..), CtFlavour(..), CtLoc(..)
+  , ctFlavour, ctPred )
 
 import Control.Polymonad.Plugin.Utils ( removeDup )
+import Control.Polymonad.Plugin.Constraint ( constraintSourceLocation )
 
 -- | Convert some generic outputable to a string (Unsafe).
 pprToStr :: Outputable o => o -> String
@@ -56,9 +61,13 @@ missingCaseError :: (Outputable o) => String -> Maybe o -> a
 missingCaseError funName (Just val) = error $ "Missing case in '" ++ funName ++ "' for " ++ pprToStr val
 missingCaseError funName Nothing    = error $ "Missing case in '" ++ funName ++ "'"
 
+-- -----------------------------------------------------------------------------
+-- Formatting
+-- -----------------------------------------------------------------------------
+
 -- | Format a list of source spans by grouping spans in the same file together.
-groupFormatSrcSpans :: [SrcSpan] -> String
-groupFormatSrcSpans spans = unwords $ fmap formatSpanGroup groupedSpans
+formatGroupSrcSpans :: [SrcSpan] -> String
+formatGroupSrcSpans spans = unwords $ fmap formatSpanGroup groupedSpans
   where
     formatSpanGroup :: [SrcSpan] -> String
     formatSpanGroup [] = ""
@@ -70,16 +79,38 @@ groupFormatSrcSpans spans = unwords $ fmap formatSpanGroup groupedSpans
     groupedSpans = groupBy eqFileName $ removeDup spans
     eqFileName s1 s2 = srcSpanFileName_maybe s1 == srcSpanFileName_maybe s2
 
-    formatSpan :: SrcSpan -> String
-    formatSpan (UnhelpfulSpan str) = unpackFS str
-    formatSpan (RealSrcSpan s) =
-      show (srcSpanStartLine s) ++ ":" ++
-      show (srcSpanStartCol s) ++ "-" ++
-      (if srcSpanStartLine s /= srcSpanEndLine s then show (srcSpanEndLine s) ++ ":" else "") ++
-      show (srcSpanEndCol s)
+formatSpan :: SrcSpan -> String
+formatSpan (UnhelpfulSpan str) = unpackFS str
+formatSpan (RealSrcSpan s) =
+  show (srcSpanStartLine s) ++ ":" ++
+  show (srcSpanStartCol s) ++ "-" ++
+  (if srcSpanStartLine s /= srcSpanEndLine s then show (srcSpanEndLine s) ++ ":" else "") ++
+  show (srcSpanEndCol s)
 
+formatConstraint :: Ct -> String
+formatConstraint ct
+  =  "["  ++ formatCtFlavour ct
+  ++ "] " ++ formatCtType ct
+  ++ " (" ++ formatSpan (constraintSourceLocation ct)
+  ++ ", " ++ formatCtDataCon ct
+  ++ ")"
+  where
+    formatCtDataCon :: Ct -> String
+    formatCtDataCon c = case c of
+      CDictCan      {} -> "CDictCan"
+      CIrredEvCan   {} -> "CIrredEvCan"
+      CTyEqCan      {} -> "CTyEqCan"
+      CFunEqCan     {} -> "CFunEqCan"
+      CNonCanonical {} -> "CNonCanonical"
+      CHoleCan      {} -> "CHoleCan"
+    formatCtFlavour :: Ct -> String
+    formatCtFlavour c = case ctFlavour c of
+      Given   -> "G"
+      Wanted  -> "W"
+      Derived -> "D"
+    formatCtType :: Ct -> String
+    formatCtType c = pprToStr $ ctPred c
 
--- ++ (intercalate ", " . fmap pprToStr . removeDup . )
 -- -----------------------------------------------------------------------------
 -- Debug Functions
 -- -----------------------------------------------------------------------------
