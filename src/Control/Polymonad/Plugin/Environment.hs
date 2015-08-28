@@ -63,20 +63,36 @@ import Control.Polymonad.Plugin.Detect
 -- Plugin Monad
 -- -----------------------------------------------------------------------------
 
+-- | The plugin monad.
 type PmPluginM = ReaderT PmPluginEnv (ExceptT String TcPluginM)
 
+-- | The read-only environent of the plugin.
 data PmPluginEnv = PmPluginEnv
   { pmEnvPolymonadModule    :: Module
+  -- ^ The 'Control.Polymonad' module.
   , pmEnvPolymonadClass     :: Class
+  -- ^ The 'Polymonad' class.
   , pmEnvPolymonadInstances :: [ClsInst]
+  -- ^ All available polymonad instances
+  --   (that are related to the currently selected polymonad).
   , pmEnvIdentityModule :: Module
+  -- ^ The 'Data.Functor.Identity' module (TODO: don't use this).
   , pmEnvIdentityTyCon  :: TyCon
+  -- ^ The 'Identity' type constructor.
   , pmEnvGivenConstraints  :: [Ct]
+  -- ^ The given and derived constraints (all of them).
   , pmEnvGivenPolymonadConstraints :: [Ct]
+  -- ^ The given and derived polymonad constraints
+  --   (that are related to the currently selected polymonad).
   , pmEnvWantedConstraints :: [Ct]
+  -- ^ The wanted constraints (all of them).
   , pmEnvWantedPolymonadConstraints :: [Ct]
+  -- ^ The wanted polymonad constraints
+  --   (that are related to the currently selected polymonad).
   , pmEnvCurrentPolymonad  :: (Set TyCon, [Type], [ClsInst], [Ct])
+  -- ^ The currently selected polymonad.
   , pmEnvDebugEnabled :: Bool
+  -- ^ If debugging messages are enabled or not.
   }
 
 -- | @runPmPlugin givenAndDerived wanted m@ runs the given polymonad plugin solver @m@

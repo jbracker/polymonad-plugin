@@ -1,4 +1,5 @@
 
+-- | Code to derive new polymonad constraints from existing ones.
 module Control.Polymonad.Plugin.Derive
   ( derivePolymonadConstraints ) where
 
