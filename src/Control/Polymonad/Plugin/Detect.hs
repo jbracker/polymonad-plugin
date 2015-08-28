@@ -25,6 +25,8 @@ module Control.Polymonad.Plugin.Detect
 import Data.Maybe ( catMaybes, listToMaybe )
 import Data.Set ( Set )
 import qualified Data.Set as S
+import Data.Graph.Inductive.Graph ( mkGraph )
+import Data.Graph.Inductive.PatriciaTree ( Gr )
 
 import Control.Monad ( forM, liftM )
 
@@ -172,6 +174,11 @@ selectPolymonadByConnectedComponent :: SubsetSelectionFunction
 selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
   -- TODO: Implement
   return []
+  where
+    -- The nodes of our graph are ambiguous type variable. The edges are the
+    -- constraints that created them.
+    componentGraph :: Gr Type Ct
+    componentGraph = mkGraph undefined undefined
 
 -- | Subset selection algorithm to select the correct subset of
 --   type constructor and bind instances that belong to the polymonad
