@@ -16,6 +16,8 @@ module Control.Polymonad.Plugin.Detect
   , findIdentityTyCon
     -- * Other Utilities
   , findPolymonadInstancesInScope
+    -- * Subset Selection Algorithms
+  , SubsetSelectionFunction
   , selectPolymonadSubset
   ) where
 
@@ -148,18 +150,27 @@ findIdentityTyCon = do
     _ -> findTyConByNameAndModule (mkTcOcc identityTyConName) $ catMaybes [mIdModule, mPolymonadMdl]
 
 -- -----------------------------------------------------------------------------
--- Utility Functions
+-- Subset Selection
 -- -----------------------------------------------------------------------------
 
--- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.
-findPolymonadInstancesInScope :: TcPluginM [ClsInst]
-findPolymonadInstancesInScope = do
-  mPolymonadClass <- findPolymonadClass
-  case mPolymonadClass of
-    Just polymonadClass -> do
-      instEnvs <- TcPluginM.getInstEnvs
-      return $ classInstances instEnvs polymonadClass
-    Nothing -> return []
+-- | Type signature of a subset selection function.
+--
+--   @subsetSelectionFunction idTc pmCls pmInsts (givenDerivedCts, wantedCts)@
+--
+--   * @idTc@ - The 'Identity' type constructor.
+--   * @pmCls@ - The 'Polymonad' class.
+--   * @givenDerivedCts@ - The given and derived constraints.
+--   * @wantedCts@ - The wanted constraints
+--
+--   Returns the type constructors, type variables (partially applied) and
+--   class instances and given/derived constraints that make up each detected polymonad.
+type SubsetSelectionFunction =
+  TyCon -> Class -> [ClsInst] -> ([Ct], [Ct]) -> TcPluginM [(Set TyCon, [Type], [ClsInst], [Ct])]
+
+selectPolymonadByConnectedComponent :: SubsetSelectionFunction
+selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
+  -- TODO: Implement
+  return []
 
 -- | Subset selection algorithm to select the correct subset of
 --   type constructor and bind instances that belong to the polymonad
@@ -186,6 +197,20 @@ selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
   where
     givenPmCts = filter (\ct -> isClassConstraint pmCls ct && (isDerivedCt ct || isGivenCt ct)) givenCts
     wantedPmCts = filter (\ct -> isClassConstraint pmCls ct && isWantedCt ct) wantedCts
+
+-- -----------------------------------------------------------------------------
+-- Utility Functions
+-- -----------------------------------------------------------------------------
+
+-- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.
+findPolymonadInstancesInScope :: TcPluginM [ClsInst]
+findPolymonadInstancesInScope = do
+  mPolymonadClass <- findPolymonadClass
+  case mPolymonadClass of
+    Just polymonadClass -> do
+      instEnvs <- TcPluginM.getInstEnvs
+      return $ classInstances instEnvs polymonadClass
+    Nothing -> return []
 
 -- | Filters the list of polymonads constraints, to only keep those
 --   that can be applied to the given type constructors.
