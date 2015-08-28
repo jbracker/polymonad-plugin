@@ -8,7 +8,7 @@ import qualified Data.Set as S
 
 import Type ( TyVar )
 
-import Control.Polymonad.Plugin.Log ( printTrace, printObjTrace )
+--import Control.Polymonad.Plugin.Log ( printTrace, printObjTrace )
 import Control.Polymonad.Plugin.GraphView
 
 -- | Check if the given 'GraphView' is unambiguous in sense of

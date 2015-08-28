@@ -6,7 +6,7 @@ module Control.Polymonad.Plugin.Log
   , formatGroupSrcSpans
   , formatConstraint, formatSpan
   -- * Debug Functions
-  , printTrace, printObjTrace
+  , printTrace, printObjTrace, trace
   ) where
 
 import Data.List ( groupBy, intercalate )
@@ -23,7 +23,7 @@ import Outputable
   , showSDocUnsafe )
 import FastString ( unpackFS )
 import TcRnTypes
-  ( Ct(..), CtFlavour(..), CtLoc(..)
+  ( Ct(..), CtFlavour(..)--, CtLoc(..)
   , ctFlavour, ctPred )
 
 import Control.Polymonad.Plugin.Utils ( removeDup )

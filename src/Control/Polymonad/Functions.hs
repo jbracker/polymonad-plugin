@@ -38,7 +38,6 @@ import Prelude
   --, otherwise
   , not )
 --import Data.Foldable ( Foldable(..) )
-import Data.Functor.Identity ( Identity )
 
 import Control.Polymonad
 

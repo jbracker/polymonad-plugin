@@ -24,7 +24,7 @@ module Control.Polymonad.Plugin.Environment
   ) where
 
 import Data.Set ( Set )
-import Data.List ( nubBy, intercalate, groupBy )
+import Data.List ( nubBy, groupBy )
 
 import Control.Monad ( when, unless, forM_ )
 import Control.Monad.Trans.Reader ( ReaderT, runReaderT, asks, local )

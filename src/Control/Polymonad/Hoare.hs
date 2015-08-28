@@ -23,8 +23,6 @@ module Control.Polymonad.Hoare
   ( HoareMonad(..)
   ) where
 
-import Data.Functor.Identity ( Identity( runIdentity ) )
-
 import Control.Polymonad
 
 -- | A generalized monad that models hoare triples.

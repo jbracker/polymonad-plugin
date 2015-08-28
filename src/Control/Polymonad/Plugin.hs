@@ -3,7 +3,7 @@ module Control.Polymonad.Plugin
   ( plugin ) where
 
 import Data.Maybe ( catMaybes )
-import Data.List ( partition, intercalate )
+import Data.List ( partition )
 --import Data.Set ( Set )
 import qualified Data.Set as S
 
@@ -17,16 +17,15 @@ import TcRnTypes
   , TcPlugin(..), TcPluginResult(..) )
 import TcPluginM ( TcPluginM, tcPluginIO )
 
-import Control.Polymonad.Plugin.Log ( formatGroupSrcSpans )
+--import Control.Polymonad.Plugin.Log ( formatGroupSrcSpans )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getWantedPolymonadConstraints, getGivenPolymonadConstraints
-  , printMsg, printObj
+  , printMsg --, printObj
   , printConstraints )
 import Control.Polymonad.Plugin.Constraint
   ( isFullyAppliedClassConstraint
-  , constraintTopAmbiguousTyVars
-  , constraintSourceLocation )
+  , constraintTopAmbiguousTyVars )
 import Control.Polymonad.Plugin.Core
   ( pickInstanceForAppliedConstraint )
 import Control.Polymonad.Plugin.GraphView
@@ -38,8 +37,7 @@ import Control.Polymonad.Plugin.Ambiguity
 import Control.Polymonad.Plugin.Simplification
   ( simplifyAllUpDown, simplifyAllJoin
   , simplifiedTvsToConstraints )
-import Control.Polymonad.Plugin.Derive
-  ( derivePolymonadConstraints )
+-- import Control.Polymonad.Plugin.Derive ( derivePolymonadConstraints )
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -73,7 +71,7 @@ polymonadSolve s given derived wanted = do
   res <- runPmPlugin (given ++ derived) wanted $ do
     if not $ null wanted
       then do
-        printMsg "SOLVE..."
+        printMsg "INVOKE POLYMONAD PLUGIN..."
         polymonadSolve' s
       else return noResult
   case res of

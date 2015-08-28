@@ -7,7 +7,7 @@ import Data.List ( nubBy )
 import Data.Maybe ( catMaybes )
 import qualified Data.Set as S
 
-import Control.Monad ( forM, when )
+import Control.Monad ( forM ) --, when )
 import Control.Arrow ( (***) )
 
 import Type
