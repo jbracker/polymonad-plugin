@@ -18,6 +18,7 @@ module Control.Polymonad.Plugin.Detect
   , findPolymonadInstancesInScope
     -- * Subset Selection Algorithms
   , SubsetSelectionFunction
+  , selectPolymonadByConnectedComponent
   , selectPolymonadSubset
   ) where
 
