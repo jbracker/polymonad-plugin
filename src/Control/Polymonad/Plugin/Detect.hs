@@ -74,15 +74,19 @@ import Control.Polymonad.Plugin.Constraint
 -- Constant Names (Magic Numbers...)
 -- -----------------------------------------------------------------------------
 
+-- | Name of the 'Control.Polymonad' module.
 polymonadModuleName :: String
 polymonadModuleName = "Control.Polymonad"
 
+-- | Name of the 'Polymonad' type class.
 polymonadClassName :: String
 polymonadClassName = "Polymonad"
 
+-- | Name of the 'Data.Functor.Identity' module.
 identityModuleName :: String
 identityModuleName = "Data.Functor.Identity"
 
+-- | Name of the 'Identity' type constructor.
 identityTyConName :: String
 identityTyConName = "Identity"
 
@@ -132,6 +136,9 @@ findPolymonadClass = do
 findIdentityModule :: TcPluginM (Either String Module)
 findIdentityModule = getModule (Just basePackageKey) identityModuleName
 
+-- | Tries to find the identity type constructor in the imported
+--   modules. Will accept the constructor if it is imported through
+--   either 'Data.Functor.Identity' or 'Control.Polymonad'.
 findIdentityTyCon :: TcPluginM (Maybe TyCon)
 findIdentityTyCon = do
   mIdModule <- either (const Nothing) Just<$> findIdentityModule
