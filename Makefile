@@ -1,7 +1,9 @@
 
+SandboxExists = [ -f ./cabal.sandbox.config ] || [ -d ./.cabal-sandbox ]
 
 all:
-	[ -f ./cabal.sandbox.config ] \
-		|| [ -d ./.cabal-sandbox ] \
-		|| cabal sandbox init
+	$(SandboxExists) || cabal sandbox init
 	cabal install
+
+clean:
+	cabal clean
