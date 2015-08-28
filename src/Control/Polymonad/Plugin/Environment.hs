@@ -201,9 +201,11 @@ getInstEnvs = lift $ lift TcPluginM.getInstEnvs
 isDebugEnabled :: PmPluginM Bool
 isDebugEnabled = asks pmEnvDebugEnabled
 
+-- | Enable debug mode for the given computation.
 withDebug :: PmPluginM a -> PmPluginM a
 withDebug = local (\env -> env { pmEnvDebugEnabled = True })
 
+-- | Disable debug mode for the given computation.
 withoutDebug :: PmPluginM a -> PmPluginM a
 withoutDebug = local (\env -> env { pmEnvDebugEnabled = False })
 
@@ -211,9 +213,14 @@ withoutDebug = local (\env -> env { pmEnvDebugEnabled = False })
 -- Plugin debug and error printing
 -- -----------------------------------------------------------------------------
 
+-- | Assert the given condition. If the condition does not
+--   evaluate to 'True', an error with the given message will
+--   be thrown the plugin aborts.
 assert :: Bool -> String -> PmPluginM ()
 assert cond msg = unless cond $ throwPluginError msg
 
+-- | Throw an error with the given message in the plugin.
+--   This will abort all further actions.
 throwPluginError :: String -> PmPluginM a
 throwPluginError = lift . throwE
 
@@ -229,11 +236,13 @@ printMsg = internalPrint . pmDebugMsg
 printErr :: String -> PmPluginM ()
 printErr = internalPrint . pmErrMsg
 
+-- | Print a message from the plugin. It is only displayed if debugging is enabled.
 printDebug :: String -> PmPluginM ()
 printDebug msg = do
   debug <- isDebugEnabled
   when debug $ internalPrint $ pmDebugMsg msg
 
+-- | Print an object. If is only displayed if debugging is enabled.
 printDebugObj :: (Outputable o) => o -> PmPluginM ()
 printDebugObj obj = do
   debug <- isDebugEnabled
@@ -243,11 +252,17 @@ printDebugObj obj = do
 internalPrint :: String -> PmPluginM ()
 internalPrint = lift . lift . tcPluginIO . putStr
 
+-- | Print the given string as if it was an object. This allows custom
+--   formatting of object. The boolean indicates wether the debug mode
+--   is ignored or this message only appears when debugging.
 printFormattedObj :: Bool -> String -> PmPluginM ()
 printFormattedObj isDebug obj = do
   debug <- isDebugEnabled
   when (not isDebug || debug) $ internalPrint $ pmObjMsg obj
 
+-- | Print the given constraints in the plugins custom format.
+--   The boolean indicates wether the debug mode
+--   is ignored or this message only appears when debugging.
 printConstraints :: Bool -> [Ct] -> PmPluginM ()
 printConstraints debug cts = do
   forM_ groupedCts $ \(file, ctGroup) -> do
