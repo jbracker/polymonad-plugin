@@ -79,6 +79,7 @@ formatGroupSrcSpans spans = unwords $ fmap formatSpanGroup groupedSpans
     groupedSpans = groupBy eqFileName $ removeDup spans
     eqFileName s1 s2 = srcSpanFileName_maybe s1 == srcSpanFileName_maybe s2
 
+-- | Format a source span.
 formatSpan :: SrcSpan -> String
 formatSpan (UnhelpfulSpan str) = unpackFS str
 formatSpan (RealSrcSpan s) =
@@ -87,6 +88,13 @@ formatSpan (RealSrcSpan s) =
   (if srcSpanStartLine s /= srcSpanEndLine s then show (srcSpanEndLine s) ++ ":" else "") ++
   show (srcSpanEndCol s)
 
+-- | Format a constraint in a readable way, without displaying information
+--   irrelevant to the plugin.
+--
+--   /Example:/
+--   
+--   > [G] Polymonad m Identity m (129:12-131:41, CDictCan)
+--   > [D] m_a1kdW ~ m (134:3-14, CNonCanonical)
 formatConstraint :: Ct -> String
 formatConstraint ct
   =  "["  ++ formatCtFlavour ct

@@ -1,4 +1,5 @@
 
+-- | Checks of ambiguity for 'GraphView'.
 module Control.Polymonad.Plugin.Ambiguity
   ( isAllUnambiguous ) where
 
@@ -41,9 +42,9 @@ ambiguousBadPaths gv = catMaybes
   $  [ getPath gv (Pi2 i) (Pi0 i) | Pi2 i <- S.toList $ gvPiNodes gv ]
   ++ [ getPath gv (Pi2 i) (Pi1 i) | Pi2 i <- S.toList $ gvPiNodes gv ]
 
--- Check if the given graph view is unambiguous as described in
--- definition 7 in the "Polymonad Programming" paper by looking
--- at all subgraphs with fewer unification edges.
+-- | Check if the given graph view is unambiguous as described in
+--   definition 7 in the "Polymonad Programming" paper by looking
+--   at all subgraphs with fewer unification edges.
 isAllUnambiguous :: GraphView -> Bool
 isAllUnambiguous gvOrig = isAllUnambiguous' gvSmall
   where
