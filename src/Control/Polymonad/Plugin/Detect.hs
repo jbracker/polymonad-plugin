@@ -134,10 +134,11 @@ findIdentityModule = getModule (Just basePackageKey) identityModuleName
 
 findIdentityTyCon :: TcPluginM (Maybe TyCon)
 findIdentityTyCon = do
-  mIdModule <- findIdentityModule
-  case mIdModule of
-    Right idMdl -> findTyConByNameAndModule (mkTcOcc identityTyConName) idMdl
-    Left _err -> return Nothing
+  mIdModule <- either (const Nothing) Just<$> findIdentityModule
+  mPolymonadMdl <- either (const Nothing) Just <$> findPolymonadModule
+  case (mIdModule, mPolymonadMdl) of
+    (Nothing, Nothing) -> return Nothing
+    _ -> findTyConByNameAndModule (mkTcOcc identityTyConName) $ catMaybes [mIdModule, mPolymonadMdl]
 
 -- -----------------------------------------------------------------------------
 -- Utility Functions
@@ -271,10 +272,11 @@ getModule pkgKeyToFind mdlNameToFind = do
     _ -> Nothing
 -}
 
--- | Try to find a type constructor given its name and the module it
---   was originally exported from.
-findTyConByNameAndModule :: OccName -> Module -> TcPluginM (Maybe TyCon)
-findTyConByNameAndModule occName mdl = do
+-- | Try to find a type constructor given its name and the modules it
+--   is exported from. The type constructor needs to be imported from
+--   one of these modules.
+findTyConByNameAndModule :: OccName -> [Module] -> TcPluginM (Maybe TyCon)
+findTyConByNameAndModule occName mdls = do
   -- Look at the global environment of names that are in scope.
   rdrEnv <- tcg_rdr_env . fst <$> getEnvs
   -- Search for things that have the same name as what we are looking for.
@@ -282,7 +284,7 @@ findTyConByNameAndModule occName mdl = do
   -- Only keep things that are originally from our module and have no parents,
   -- because type constructors are declared on top-level.
   let relResults = filter
-        (\e -> (e `isOriginallyImportedFrom` mdl) && hasNoParent e)
+        (\e -> any (e `isImportedFrom`) mdls && hasNoParent e)
         envResultElem
   -- Find all the typed things that have the same name as the stuff we found.
   -- Also directly convert them into type constructors if possible
@@ -305,9 +307,9 @@ hasNoParent rdrElt = case gre_par rdrElt of
   NoParent -> True
   _ -> False
 
--- | Check if the given element has its origin in the given module.
-isOriginallyImportedFrom :: GlobalRdrElt -> Module -> Bool
-isOriginallyImportedFrom rdrElt mdl = case gre_prov rdrElt of
+-- | Check if the given element is imported from the given module.
+isImportedFrom :: GlobalRdrElt -> Module -> Bool
+isImportedFrom rdrElt mdl = case gre_prov rdrElt of
   LocalDef -> False
-  Imported [] -> False -- Just for safety
+  Imported [] -> False
   Imported impSpecs -> moduleName mdl == importSpecModule (last impSpecs)
