@@ -49,8 +49,10 @@ import Control.Polymonad.Plugin.Utils ( eqTyVar, removeDup )
 import Control.Polymonad.Plugin.Constraint
   ( constraintPolymonadTyArgs' )
 
+-- | Identifier of a 'PiNode'.
 type PiNodeId = Int
 
+-- | Association of constraints with 'PiNode's.
 type PiNodeConstraints = Map PiNodeId (Ct, Type, Type, Type)
 
 -- | A node in the 'GraphView'.
@@ -68,6 +70,7 @@ data EdgeType
          --   same bind constraints.
   deriving ( Eq, Ord, Show )
 
+-- | Just 'show's the 'EdgeType'.
 instance O.Outputable EdgeType where
   ppr = O.text . show
 
@@ -94,6 +97,7 @@ piNodeType' constr (Pi0 i) = (\(_, t, _, _) -> t) <$> M.lookup i constr
 piNodeType' constr (Pi1 i) = (\(_, _, t, _) -> t) <$> M.lookup i constr
 piNodeType' constr (Pi2 i) = (\(_, _, _, t) -> t) <$> M.lookup i constr
 
+-- | Returns all labeled edges in the graph.
 getLEdges :: GraphView -> [LEdge EdgeType]
 getLEdges = labEdges . gvGraph
 
@@ -158,13 +162,16 @@ inEdges gv node = inn (gvGraph gv) (piNodeToNode node)
 outEdges :: GraphView -> PiNode -> [LEdge EdgeType]
 outEdges gv node = out (gvGraph gv) (piNodeToNode node)
 
+-- | Check if the given edge is adjacent to a node that is ambiguous.
 isAdjToAmbiguousNodes :: GraphView -> LEdge EdgeType -> Bool
 isAdjToAmbiguousNodes gv (n, n', _) = isAmbiguousNode gv (nodeToPiNode n) || isAmbiguousNode gv (nodeToPiNode n')
 
+-- | Check if the given node in the graph is ambiguous.
 isAmbiguousNode :: GraphView -> PiNode -> Bool
 isAmbiguousNode gv piN = maybe False isAmbiguousTyVar
   $ piNodeType gv piN >>= getTyVar_maybe
 
+-- | Check if there is an edge of the given type between the two given nodes.
 isEdge :: GraphView -> PiNode -> PiNode -> EdgeType -> Bool
 isEdge gv a b t = hasLEdge (gvGraph gv) (piNodeToNode a, piNodeToNode b, t)
 
@@ -263,11 +270,15 @@ mkEdge p q e = (piNodeToNode p, piNodeToNode q, e)
 mkUnifEdge :: PiNode -> PiNode -> [LEdge EdgeType]
 mkUnifEdge p q = [ mkEdge p q Unif, mkEdge q p Unif]
 
+-- | Remove edges from the given list, iff there already is an edge representing
+--   them in the list.
 removeDupUndirectedEdges :: [LEdge EdgeType] -> [LEdge EdgeType]
 removeDupUndirectedEdges [] = []
 removeDupUndirectedEdges (e@(p, q, Unif):es) = e : removeDupUndirectedEdges (filter (\e' -> e' /= e && e' /= (q, p, Unif)) es)
 removeDupUndirectedEdges (e:es) = e : removeDupUndirectedEdges es
 
+-- | Returns all ambiguous type variables that are in the constraints of
+--   the graph.
 getAmbiguousConstraintTyVars :: GraphView -> Set TyVar
 getAmbiguousConstraintTyVars = collectAmbiguousTyVars . gvPiNodeConstraints
 
@@ -294,18 +305,20 @@ collectAmbiguousTyVars cts = S.unions $ collectAmbTVs <$> M.elems cts
 noPathExists :: GraphView -> PiNode -> PiNode -> Bool
 noPathExists gv p q = null $ getPath gv p q
 
+-- | Tries to find a path between the two given nodes.
 getPath :: GraphView -> PiNode -> PiNode -> Maybe [PiNode]
 getPath gv p q = if null path then Nothing else Just path
   where path = nodeToPiNode <$> esp (piNodeToNode p) (piNodeToNode q) (gvGraph gv)
-
 
 -- -----------------------------------------------------------------------------
 -- Unimportant Instances
 -- -----------------------------------------------------------------------------
 
+-- | Just 'show' the 'PiNode'.
 instance Outputable PiNode where
   ppr = O.text . show
 
+-- | Format the 'GraphView' as an instance of 'Show' would do.
 instance Outputable GraphView where
   ppr gv = O.text "GraphView {" O.$$
        O.nest 2 ( ppr (gvPiNodeConstraints gv)
