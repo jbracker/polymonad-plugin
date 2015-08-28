@@ -49,9 +49,15 @@ import Control.Polymonad.Plugin.Utils
 -- Constraint Creation
 -- -----------------------------------------------------------------------------
 
+-- | Create a derived type equality constraint. The constraint
+--   will be located at the location of the given constraints
+--   and equate the given variable with the given type.
 mkDerivedTypeEqCt :: Ct -> TyVar -> Type -> Ct
 mkDerivedTypeEqCt ct = mkDerivedTypeEqCt' (constraintLocation ct)
 
+-- | Create a derived type equality constraint. The constraint
+--   will be located at the given location
+--   and equate the given variable with the given type.
 mkDerivedTypeEqCt' :: CtLoc -> TyVar -> Type -> Ct
 mkDerivedTypeEqCt' loc tv ty = mkNonCanonical CtDerived
   { ctev_pred = mkTcEqPred (mkTyVarTy tv) ty

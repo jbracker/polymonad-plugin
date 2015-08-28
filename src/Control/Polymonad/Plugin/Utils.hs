@@ -79,8 +79,8 @@ mkTcVarSubst substs = mkTopTvSubst $ fmap (\(tv, tc) -> (tv, mkTyConTy tc)) subs
 splitTyConApps :: [Type] -> [(TyCon, [Type])]
 splitTyConApps = catMaybes . fmap splitTyConApp_maybe
 
--- Check if the given type is a type constructor that is partially applied
--- such that it now is a unary type constructor.
+-- | Check if the given type is a type constructor that is partially applied
+--   such that it now is a unary type constructor.
 isGroundUnaryTyCon :: Type -> Bool
 isGroundUnaryTyCon t = case splitTyConApp_maybe t of
   Just (tc, args) -> tyConArity tc == length args + 1
