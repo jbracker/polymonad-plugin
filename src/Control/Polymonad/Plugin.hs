@@ -7,7 +7,7 @@ import Data.List ( partition )
 --import Data.Set ( Set )
 import qualified Data.Set as S
 
-import Control.Monad ( unless )
+import Control.Monad ( unless, when )
 
 --import Debug.Trace ( trace )
 
@@ -105,7 +105,7 @@ polymonadSolve' _s = do
     else do
   -}
   -- Simplification ------------------------------------------------------------
-  printMsg "Try simplification of constraints..."
+  printDebug "Try simplification of constraints..."
   wanted <- getWantedPolymonadConstraints
   let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
 
@@ -138,10 +138,10 @@ polymonadSolve' _s = do
   -- still is ambiguity. Therefore we ignore the wanted evidence in this test
   -- and always deliver it.
   if null eqUpDownCts && null eqJoinCts then do
-    printMsg "Simplification could not solve all constraints. Solving..."
+    printDebug "Simplification could not solve all constraints. Solving..."
     let ctGraph = mkGraphView wanted
     if isAllUnambiguous ctGraph then do
-      printMsg "Constraint graph is unambiguous proceed with solving..."
+      printDebug "Constraint graph is unambiguous proceed with solving..."
       wantedCts <- getWantedPolymonadConstraints
       derivedSolution <- solve wantedCts
       unless (null derivedSolution) $ do
@@ -149,10 +149,11 @@ polymonadSolve' _s = do
         printConstraints True derivedSolution
       return $ TcPluginOk wantedEvidence derivedSolution
     else do
-      printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."
+      when (null wantedEvidence) $
+        printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."
       return $ TcPluginOk wantedEvidence []
   else do
-    printMsg "Simplification made progress. Not solving."
+    printDebug "Simplification made progress. Not solving."
     --printObj $ wantedEvidence
     --printObj $ eqUpDownCts ++ eqJoinCts
     return $ TcPluginOk wantedEvidence (eqUpDownCts ++ eqJoinCts)
