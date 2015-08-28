@@ -186,29 +186,7 @@ selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
   where
     givenPmCts = filter (\ct -> isClassConstraint pmCls ct && (isDerivedCt ct || isGivenCt ct)) givenCts
     wantedPmCts = filter (\ct -> isClassConstraint pmCls ct && isWantedCt ct) wantedCts
-    {-
-    -- TODO
-    c :: Int -> TcPluginM (Set TyCon , [ClsInst])
-    c 0 = do
-      let initialTcs = S.unions $ fmap constraintTyCons wantedPmCts
-      return (initialTcs, [])
-    c n = do
-      (initialTcs, _initialClsInsts) <- c (n - 1)
 
-      return (initialTcs `S.union` undefined, undefined)
-
-    appTC :: Set TyCon -> ClsInst -> TyVar -> TcPluginM (Set TyCon, [ClsInst])
-    appTC tcsCn clsInst tcVarArg =
-      if instanceTyCons clsInst `S.isSubsetOf` tcsCn
-        then do
-          let tcVarArgs = S.delete tcVarArg $ instanceTcVars clsInst
-          -- TODO
-          -- Substitute tycons (already collected ones) for the given argument
-          -- Substitute all possible tycons for the rest of the arguments
-          -- Find applicable instances and return the together with all of the substituted tycons
-          return (undefined, undefined)
-        else return (S.empty, [])
-    -}
 -- | Filters the list of polymonads constraints, to only keep those
 --   that can be applied to the given type constructors.
 filterApplicableInstances :: [ClsInst] -> Set TyCon -> TcPluginM [ClsInst]
