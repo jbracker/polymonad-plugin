@@ -1,4 +1,5 @@
 
+-- | The functions that actually solve the wanted polymonad constraints.
 module Control.Polymonad.Plugin.Solve
   ( topologicalTyConOrder
   , solve
@@ -28,9 +29,9 @@ import Control.Polymonad.Plugin.Constraint ( mkDerivedTypeEqCt', constraintPolym
 substToCts :: CtLoc -> [(TyVar, Type)] -> [Ct]
 substToCts loc = fmap (uncurry $ mkDerivedTypeEqCt' loc)
 
--- Given the set of wanted constraints that shall be solved this produces
--- a set of derived constraints that link the ambiguous type variables to
--- their principal joins.
+-- | Given the set of wanted constraints that shall be solved this produces
+--   a set of derived constraints that link the ambiguous type variables to
+--   their principal joins.
 solve :: [Ct] -> PmPluginM [Ct]
 solve [] = return []
 solve wantedCts = do

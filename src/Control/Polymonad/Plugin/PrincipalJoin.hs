@@ -1,4 +1,5 @@
 
+-- | Functions to calculate the principal join.
 module Control.Polymonad.Plugin.PrincipalJoin
   ( principalJoinFor
   ) where
