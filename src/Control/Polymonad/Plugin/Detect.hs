@@ -157,12 +157,14 @@ findPolymonadInstancesInScope = do
 --   type constructor and bind instances that belong to the polymonad
 --   being worked with in the list of /given/ and /wanted/ constraints.
 --
---   /Preconditions:/ For the algorithm to work correctly,
---   certain preconditions have to be meet:
+--   Currently we assume that the plugin is only used for standard and
+--   parameterized monads. We also assume that the indices of parameterized
+--   monads are phantom and do not incluence the runtime behaviour.
+--   Because of these preconditions all polymonad instances together actually
+--   form a principal polymonad and the selection of a subset is not necessary
+--   and therefore currently not done.
 --
---     * TODO
---
---   __TODO: Work in Progress / Unfinished__
+--   FIXME: Work in Progress / Unfinished
 selectPolymonadSubset :: TyCon -> Class -> [ClsInst] -> ([Ct], [Ct]) -> TcPluginM (Set TyCon, [Type], [ClsInst])
 selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
   -- TODO: This is just a very naiv approach to get things up and running.
@@ -176,7 +178,7 @@ selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
   where
     givenPmCts = filter (\ct -> isClassConstraint pmCls ct && (isDerivedCt ct || isGivenCt ct)) givenCts
     wantedPmCts = filter (\ct -> isClassConstraint pmCls ct && isWantedCt ct) wantedCts
-
+    {-
     -- TODO
     c :: Int -> TcPluginM (Set TyCon , [ClsInst])
     c 0 = do
@@ -198,7 +200,7 @@ selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
           -- Find applicable instances and return the together with all of the substituted tycons
           return (undefined, undefined)
         else return (S.empty, [])
-
+    -}
 -- | Filters the list of polymonads constraints, to only keep those
 --   that can be applied to the given type constructors.
 filterApplicableInstances :: [ClsInst] -> Set TyCon -> TcPluginM [ClsInst]
