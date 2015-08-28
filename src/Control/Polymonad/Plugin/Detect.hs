@@ -31,7 +31,7 @@ import TcRnTypes
   , TcGblEnv(..)
   , TcTyThing(..) )
 import Type
-  ( Type, TyThing(..), TyVar
+  ( Type, TyThing(..) --, TyVar
   , isTyVarTy, splitAppTys
   , splitFunTysN
   , mkTyConApp, mkTyVarTy, mkTyConTy )
@@ -62,11 +62,11 @@ import InstEnv
   , instanceSig
   , instanceBindFun
   , classInstances )
-import Outputable ( Outputable )
+--import Outputable ( Outputable )
 
-import Control.Polymonad.Plugin.Log ( pmDebugMsg, pmObjMsg, pmErrMsg, pprToStr )
+import Control.Polymonad.Plugin.Log ( pmErrMsg, pprToStr )--, pmDebugMsg, pmObjMsg )
 import Control.Polymonad.Plugin.Utils ( associations )
-import Control.Polymonad.Plugin.Instance ( instanceTcVars, instanceTyCons )
+--import Control.Polymonad.Plugin.Instance ( instanceTcVars, instanceTyCons )
 import Control.Polymonad.Plugin.Constraint
   ( constraintTyCons, constraintClassTyArgs, isClassConstraint )
 
@@ -226,6 +226,7 @@ filterApplicableInstances pmInsts tcs = do
     return $ catMaybes mListInsts
   return $ concat filteredInsts
 
+{- unused debugging functions
 -- | Internal function for printing from within the monad.
 internalPrint :: String -> TcPluginM ()
 internalPrint = tcPluginIO . putStr
@@ -235,7 +236,7 @@ printMsg = internalPrint . pmDebugMsg
 
 printObj :: Outputable o => o -> TcPluginM ()
 printObj = internalPrint . pmObjMsg . pprToStr
-
+-}
 -- -----------------------------------------------------------------------------
 -- Local Utility Functions
 -- -----------------------------------------------------------------------------
