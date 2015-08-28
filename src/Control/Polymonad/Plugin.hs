@@ -21,7 +21,7 @@ import TcPluginM ( TcPluginM, tcPluginIO )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getWantedPolymonadConstraints, getGivenPolymonadConstraints
-  , printMsg --, printObj
+  , printDebug, printMsg --, printObj
   , printConstraints )
 import Control.Polymonad.Plugin.Constraint
   ( isFullyAppliedClassConstraint
@@ -82,12 +82,12 @@ polymonadSolve s given derived wanted = do
 
 polymonadSolve' :: PolymonadState -> PmPluginM TcPluginResult
 polymonadSolve' _s = do
-  printMsg "Given constraints:"
-  printConstraints False =<< getGivenPolymonadConstraints
-  printMsg "Wanted constraints:"
-  printConstraints False =<< getWantedPolymonadConstraints
-  --printMsg "Selected Polymonad:"
-  --printConstraints False =<< getCurrentPolymonad
+  printDebug "Given constraints:"
+  printConstraints True =<< getGivenPolymonadConstraints
+  printDebug "Wanted constraints:"
+  printConstraints True =<< getWantedPolymonadConstraints
+  --printDebug "Selected Polymonad:"
+  --printConstraints True =<< getCurrentPolymonad
   -- Derive Constraints --------------------------------------------------------
   -- Deriving constraints is ignored for now, because for some reason GHCs
   -- constraint solver throws some of the derived constraints away and says
@@ -145,8 +145,8 @@ polymonadSolve' _s = do
       wantedCts <- getWantedPolymonadConstraints
       derivedSolution <- solve wantedCts
       unless (null derivedSolution) $ do
-        printMsg "Derived solutions:"
-        printConstraints False derivedSolution
+        printDebug "Derived solutions:"
+        printConstraints True derivedSolution
       return $ TcPluginOk wantedEvidence derivedSolution
     else do
       printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."
