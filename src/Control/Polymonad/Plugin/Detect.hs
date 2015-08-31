@@ -22,24 +22,31 @@ module Control.Polymonad.Plugin.Detect
   , selectPolymonadSubset
   ) where
 
-import Data.Maybe ( catMaybes, listToMaybe )
+import Data.Maybe ( catMaybes, listToMaybe, fromJust )
+import Data.List ( nubBy )
+import Data.Tuple ( swap )
 import Data.Set ( Set )
 import qualified Data.Set as S
-import Data.Graph.Inductive.Graph ( mkGraph )
+import Data.Graph.Inductive.Graph
+  ( Node
+  , mkGraph
+  , labEdges, labNodes )
 import Data.Graph.Inductive.PatriciaTree ( Gr )
+import Data.Graph.Inductive.Query.DFS ( components )
 
 import Control.Monad ( forM, liftM )
 
 import TcRnTypes
-  ( Ct
+  ( Ct, ctPred, ctLocSpan, ctLoc
   , isGivenCt, isWantedCt, isDerivedCt
   , TcGblEnv(..)
   , TcTyThing(..) )
 import Type
-  ( Type, TyThing(..) --, TyVar
+  ( Type, TyThing(..), TyVar
   , isTyVarTy, splitAppTys
-  , splitFunTysN
-  , mkTyConApp, mkTyVarTy, mkTyConTy )
+  , splitFunTysN, eqType
+  , mkTyConApp, mkTyVarTy, mkTyConTy
+  , tyConAppTyCon_maybe )
 import TyCon ( TyCon, tyConArity, tyConKind )
 import TcPluginM
 import Name
@@ -61,19 +68,26 @@ import Class
   ( Class(..)
   , className, classArity )
 import Unify ( tcUnifyTys )
+import Unique ( getUnique, getKey )
 import InstEnv
   ( ClsInst(..)
   , instEnvElts
   , instanceSig
   , instanceBindFun
   , classInstances )
---import Outputable ( Outputable )
+import Outputable ( Outputable )
 
 import Control.Polymonad.Plugin.Log ( pmErrMsg, pprToStr )--, pmDebugMsg, pmObjMsg )
-import Control.Polymonad.Plugin.Utils ( associations )
---import Control.Polymonad.Plugin.Instance ( instanceTcVars, instanceTyCons )
+import Control.Polymonad.Plugin.Utils
+  ( associations, lookupBy
+  , isAmbiguousType )
 import Control.Polymonad.Plugin.Constraint
-  ( constraintTyCons, constraintClassTyArgs, isClassConstraint )
+  ( constraintTyCons, constraintClassTyArgs, constraintPolymonadTyArgs'
+  , isClassConstraint )
+
+printObj :: (Outputable o) => o -> TcPluginM ()
+printObj = tcPluginIO . putStr . pprToStr
+
 
 -- -----------------------------------------------------------------------------
 -- Constant Names (Magic Numbers...)
@@ -162,8 +176,11 @@ findIdentityTyCon = do
 --
 --   * @idTc@ - The 'Identity' type constructor.
 --   * @pmCls@ - The 'Polymonad' class.
+--   * @pmInsts@ - The available 'Polymonad' instances.
 --   * @givenDerivedCts@ - The given and derived constraints.
---   * @wantedCts@ - The wanted constraints
+--     These may only be 'Polymonad' constraints.
+--   * @wantedCts@ - The wanted constraints.
+--     These may only be 'Polymonad' constraints.
 --
 --   Returns the type constructors, type variables (partially applied) and
 --   class instances and given/derived constraints that make up each detected polymonad.
@@ -172,13 +189,52 @@ type SubsetSelectionFunction =
 
 selectPolymonadByConnectedComponent :: SubsetSelectionFunction
 selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
+  let graphComps = components componentGraph
+  let wCtComps = [ nubBy eqCt $ concat [ ctForNode compNode | compNode <- comp ] | comp <- graphComps ]
+  printObj wCtComps
   -- TODO: Implement
   return []
   where
+    eqCt :: Ct -> Ct -> Bool
+    eqCt ct0 ct1 = eqType (ctPred ct0) (ctPred ct1) && ctLocSpan (ctLoc ct0) == ctLocSpan (ctLoc ct1)
+
+    -- List of wanted constraints together with their arguments
+    -- types. Only contains polymonad constraints.
+    wCtTypes :: [(Ct, Type, Type, Type)]
+    wCtTypes = constraintPolymonadTyArgs' wCts
+
+    wCtTyVarTypes :: [(Node, Type)]
+    wCtTyVarTypes = zip [0..]
+                  $ nubBy eqType
+                  $ filter isNotIdentity
+                  $ concatMap (\(_, t0, t1, t2) -> [t0, t1, t2]) wCtTypes
+
+    wCtTyVarTypes' :: [(Type, Node)]
+    wCtTyVarTypes' = swap <$> wCtTyVarTypes
+
+    typeToNode :: Type -> Node
+    typeToNode t = fromJust $ lookupBy eqType t wCtTyVarTypes'
+
+    nodeToType :: Node -> Type
+    nodeToType n = fromJust $ lookup n wCtTyVarTypes
+
+    ctForNode :: Node -> [Ct]
+    ctForNode n =
+      let t = nodeToType n
+      in (\(ct, _, _, _) -> ct) <$> filter (\(_, t0, t1, t2) -> eqType t t0 || eqType t t1 || eqType t t2) wCtTypes
+
     -- The nodes of our graph are ambiguous type variable. The edges are the
     -- constraints that created them.
     componentGraph :: Gr Type Ct
-    componentGraph = mkGraph undefined undefined
+    componentGraph = mkGraph wCtTyVarTypes $
+      [ (typeToNode t0, typeToNode t2, ct) | (ct, t0, _t1, t2) <- wCtTypes, isNotIdentity t0, isNotIdentity t2 ] ++
+      [ (typeToNode t1, typeToNode t2, ct) | (ct, _t0, t1, t2) <- wCtTypes, isNotIdentity t1, isNotIdentity t2 ] -- Edges
+
+    isNotIdentity :: Type -> Bool
+    isNotIdentity t = maybe True (/= idTc) $ tyConAppTyCon_maybe t
+
+    isAmbiguous :: Type -> Bool
+    isAmbiguous t = isAmbiguousType t || isAmbiguousType (fst $ splitAppTys t)
 
 -- | Subset selection algorithm to select the correct subset of
 --   type constructor and bind instances that belong to the polymonad

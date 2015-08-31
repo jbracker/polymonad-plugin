@@ -81,9 +81,9 @@ principalJoinFor mAmbTv f m = do
     -- If everything works out, keep the current join candidate
     return $ if fMatches && mMatches then Just joinCand else Nothing
   let suitableJoinCands = catMaybes mSuitableJoinCands
-  case length suitableJoinCands of
-    0 -> return Nothing
-    1 -> return $ Just $ head suitableJoinCands
+  case suitableJoinCands of
+    [] -> return Nothing
+    [sjc] -> return $ Just sjc
     _ -> do
       printObj suitableJoinCands
       throwPluginError "principalJoinFor: Found more then one join. FIXME"

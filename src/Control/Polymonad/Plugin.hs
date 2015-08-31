@@ -107,6 +107,7 @@ polymonadSolve' _s = do
   -- Simplification ------------------------------------------------------------
   printDebug "Try simplification of constraints..."
   wanted <- getWantedPolymonadConstraints
+
   let (wantedApplied, wantedIncomplete) = partition isFullyAppliedClassConstraint wanted
 
   -- First, if we have any constraint that does not contain type variables,
