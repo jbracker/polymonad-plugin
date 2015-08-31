@@ -1,4 +1,6 @@
 
+{-# LANGUAGE CPP #-}
+
 -- | Functions and utilities to work with and inspect constraints
 --   of the GHC API.
 module Control.Polymonad.Plugin.Constraint
@@ -25,7 +27,7 @@ import Data.Maybe ( isJust, catMaybes, fromMaybe )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
-import SrcLoc ( SrcSpan )
+import SrcLoc ( SrcSpan( RealSrcSpan ) )
 import TcRnTypes
   ( Ct(..), CtLoc(..), CtEvidence(..)
   , TcLclEnv( tcl_loc )
@@ -159,4 +161,8 @@ constraintLocation ct = ctev_loc $ cc_ev ct
 
 -- | Returns the source code location of the given constraint.
 constraintSourceLocation :: Ct -> SrcSpan
+#if MIN_VERSION_ghc(7,10,2)
+constraintSourceLocation = RealSrcSpan . tcl_loc . ctl_env . constraintLocation
+#else
 constraintSourceLocation = tcl_loc . ctl_env . constraintLocation
+#endif
