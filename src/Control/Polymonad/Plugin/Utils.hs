@@ -16,6 +16,7 @@ module Control.Polymonad.Plugin.Utils (
   , associations
   , subsets
   , removeDup
+  , lookupBy
   ) where
 
 import Data.Maybe ( listToMaybe, catMaybes )
@@ -142,3 +143,12 @@ subsets s = case S.size s of
 --   The result list is ordered in ascending order.
 removeDup :: (Ord a) => [a] -> [a]
 removeDup = S.toAscList . S.fromList
+
+-- | Exactly like 'lookup'. Searches the list for the entry with the right key
+--   and returns the associated value if an entry is found. Uses a custom
+--   function to check equality.
+lookupBy :: (a -> a -> Bool) -> a -> [(a, b)] -> Maybe b
+lookupBy _eq _x [] = Nothing
+lookupBy eq x ((y, b) : ybs)
+  | eq x y = Just b
+  | otherwise = lookupBy eq x ybs
