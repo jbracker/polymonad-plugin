@@ -4,8 +4,10 @@
 -- | Functions and utilities to work with and inspect constraints
 --   of the GHC API.
 module Control.Polymonad.Plugin.Constraint
-  ( -- * Constraint Creation
-    mkDerivedTypeEqCt
+  ( -- * Types
+    GivenCt, WantedCt
+    -- * Constraint Creation
+  , mkDerivedTypeEqCt
   , mkDerivedTypeEqCt'
   , mkDerivedClassCt
     -- * Constraint inspection
@@ -27,7 +29,7 @@ import Data.Maybe ( isJust, catMaybes, fromMaybe )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
-import SrcLoc ( SrcSpan( RealSrcSpan ) )
+import SrcLoc ( SrcSpan )
 import TcRnTypes
   ( Ct(..), CtLoc(..), CtEvidence(..)
   , TcLclEnv( tcl_loc )
@@ -46,6 +48,12 @@ import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
   , collectTopTcVars
   , collectTyVars )
+
+-- | Type synonym to label given or derived constraints.
+type GivenCt = Ct
+
+-- | Type synonym to label wanted constraints.
+type WantedCt = Ct
 
 -- -----------------------------------------------------------------------------
 -- Constraint Creation

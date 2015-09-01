@@ -20,9 +20,15 @@ module Control.Polymonad.Plugin.Detect
   , SubsetSelectionFunction
   , selectPolymonadByConnectedComponent
   , selectPolymonadSubset
+  , pickInstanceForAppliedConstraint
+    -- * TcPluginM print function
+  , printMsg, printObj
   ) where
 
-import Data.Maybe ( catMaybes, listToMaybe, fromJust )
+import Data.Maybe
+  ( isNothing, isJust
+  , catMaybes, listToMaybe
+  , fromJust )
 import Data.List ( nubBy )
 import Data.Tuple ( swap )
 import Data.Set ( Set )
@@ -43,8 +49,10 @@ import Type
   ( Type, TyThing(..)
   , isTyVarTy, splitAppTys
   , splitFunTysN, eqType
-  , mkTyConApp, mkTyVarTy, mkTyConTy
-  , tyConAppTyCon_maybe )
+  , mkTyConApp, mkTyVarTy, mkTyConTy, mkTopTvSubst
+  , substTys
+  , tyConAppTyCon_maybe
+  , getClassPredTys_maybe )
 import TyCon ( TyCon, tyConArity, tyConKind )
 import TcPluginM
 import Name
@@ -69,8 +77,11 @@ import InstEnv
   ( ClsInst(..)
   , instEnvElts
   , instanceSig
-  , classInstances )
+  , classInstances
+  , lookupInstEnv
+  , lookupUniqueInstEnv )
 import Outputable ( Outputable )
+import TcEvidence ( EvTerm(..) )
 
 import Control.Polymonad.Plugin.Log
   ( pmErrMsg, pmDebugMsg, pmObjMsg
@@ -79,8 +90,9 @@ import Control.Polymonad.Plugin.Utils
   ( associations, lookupBy
   , isAmbiguousType )
 import Control.Polymonad.Plugin.Constraint
-  ( constraintTyCons, constraintClassTyArgs, constraintPolymonadTyArgs'
-  , isClassConstraint )
+  ( GivenCt, WantedCt
+  , constraintTyCons, constraintClassTyArgs, constraintPolymonadTyArgs'
+  , isClassConstraint, isFullyAppliedClassConstraint )
 import Control.Polymonad.Plugin.Instance
   ( matchInstanceTyVars, isInstantiatedBy, eqInstance )
 
@@ -179,9 +191,6 @@ findIdentityTyCon = do
 -- Subset Selection
 -- -----------------------------------------------------------------------------
 
-type WantedCt = Ct
-type GivenCt = Ct
-
 -- | Type signature of a subset selection function.
 --
 --   @subsetSelectionFunction idTc pmCls pmInsts (givenDerivedCts, wantedCts)@
@@ -205,7 +214,15 @@ type SubsetSelectionFunction =
 selectPolymonadByConnectedComponent :: SubsetSelectionFunction
 selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
   let graphComps = components componentGraph
-  let wCtComps = [ nubBy eqCt $ concat [ ctForNode compNode | compNode <- comp ] | comp <- graphComps ]
+  -- Get all of the fully applied constraints from the wanted ones to re-add
+  -- them later, because 'Polymonad Identity Identity Identity' will never be
+  -- captured by the component algorithm but is part of every polymonad!
+  let fullyAppliedWantedCts = filter isFullyAppliedClassConstraint wCts
+  -- Now get the wanted constraint components that describe the different polymonads.
+  -- Add the fully applied constraints to each one to make sure 'Polymonad Identity Identity Identity'
+  -- is in every one.
+  -- FIXME: Specifically select and re-add 'Polymonad Identity Identity Identity'.
+  let wCtComps = [ nubBy eqCt $ concat [ ctForNode compNode | compNode <- comp ] ++ fullyAppliedWantedCts | comp <- graphComps ]
   forM wCtComps $ \wCtComp -> findPolymonadFor wCtComp >>= \pm -> return (pm, wCtComp)
   where
     findPolymonadFor :: [WantedCt] -> TcPluginM ([Type], [ClsInst], [GivenCt])
@@ -372,6 +389,70 @@ filterApplicableInstances' pmInsts tcs = do
       Nothing -> return Nothing
     return $ catMaybes mListInsts
   return $ concat filteredInsts
+
+-- -----------------------------------------------------------------------------
+-- Selection of instance for fully applied constraints.
+-- -----------------------------------------------------------------------------
+
+-- | Given a fully applied polymonad constraint it will pick the first instance
+--   that matches it. This is ok to do, because for polymonads it does
+--   not make a difference which bind-operation we pick if the type is equal.
+pickInstanceForAppliedConstraint :: Class -> WantedCt -> TcPluginM (Maybe (EvTerm, Ct))
+pickInstanceForAppliedConstraint pmCls ct = do
+  case constraintClassTyArgs ct of
+    -- We found the polymonad class constructor and the given constraint
+    -- is a instance constraint.
+    Just tyArgs
+        -- Be sure to only proceed if the constraint is a polymonad constraint
+        -- and is fully applied to concrete types.
+        |  isClassConstraint pmCls ct
+        && isFullyAppliedClassConstraint ct -> do
+      -- Get the instance environment
+      instEnvs <- getInstEnvs
+      -- Find matching instance for our constraint.
+      let (matches, _, _) = lookupInstEnv instEnvs pmCls tyArgs
+      -- Only keep those matches that actually found a type for every argument.
+      case filter (\(_, args) -> all isJust args) matches of
+        -- If we found more then one instance, just use the first.
+        -- Because we are talking about polymonad we can freely choose.
+        (foundInst, foundInstArgs) : _ -> do
+          -- Try to produce evidence for the instance we want to use.
+          evTerm <- produceEvidenceFor foundInst (fromJust <$> foundInstArgs)
+          return $ (\ev -> (ev, ct)) <$> evTerm
+        _ -> return Nothing
+    _ -> return Nothing
+  where
+    -- | Apply the given instance dictionary to the given type arguments
+    --   and try to produce evidence for the application.
+    produceEvidenceFor :: ClsInst -> [Type] -> TcPluginM (Maybe EvTerm)
+    produceEvidenceFor inst tys = do
+      -- Get the instance type variables and constraints (by that we know the
+      -- number of type arguments and dictionart arguments for the EvDFunApp)
+      let (tyVars, cts, _cls, _tyArgs) = instanceSig inst -- ([TyVar], [Type], Class, [Type])
+      -- How the instance variables for the current instance are bound.
+      let varSubst = mkTopTvSubst $ zip tyVars tys
+      -- Global instance environment.
+      instEnvs <- getInstEnvs
+      -- Split the constraints into their class and arguments.
+      -- We ignore constraints where this is not possible.
+      -- Don't know if this is the right thing to do.
+      let instCts = catMaybes $ fmap getClassPredTys_maybe cts
+      -- Now go over each constraint and find a suitable instance and evidence.
+      ctEvTerms <- forM instCts $ \(ctCls, ctArgs) -> do
+        -- Substitute the variables to know what instance we are looking for.
+        let substArgs = substTys varSubst ctArgs
+        -- Look for suitable instance. Since we are not necessarily working
+        -- with polymonads anymore we need to find a unique one.
+        case lookupUniqueInstEnv instEnvs ctCls substArgs of
+          -- No instance found, too bad...
+          Left _err -> return Nothing
+          -- We found one: Now we can produce evidence for the found instance.
+          Right (clsInst, instArgs) -> produceEvidenceFor clsInst instArgs
+      -- If we found a good instance and evidence for every constraint,
+      -- we can create the evidence for this instance.
+      return $ if any isNothing ctEvTerms
+        then Nothing
+        else Just $ EvDFunApp (is_dfun inst) tys (fromJust <$> ctEvTerms)
 
 -- -----------------------------------------------------------------------------
 -- Local Utility Functions

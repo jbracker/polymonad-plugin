@@ -6,7 +6,7 @@ module Control.Polymonad.Plugin.PrincipalJoin
 
 import Data.List ( nubBy )
 import Data.Maybe ( catMaybes )
-import qualified Data.Set as S
+--import qualified Data.Set as S
 
 import Control.Monad ( forM ) --, when )
 import Control.Arrow ( (***) )
@@ -57,11 +57,11 @@ principalJoinFor mAmbTv f m = do
   -- Get the type of the identity type constructor
   idT <- mkTyConTy <$> getIdentityTyCon
   -- The polymonad we want to work with
-  (pmTyCons, pmTyVars, pmInsts, pmGivenCts) <- getCurrentPolymonad
+  (pmTyVarsAndCons, pmInsts, pmGivenCts) <- getCurrentPolymonad
   -- Collect all of the possible joins.
   -- For now we assume it is one of the known type constructors.
   -- FIXME: Does this work for type constructors with arity greater one?
-  let joinCands = pmTyVars ++ (mkTyConTy <$> S.toList pmTyCons)
+  let joinCands = pmTyVarsAndCons
   -- Go through all of the candidates and check if they fulfill the conditions
   -- of a principal join.
   mSuitableJoinCands <- forM joinCands $ \joinCand -> do

@@ -1,51 +1,45 @@
 
 -- | Core functions the plugin relies on to interact with GHCs API.
 module Control.Polymonad.Plugin.Core
-  ( pickInstanceForAppliedConstraint
-  , findInstanceTopTyCons
+  ( findInstanceTopTyCons
   , findConstraintTopTyCons
   , findConstraintOrInstanceTyCons
   , isInstanceOf
   ) where
 
-import Data.Maybe ( isJust, isNothing, fromJust, catMaybes )
-import Data.List ( partition, find )
+import Data.Maybe ( isJust )
+import Data.List ( partition )
 import Data.Set ( Set )
 import qualified Data.Set as S
-import Control.Monad ( forM, unless, when )
+import Control.Monad ( forM, unless )
 
 import InstEnv
   ( ClsInst(..)
   , instanceBindFun, instanceSig
-  , lookupInstEnv
-  , lookupUniqueInstEnv )
+  , lookupInstEnv )
 import TyCon ( TyCon )
 import Type
   ( Type, TyVar
-  , getClassPredTys_maybe
-  , mkTopTvSubst, mkTyVarTy
-  , substTys, substTy
+  , mkTyVarTy
+  , substTy
   , splitTyConApp_maybe
   , getTyVar
-  , eqTypes
   , tyConAppTyCon )
 import Unify ( tcUnifyTys )
 import Class ( Class(..) )
 import Name ( getName )
 import TcRnTypes ( Ct(..) )
 import TcPluginM ( tcLookupClass )
-import TcEvidence ( EvTerm(..) )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runTcPlugin
-  , getPolymonadClass, getInstEnvs
+  , getInstEnvs
   , getGivenConstraints
   , throwPluginError
   , printObj )
 import Control.Polymonad.Plugin.Constraint
-  ( constraintClassType, constraintClassTyArgs
-  , constraintTyCons, constraintTcVars
-  , isClassConstraint, isFullyAppliedClassConstraint )
+  ( constraintClassType
+  , constraintTyCons, constraintTcVars )
 import Control.Polymonad.Plugin.Instance
   ( instanceTyCons, instanceTcVars
   , isInstantiatedBy )
@@ -126,68 +120,6 @@ findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
         Nothing -> return S.empty
     -- Union all collected type constructors
     return $ S.unions collectedTyCons
-
--- | Given a fully applied polymonad constraint it will pick the first instance
---   that matches it. This is ok to do, because for polymonads it does
---   not make a difference which bind-operation we pick if the type is equal.
-pickInstanceForAppliedConstraint :: Ct -> PmPluginM (Maybe (EvTerm, Ct))
-pickInstanceForAppliedConstraint ct = do
-  -- Get the polymonad class constructor.
-  pmCls <- getPolymonadClass
-  case constraintClassTyArgs ct of
-    -- We found the polymonad class constructor and the given constraint
-    -- is a instance constraint.
-    Just tyArgs
-        -- Be sure to only proceed if the constraint is a polymonad constraint
-        -- and is fully applied to concrete types.
-        |  isClassConstraint pmCls ct
-        && isFullyAppliedClassConstraint ct -> do
-      -- Get the instance environment
-      instEnvs <- getInstEnvs
-      -- Find matching instance for our constraint.
-      let (matches, _, _) = lookupInstEnv instEnvs pmCls tyArgs
-      -- Only keep those matches that actually found a type for every argument.
-      case filter (\(_, args) -> all isJust args) matches of
-        -- If we found more then one instance, just use the first.
-        -- Because we are talking about polymonad we can freely choose.
-        (foundInst, foundInstArgs) : _ -> do
-          -- Try to produce evidence for the instance we want to use.
-          evTerm <- produceEvidenceFor foundInst (fromJust <$> foundInstArgs)
-          return $ (\ev -> (ev, ct)) <$> evTerm
-        _ -> return Nothing
-    _ -> return Nothing
-  where
-    -- | Apply the given instance dictionary to the given type arguments
-    --   and try to produce evidence for the application.
-    produceEvidenceFor :: ClsInst -> [Type] -> PmPluginM (Maybe EvTerm)
-    produceEvidenceFor inst tys = do
-      -- Get the instance type variables and constraints (by that we know the
-      -- number of type arguments and dictionart arguments for the EvDFunApp)
-      let (tyVars, cts, _cls, _tyArgs) = instanceSig inst -- ([TyVar], [Type], Class, [Type])
-      -- How the instance variables for the current instance are bound.
-      let varSubst = mkTopTvSubst $ zip tyVars tys
-      -- Global instance environment.
-      instEnvs <- getInstEnvs
-      -- Split the constraints into their class and arguments.
-      -- We ignore constraints where this is not possible.
-      -- Don't know if this is the right thing to do.
-      let instCts = catMaybes $ fmap getClassPredTys_maybe cts
-      -- Now go over each constraint and find a suitable instance and evidence.
-      ctEvTerms <- forM instCts $ \(ctCls, ctArgs) -> do
-        -- Substitute the variables to know what instance we are looking for.
-        let substArgs = substTys varSubst ctArgs
-        -- Look for suitable instance. Since we are not necessarily working
-        -- with polymonads anymore we need to find a unique one.
-        case lookupUniqueInstEnv instEnvs ctCls substArgs of
-          -- No instance found, too bad...
-          Left _err -> return Nothing
-          -- We found one: Now we can produce evidence for the found instance.
-          Right (clsInst, instArgs) -> produceEvidenceFor clsInst instArgs
-      -- If we found a good instance and evidence for every constraint,
-      -- we can create the evidence for this instance.
-      return $ if any isNothing ctEvTerms
-        then Nothing
-        else Just $ EvDFunApp (is_dfun inst) tys (fromJust <$> ctEvTerms)
 
 -- | Checks if the given arguments types to the free variables in the
 --   class instance actually form a valid instantiation of that instance.

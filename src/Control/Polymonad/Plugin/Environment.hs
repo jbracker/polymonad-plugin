@@ -24,8 +24,8 @@ module Control.Polymonad.Plugin.Environment
   , printConstraints
   ) where
 
-import Data.Set ( Set )
-import Data.List ( nubBy, groupBy )
+import Data.Maybe ( catMaybes )
+import Data.List ( groupBy, partition )
 
 import Control.Monad ( when, unless, forM_ )
 import Control.Monad.Trans.Reader ( ReaderT, runReaderT, asks, local )
@@ -35,12 +35,13 @@ import Control.Monad.Trans.Class ( lift )
 import Class ( Class )
 import Module ( Module )
 import InstEnv ( ClsInst, InstEnvs )
-import Type ( Type, eqType )
+import Type ( Type )
 import TyCon ( TyCon )
 import TcRnTypes
-  ( Ct
-  , isGivenCt, isWantedCt, isDerivedCt )
-import TcPluginM ( TcPluginM, tcPluginIO )
+  ( Ct, TcPluginResult(..) )
+import TcPluginM
+  ( TcPluginM
+  , tcPluginIO )
 import qualified TcPluginM
 import Outputable ( Outputable )
 import SrcLoc ( srcSpanFileName_maybe )
@@ -51,15 +52,17 @@ import Control.Polymonad.Plugin.Log
   , pprToStr
   , formatConstraint )
 import Control.Polymonad.Plugin.Constraint
-  ( isClassConstraint, constraintSourceLocation )
+  ( GivenCt, WantedCt
+  , isClassConstraint, constraintSourceLocation
+  , isFullyAppliedClassConstraint )
 import Control.Polymonad.Plugin.Detect
   ( polymonadModuleName, polymonadClassName
   , identityModuleName, identityTyConName
   , findPolymonadModule, findPolymonadClass
   , findIdentityModule, findIdentityTyCon
   , findPolymonadInstancesInScope
-  , selectPolymonadSubset
-  , selectPolymonadByConnectedComponent )
+  , selectPolymonadByConnectedComponent
+  , pickInstanceForAppliedConstraint )
 
 -- -----------------------------------------------------------------------------
 -- Plugin Monad
@@ -81,17 +84,17 @@ data PmPluginEnv = PmPluginEnv
   -- ^ The 'Data.Functor.Identity' module (TODO: don't use this).
   , pmEnvIdentityTyCon  :: TyCon
   -- ^ The 'Identity' type constructor.
-  , pmEnvGivenConstraints  :: [Ct]
+  , pmEnvGivenConstraints  :: [GivenCt]
   -- ^ The given and derived constraints (all of them).
-  , pmEnvGivenPolymonadConstraints :: [Ct]
+  , pmEnvGivenPolymonadConstraints :: [GivenCt]
   -- ^ The given and derived polymonad constraints
   --   (that are related to the currently selected polymonad).
-  , pmEnvWantedConstraints :: [Ct]
+  , pmEnvWantedConstraints :: [WantedCt]
   -- ^ The wanted constraints (all of them).
-  , pmEnvWantedPolymonadConstraints :: [Ct]
+  , pmEnvWantedPolymonadConstraints :: [WantedCt]
   -- ^ The wanted polymonad constraints
   --   (that are related to the currently selected polymonad).
-  , pmEnvCurrentPolymonad  :: (Set TyCon, [Type], [ClsInst], [Ct])
+  , pmEnvCurrentPolymonad  :: ([Type], [ClsInst], [GivenCt])
   -- ^ The currently selected polymonad.
   , pmEnvDebugEnabled :: Bool
   -- ^ If debugging messages are enabled or not.
@@ -105,8 +108,8 @@ data PmPluginEnv = PmPluginEnv
 --   The function will make sure that only the polymonad constraints
 --   and actually /given/, /derived/ or /wanted/ constraints
 --   are kept, respectivly.
-runPmPlugin :: [Ct] -> [Ct] -> PmPluginM a -> TcPluginM (Either String a)
-runPmPlugin givenCts wantedCts pmM = do
+runPmPlugin :: [GivenCt] -> [WantedCt] -> PmPluginM TcPluginResult -> TcPluginM (Either String [TcPluginResult])
+runPmPlugin givenCts allWantedCts pmM = do
   mPmMdl <- findPolymonadModule
   mPmCls <- findPolymonadClass
   case (mPmMdl, mPmCls) of
@@ -116,24 +119,32 @@ runPmPlugin givenCts wantedCts pmM = do
       case (mIdMdl, mIdTyCon) of
         (Right idMdl, Just idTyCon) -> do
           pmInsts <- findPolymonadInstancesInScope
-          let givenPmCts  = filter (\ct -> (isGivenCt ct || isDerivedCt ct) && isClassConstraint pmCls ct) givenCts
-          let wantedPmCts = filter (\ct -> isWantedCt ct && isClassConstraint pmCls ct) wantedCts
-          (pmTcs, pmTvs, pmBindClsInsts) <- selectPolymonadSubset idTyCon pmCls pmInsts (givenPmCts, wantedPmCts)
+          -- All fully applied constraints are given evidence and removed from
+          -- the set of constraints we pass on to the solver.
+          -- This is done here (one single time), so it is not done in every
+          -- run of the solver on another polymonad.
+          let (wantedApplied, wantedCts) = partition isFullyAppliedClassConstraint allWantedCts
+          wantedEvidence <- catMaybes <$> mapM (pickInstanceForAppliedConstraint pmCls) wantedApplied
+          -- Now select the different polymonads...
           foundPms <- selectPolymonadByConnectedComponent idTyCon pmCls pmInsts (givenCts, wantedCts)
-          let currPm = (pmTcs, nubBy eqType pmTvs, pmBindClsInsts, givenPmCts)
-          runExceptT $ runReaderT pmM PmPluginEnv
-            { pmEnvPolymonadModule = pmMdl
-            , pmEnvPolymonadClass  = pmCls
-            , pmEnvPolymonadInstances = pmInsts
-            , pmEnvIdentityModule = idMdl
-            , pmEnvIdentityTyCon  = idTyCon
-            , pmEnvGivenConstraints = givenCts
-            , pmEnvWantedConstraints = wantedCts
-            , pmEnvGivenPolymonadConstraints = givenPmCts
-            , pmEnvWantedPolymonadConstraints = wantedPmCts
-            , pmEnvCurrentPolymonad = currPm
-            , pmEnvDebugEnabled = False
-            }
+          -- ...and run the solver on each one of them.
+          results <- nestedSequence $ flip fmap foundPms $ \((pmTcs, pmRelevantInsts, gPmCts), wPmCts) -> do
+            let currPm = (pmTcs, pmRelevantInsts, gPmCts)
+            runExceptT $ runReaderT pmM PmPluginEnv
+              { pmEnvPolymonadModule = pmMdl
+              , pmEnvPolymonadClass  = pmCls
+              , pmEnvPolymonadInstances = pmRelevantInsts
+              , pmEnvIdentityModule = idMdl
+              , pmEnvIdentityTyCon  = idTyCon
+              , pmEnvGivenConstraints = filter (not . isClassConstraint pmCls) givenCts ++ gPmCts
+              , pmEnvWantedConstraints = filter (not . isClassConstraint pmCls) wantedCts ++ wPmCts
+              , pmEnvGivenPolymonadConstraints = gPmCts
+              , pmEnvWantedPolymonadConstraints = wPmCts
+              , pmEnvCurrentPolymonad = currPm
+              , pmEnvDebugEnabled = False
+              }
+          -- Add the evidence for fully applied constraints to the results of all solvers.
+          return $ fmap (TcPluginOk wantedEvidence [] :) results
         (Left errId, _) -> return $ Left
           $ pmErrMsg ("Could not find " ++ identityModuleName ++ " module:\n")
           ++ errId
@@ -145,6 +156,18 @@ runPmPlugin givenCts wantedCts pmM = do
       ++ errPm
     _ -> return $ Left
       $ pmErrMsg ("Could not find " ++ polymonadClassName ++ " class:")
+
+nestedSequence :: [TcPluginM (Either String a)] -> TcPluginM (Either String [a])
+nestedSequence [] = return $ Right []
+nestedSequence (m : ms) = do
+  eitherA <- m
+  case eitherA of
+    Left err -> return $ Left err
+    Right a -> do
+      eitherAs <- nestedSequence ms
+      case eitherAs of
+        Left err -> return $ Left err
+        Right as -> return $ Right $ a : as
 
 -- | Execute the given 'TcPluginM' computation within the polymonad plugin monad.
 runTcPlugin :: TcPluginM a -> PmPluginM a
@@ -212,7 +235,7 @@ getWantedConstraints = asks pmEnvWantedConstraints
 --   of the triple. They come as class instances that provide bind operations
 --   or given constraints that need to be assumed to be existing bind
 --   operations.
-getCurrentPolymonad :: PmPluginM (Set TyCon, [Type], [ClsInst], [Ct])
+getCurrentPolymonad :: PmPluginM ([Type], [ClsInst], [GivenCt])
 getCurrentPolymonad = asks pmEnvCurrentPolymonad
 
 -- | Shortcut to access the instance environments.
