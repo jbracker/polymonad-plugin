@@ -28,9 +28,7 @@ import Data.Tuple ( swap )
 import Data.Set ( Set )
 import qualified Data.Set as S
 import Data.Graph.Inductive.Graph
-  ( Node
-  , mkGraph
-  , labEdges, labNodes )
+  ( Node, mkGraph )
 import Data.Graph.Inductive.PatriciaTree ( Gr )
 import Data.Graph.Inductive.Query.DFS ( components )
 
@@ -42,7 +40,7 @@ import TcRnTypes
   , TcGblEnv(..)
   , TcTyThing(..) )
 import Type
-  ( Type, TyThing(..), TyVar
+  ( Type, TyThing(..)
   , isTyVarTy, splitAppTys
   , splitFunTysN, eqType
   , mkTyConApp, mkTyVarTy, mkTyConTy
@@ -67,27 +65,38 @@ import Module
 import Class
   ( Class(..)
   , className, classArity )
-import Unify ( tcUnifyTys )
-import Unique ( getUnique, getKey )
 import InstEnv
   ( ClsInst(..)
   , instEnvElts
   , instanceSig
-  , instanceBindFun
   , classInstances )
 import Outputable ( Outputable )
 
-import Control.Polymonad.Plugin.Log ( pmErrMsg, pprToStr )--, pmDebugMsg, pmObjMsg )
+import Control.Polymonad.Plugin.Log
+  ( pmErrMsg, pmDebugMsg, pmObjMsg
+  , pprToStr )
 import Control.Polymonad.Plugin.Utils
   ( associations, lookupBy
   , isAmbiguousType )
 import Control.Polymonad.Plugin.Constraint
   ( constraintTyCons, constraintClassTyArgs, constraintPolymonadTyArgs'
   , isClassConstraint )
+import Control.Polymonad.Plugin.Instance
+  ( matchInstanceTyVars, isInstantiatedBy )
 
-printObj :: (Outputable o) => o -> TcPluginM ()
-printObj = tcPluginIO . putStr . pprToStr
+-- -----------------------------------------------------------------------------
+-- Debugging
+-- -----------------------------------------------------------------------------
 
+-- | Internal function for printing from within the monad.
+internalPrint :: String -> TcPluginM ()
+internalPrint = tcPluginIO . putStr
+
+printMsg :: String -> TcPluginM ()
+printMsg = internalPrint . pmDebugMsg
+
+printObj :: Outputable o => o -> TcPluginM ()
+printObj = internalPrint . pmObjMsg . pprToStr
 
 -- -----------------------------------------------------------------------------
 -- Constant Names (Magic Numbers...)
@@ -170,6 +179,9 @@ findIdentityTyCon = do
 -- Subset Selection
 -- -----------------------------------------------------------------------------
 
+type WantedCt = Ct
+type GivenCt = Ct
+
 -- | Type signature of a subset selection function.
 --
 --   @subsetSelectionFunction idTc pmCls pmInsts (givenDerivedCts, wantedCts)@
@@ -182,10 +194,13 @@ findIdentityTyCon = do
 --   * @wantedCts@ - The wanted constraints.
 --     These may only be 'Polymonad' constraints.
 --
---   Returns the type constructors, type variables (partially applied) and
---   class instances and given/derived constraints that make up each detected polymonad.
+--   Returns the (possibly partially applied) type constructors and type variables
+--   together with class instances and given/derived constraints that
+--   make up each detected polymonad.
+--   Each polymonad is paired with the list of wanted constraints that need to
+--   be solved with it.
 type SubsetSelectionFunction =
-  TyCon -> Class -> [ClsInst] -> ([Ct], [Ct]) -> TcPluginM [(Set TyCon, [Type], [ClsInst], [Ct])]
+  TyCon -> Class -> [ClsInst] -> ([Ct], [Ct]) -> TcPluginM [(([Type], [ClsInst], [GivenCt]), [WantedCt])]
 
 selectPolymonadByConnectedComponent :: SubsetSelectionFunction
 selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
@@ -193,14 +208,24 @@ selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
   let wCtComps = [ nubBy eqCt $ concat [ ctForNode compNode | compNode <- comp ] | comp <- graphComps ]
   printObj wCtComps
   -- TODO: Implement
-  return []
+  forM wCtComps $ \wCtComp -> findPolymonadFor wCtComp >>= \pm -> return (pm, wCtComp)
   where
+    findPolymonadFor :: [WantedCt] -> TcPluginM ([Type], [ClsInst], [GivenCt])
+    findPolymonadFor wantedCts = do
+      -- TODO
+      return (undefined, undefined, givenPmCts)
+
+    givenPmCts = filter (\ct -> isClassConstraint pmCls ct && (isDerivedCt ct || isGivenCt ct)) gdCts
+    wantedPmCts = filter (\ct -> isClassConstraint pmCls ct && isWantedCt ct) wCts
+
+    -- Try to compare two constraints for equality.
+    -- Should suffice in this context.
     eqCt :: Ct -> Ct -> Bool
     eqCt ct0 ct1 = eqType (ctPred ct0) (ctPred ct1) && ctLocSpan (ctLoc ct0) == ctLocSpan (ctLoc ct1)
 
     -- List of wanted constraints together with their arguments
     -- types. Only contains polymonad constraints.
-    wCtTypes :: [(Ct, Type, Type, Type)]
+    wCtTypes :: [(WantedCt, Type, Type, Type)]
     wCtTypes = constraintPolymonadTyArgs' wCts
 
     wCtTyVarTypes :: [(Node, Type)]
@@ -218,14 +243,14 @@ selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
     nodeToType :: Node -> Type
     nodeToType n = fromJust $ lookup n wCtTyVarTypes
 
-    ctForNode :: Node -> [Ct]
+    ctForNode :: Node -> [WantedCt]
     ctForNode n =
       let t = nodeToType n
       in (\(ct, _, _, _) -> ct) <$> filter (\(_, t0, t1, t2) -> eqType t t0 || eqType t t1 || eqType t t2) wCtTypes
 
     -- The nodes of our graph are ambiguous type variable. The edges are the
     -- constraints that created them.
-    componentGraph :: Gr Type Ct
+    componentGraph :: Gr Type WantedCt
     componentGraph = mkGraph wCtTyVarTypes $
       [ (typeToNode t0, typeToNode t2, ct) | (ct, t0, _t1, t2) <- wCtTypes, isNotIdentity t0, isNotIdentity t2 ] ++
       [ (typeToNode t1, typeToNode t2, ct) | (ct, _t0, t1, t2) <- wCtTypes, isNotIdentity t1, isNotIdentity t2 ] -- Edges
@@ -256,7 +281,7 @@ selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
   let pmTyCons = givenPmTyCons `S.union` wantedPmTyCons `S.union` S.singleton idTyCon
   let varTyCons = filter (isTyVarTy . fst . splitAppTys)
                 $ concat $ catMaybes $ fmap constraintClassTyArgs givenPmCts
-  relevantInsts <- filterApplicableInstances pmInsts pmTyCons
+  relevantInsts <- filterApplicableInstances' pmInsts pmTyCons
   return (pmTyCons, varTyCons, relevantInsts)
   where
     givenPmCts = filter (\ct -> isClassConstraint pmCls ct && (isDerivedCt ct || isGivenCt ct)) givenCts
@@ -265,6 +290,41 @@ selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
 -- -----------------------------------------------------------------------------
 -- Utility Functions
 -- -----------------------------------------------------------------------------
+
+-- | Filters the list of polymonads constraints, to only keep those
+--   that can be applied to the given type constructors.
+--   The given list of type constructors is assumed to only contain unary
+--   type constructors. These type constructors are also assumed to not be
+--   ambiguous.
+--
+--   The list of constraints contains the given and derived constraints that might be
+--   needed when checking if a instance is instantiated. These constraints
+--   should include non-polymonad constraints as well.
+filterApplicableInstances :: [Ct] -> [ClsInst] -> [Type] -> TcPluginM [ClsInst]
+filterApplicableInstances givenCts pmInsts appliedTyCons =
+  fmap concat $ forM pmInsts $ \pmInst -> do
+    -- Get the arguments of the instance we are looking at.
+    let (_instTvs, _instCtTys, _instCls, instArgs) = instanceSig pmInst
+    -- associations :: [(key , [value])] -> [[(key, value)]]
+    -- Now create all associations between arguments and type constructors that are available.
+    let assocs = fmap snd <$> associations [(instArg, appliedTyCons) | instArg <- instArgs]
+    -- Look at each of those associations and check if it actually instantiates.
+    mListInsts <- forM assocs $ \assoc -> case matchInstanceTyVars assoc pmInst of
+      -- Association matches instance arguments, proceed...
+      Just instTvArgs -> do
+        -- Check if the given association actually instanctiates.
+        eIsInst <- isInstantiatedBy givenCts instTvArgs pmInst
+        -- Return instance if association instantiates.
+        case eIsInst of
+          Left err -> do
+            printMsg err
+            return Nothing
+          Right isInst -> return $ if isInst then Just pmInst else Nothing
+      -- Association does not even match instance arguments, so it will not instantiate.
+      Nothing -> return Nothing
+    -- Only keep those instances that actually are instantiated.
+    return $ catMaybes mListInsts
+
 
 -- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.
 findPolymonadInstancesInScope :: TcPluginM [ClsInst]
@@ -278,8 +338,9 @@ findPolymonadInstancesInScope = do
 
 -- | Filters the list of polymonads constraints, to only keep those
 --   that can be applied to the given type constructors.
-filterApplicableInstances :: [ClsInst] -> Set TyCon -> TcPluginM [ClsInst]
-filterApplicableInstances pmInsts tcs = do
+-- TODO: Remove when unused.
+filterApplicableInstances' :: [ClsInst] -> Set TyCon -> TcPluginM [ClsInst]
+filterApplicableInstances' pmInsts tcs = do
   appliedTyCons <- forM (S.toList tcs) $ \tc -> do
     let (indexKinds, _unaryKind) = splitFunTysN (tyConArity tc - 1) (tyConKind tc)
     if null indexKinds then do
@@ -291,27 +352,18 @@ filterApplicableInstances pmInsts tcs = do
     let (_instTvs, _instCtTys, _instCls, instArgs) = instanceSig pmInst
     --associations :: [(key , [value])] -> [[(key, value)]]
     let assocs = fmap snd <$> associations [(instArg, appliedTyCons) | instArg <- instArgs]
-    mListInsts <- forM assocs $ \assoc -> case tcUnifyTys instanceBindFun instArgs assoc of
-      Just _subst ->
-        -- TODO: For now we just accept this, although superclasses might keep
-        -- us from actually using this instance. In future we probably want to
-        -- check instCtTys for matches.
-        return $ Just pmInst
+    mListInsts <- forM assocs $ \assoc -> case matchInstanceTyVars assoc pmInst of
+      Just instTvArgs -> do
+        eIsInst <- isInstantiatedBy undefined instTvArgs pmInst
+        case eIsInst of
+          Left err -> do
+            printMsg err
+            return Nothing
+          Right isInst -> return $ if isInst then Just pmInst else Nothing
       Nothing -> return Nothing
     return $ catMaybes mListInsts
   return $ concat filteredInsts
 
-{- unused debugging functions
--- | Internal function for printing from within the monad.
-internalPrint :: String -> TcPluginM ()
-internalPrint = tcPluginIO . putStr
-
-printMsg :: String -> TcPluginM ()
-printMsg = internalPrint . pmDebugMsg
-
-printObj :: Outputable o => o -> TcPluginM ()
-printObj = internalPrint . pmObjMsg . pprToStr
--}
 -- -----------------------------------------------------------------------------
 -- Local Utility Functions
 -- -----------------------------------------------------------------------------
