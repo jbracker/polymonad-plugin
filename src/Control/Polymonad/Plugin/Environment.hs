@@ -5,6 +5,7 @@ module Control.Polymonad.Plugin.Environment
   ( -- * Polymonad Plugin Monad
     PmPluginM
   , runPmPlugin
+  , runTcPlugin
     -- * Polymonad Plugin Environment Access
   , getPolymonadClass, getPolymonadModule
   , getPolymonadInstances
@@ -145,6 +146,10 @@ runPmPlugin givenCts wantedCts pmM = do
     _ -> return $ Left
       $ pmErrMsg ("Could not find " ++ polymonadClassName ++ " class:")
 
+-- | Execute the given 'TcPluginM' computation within the polymonad plugin monad.
+runTcPlugin :: TcPluginM a -> PmPluginM a
+runTcPlugin = lift . lift
+
 -- -----------------------------------------------------------------------------
 -- Plugin Environment Access
 -- -----------------------------------------------------------------------------
@@ -212,7 +217,7 @@ getCurrentPolymonad = asks pmEnvCurrentPolymonad
 
 -- | Shortcut to access the instance environments.
 getInstEnvs :: PmPluginM InstEnvs
-getInstEnvs = lift $ lift TcPluginM.getInstEnvs
+getInstEnvs = runTcPlugin $ TcPluginM.getInstEnvs
 
 -- | Checks wether debugging mode is enabled.
 --   Debug mode allows debug messages to be printed.
@@ -268,7 +273,7 @@ printDebugObj obj = do
 
 -- | Internal function for printing from within the monad.
 internalPrint :: String -> PmPluginM ()
-internalPrint = lift . lift . tcPluginIO . putStr
+internalPrint = runTcPlugin . tcPluginIO . putStr
 
 -- | Print the given string as if it was an object. This allows custom
 --   formatting of object. The boolean indicates wether the debug mode

@@ -13,7 +13,6 @@ import Data.List ( partition, find )
 import Data.Set ( Set )
 import qualified Data.Set as S
 import Control.Monad ( forM, unless, when )
-import Control.Monad.Trans.Class ( lift )
 
 import InstEnv
   ( ClsInst(..)
@@ -38,7 +37,7 @@ import TcPluginM ( tcLookupClass )
 import TcEvidence ( EvTerm(..) )
 
 import Control.Polymonad.Plugin.Environment
-  ( PmPluginM
+  ( PmPluginM, runTcPlugin
   , getPolymonadClass, getInstEnvs
   , getGivenConstraints
   , throwPluginError
@@ -48,7 +47,8 @@ import Control.Polymonad.Plugin.Constraint
   , constraintTyCons, constraintTcVars
   , isClassConstraint, isFullyAppliedClassConstraint )
 import Control.Polymonad.Plugin.Instance
-  ( instanceTyCons, instanceTcVars )
+  ( instanceTyCons, instanceTcVars
+  , isInstantiatedBy )
 import Control.Polymonad.Plugin.Utils
   ( splitTyConApps )
 
@@ -94,7 +94,7 @@ findConstraintOrInstanceTyCons tcvs (ctTyCon, ctTyConAppArgs)
   | S.null tcvs = return S.empty
   | otherwise = do
     -- Find the type class this constraint is about
-    ctCls <- lift . lift $ tcLookupClass (getName ctTyCon)
+    ctCls <- runTcPlugin $ tcLookupClass (getName ctTyCon)
     -- Get our instance environment
     instEnvs <- getInstEnvs
     -- Find all instances that match the given constraint
@@ -190,7 +190,7 @@ pickInstanceForAppliedConstraint ct = do
         else Just $ EvDFunApp (is_dfun inst) tys (fromJust <$> ctEvTerms)
 
 -- | Checks if the given arguments types to the free variables in the
---   class instance actually from a valid instantiation of that instance.
+--   class instance actually form a valid instantiation of that instance.
 --   The given arguments need to match up with the list of free type variables
 --   given for the class instance ('is_tvs').
 --
@@ -198,39 +198,8 @@ pickInstanceForAppliedConstraint ct = do
 --   equality or type function constraints properly.
 isInstanceOf :: [Type] -> ClsInst -> PmPluginM Bool
 isInstanceOf tys inst = do
-  -- Get the instance type variables and constraints (by that we know
-  -- the numner of type arguments)
-  let (instVars, cts, _cls, _tyArgs) = instanceSig inst -- ([TyVar], [Type], Class, [Type])
-  -- Assert: We have a type for each variable in the instance.
-  when (length tys /= length instVars) $
-    throwPluginError "isInstanceOf: Number of type arguments does not match number of variables in instance"
-  -- How the instance variables for the current instance are bound.
-  let varSubst = mkTopTvSubst $ zip instVars tys
-  -- Split the constraints into their class and arguments.
-  -- FIXME: We ignore constraints where this is not possible.
-  -- Don't know if this is the right thing to do.
-  let instCts = catMaybes $ fmap getClassPredTys_maybe cts
-  -- Now go over each constraint and find a suitable instance.
-  fmap and $ forM instCts $ \(ctCls, ctArgs) -> do
-    -- Substitute the variables to know what instance we are looking for.
-    let substArgs = substTys varSubst ctArgs
-    -- Get the current instance environment
-    instEnvs <- getInstEnvs
-    -- Look for suitable instance. Since we are not necessarily working
-    -- with polymonads anymore we need to find a unique one.
-    case lookupUniqueInstEnv instEnvs ctCls substArgs of
-      -- No instance found, but maybe a given constraint will do the deed...
-      Left _err -> do
-        givenCts <- getGivenConstraints
-        -- Split the given constraints into their class and arguments.
-        -- FIXME: We ignore constraints where this is not possible.
-        let givenInstCts = catMaybes $ fmap constraintClassType givenCts
-        -- Define the predicate to check if a given constraint matches
-        -- the constraint we want to fulfill.
-        let eqInstCt (givenCls, givenArgs) = ctCls == givenCls && eqTypes substArgs givenArgs
-        -- If we find a given constraint that fulfills the constraint we are
-        -- searching for, return true, otherwise false.
-        return $ isJust $ find eqInstCt givenInstCts
-      -- We found one: Now we also need to check the found instance for
-      -- its preconditions.
-      Right (clsInst, instArgs) -> instArgs `isInstanceOf` clsInst
+  givenCts <- getGivenConstraints
+  res <- runTcPlugin $ isInstantiatedBy givenCts tys inst
+  case res of
+    Left err -> throwPluginError err
+    Right b -> return b

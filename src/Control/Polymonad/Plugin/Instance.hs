@@ -9,27 +9,40 @@ module Control.Polymonad.Plugin.Instance
   , instanceTcVars
   , instanceType
   , instancePolymonadTyArgs
+  , isInstantiatedBy
   ) where
 
+import Data.Maybe ( catMaybes, isJust )
+import Data.List ( find )
 import Data.Set ( Set )
+
+import Control.Monad ( forM, liftM2 )
 
 import InstEnv
   ( ClsInst(..)
-  , instanceSig )
+  , instanceSig
+  , lookupUniqueInstEnv )
 import Type
   ( Type, TyVar
   , mkTyVarTy
-  , substTy )
+  , substTy, substTys
+  , mkTopTvSubst
+  , getClassPredTys_maybe
+  , eqTypes )
 import Class ( Class, classTyCon )
 import TyCon ( TyCon )
 import Unify ( tcMatchTys )
 import VarSet ( mkVarSet )
+import TcPluginM ( TcPluginM, getInstEnvs )
+import TcRnTypes ( Ct )
 
 import Control.Polymonad.Plugin.Log
   ( missingCaseError )
 import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
   , collectTopTcVars )
+import Control.Polymonad.Plugin.Constraint
+  ( constraintClassType )
 
 -- | Trys to see if the given arguments match the class instance
 --   arguments by unification. This only works if the number of arguments
@@ -86,3 +99,58 @@ instanceTyCons inst = collectTopTyCons $ instanceTyArgs inst
 --   > > { m , n }
 instanceTcVars :: ClsInst -> Set TyVar
 instanceTcVars inst = collectTopTcVars $ instanceTyArgs inst
+
+-- | Checks if the given arguments types to the free variables in the
+--   class instance actually form a valid instantiation of that instance.
+--   The given arguments need to match up with the list of free type variables
+--   given for the class instance ('is_tvs').
+--
+--   The second argument can be created using 'matchInstanceTyVars'.
+--
+--   The first argument is a list of given and derived constraints
+--   that can be used to check of they fulfill a superclass, in case
+--   there are no instances that can fulfill them.
+--
+--   Caveat: This currently only matches class constraints, but not type
+--   equality or type function constraints properly.
+isInstantiatedBy :: [Ct] -> [Type] -> ClsInst -> TcPluginM (Either String Bool)
+isInstantiatedBy givenCts tys inst = do
+  -- Get the instance type variables and constraints (by that we know
+  -- the numner of type arguments)
+  let (instVars, cts, _cls, _tyArgs) = instanceSig inst -- ([TyVar], [Type], Class, [Type])
+  -- Assert: We have a type for each variable in the instance.
+  if length tys /= length instVars then
+    return $ Left "isInstanceOf: Number of type arguments does not match number of variables in instance"
+  else do
+    -- How the instance variables for the current instance are bound.
+    let varSubst = mkTopTvSubst $ zip instVars tys
+    -- Split the constraints into their class and arguments.
+    -- FIXME: We ignore constraints where this is not possible.
+    -- Don't know if this is the right thing to do.
+    let instCts = catMaybes $ fmap getClassPredTys_maybe cts
+    -- Now go over each constraint and find a suitable instance.
+    results <- forM instCts $ \(ctCls, ctArgs) -> do
+      -- Substitute the variables to know what instance we are looking for.
+      let substArgs = substTys varSubst ctArgs
+      -- Get the current instance environment
+      instEnvs <- getInstEnvs
+      -- Look for suitable instance. Since we are not necessarily working
+      -- with polymonads anymore we need to find a unique one.
+      case lookupUniqueInstEnv instEnvs ctCls substArgs of
+        -- No instance found, but maybe a given constraint will do the deed...
+        Left _err -> do
+          -- Split the given constraints into their class and arguments.
+          -- FIXME: We ignore constraints where this is not possible.
+          let givenInstCts = catMaybes $ fmap constraintClassType givenCts
+          -- Define the predicate to check if a given constraint matches
+          -- the constraint we want to fulfill.
+          -- We are assuming thet there are no ambiguous type variables
+          -- in a given constraint
+          let eqInstCt (givenCls, givenArgs) = ctCls == givenCls && eqTypes substArgs givenArgs
+          -- If we find a given constraint that fulfills the constraint we are
+          -- searching for, return true, otherwise false.
+          return $ Right $ isJust $ find eqInstCt givenInstCts
+        -- We found one: Now we also need to check the found instance for
+        -- its preconditions.
+        Right (clsInst, instArgs) -> isInstantiatedBy givenCts instArgs clsInst
+    return $ foldr (liftM2 (&&)) (Right True) results
