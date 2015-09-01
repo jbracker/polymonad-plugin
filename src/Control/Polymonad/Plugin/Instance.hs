@@ -3,6 +3,7 @@
 --   of the GHC API.
 module Control.Polymonad.Plugin.Instance
   ( matchInstanceTyVars
+  , eqInstance
   , instanceClassTyCon
   , instanceTyArgs
   , instanceTyCons
@@ -19,7 +20,7 @@ import Data.Set ( Set )
 import Control.Monad ( forM, liftM2 )
 
 import InstEnv
-  ( ClsInst(..)
+  ( ClsInst(..), IsOrphan(..)
   , instanceSig
   , lookupUniqueInstEnv )
 import Type
@@ -43,6 +44,23 @@ import Control.Polymonad.Plugin.Utils
   , collectTopTcVars )
 import Control.Polymonad.Plugin.Constraint
   ( constraintClassType )
+
+eqInstance :: ClsInst -> ClsInst -> Bool
+eqInstance instA instB
+  =  is_cls_nm instA == is_cls_nm instB
+  && is_tcs instA == is_tcs instB
+  && is_tvs instA == is_tvs instB
+  && is_cls instA == is_cls instB
+  && length (is_tys instA) == length (is_tys instB)
+  && eqTypes (is_tys instA) (is_tys instB)
+  && is_dfun instA == is_dfun instB
+  && is_flag instA == is_flag instB
+  && eqOrphan (is_orphan instA) (is_orphan instB)
+
+eqOrphan :: IsOrphan -> IsOrphan -> Bool
+eqOrphan IsOrphan IsOrphan = True
+eqOrphan (NotOrphan nameA) (NotOrphan nameB) = nameA == nameB
+eqOrphan _ _ = False
 
 -- | Trys to see if the given arguments match the class instance
 --   arguments by unification. This only works if the number of arguments
