@@ -82,7 +82,7 @@ import Control.Polymonad.Plugin.Constraint
   ( constraintTyCons, constraintClassTyArgs, constraintPolymonadTyArgs'
   , isClassConstraint )
 import Control.Polymonad.Plugin.Instance
-  ( matchInstanceTyVars, isInstantiatedBy )
+  ( matchInstanceTyVars, isInstantiatedBy, eqInstance )
 
 -- -----------------------------------------------------------------------------
 -- Debugging
@@ -189,10 +189,10 @@ type GivenCt = Ct
 --   * @idTc@ - The 'Identity' type constructor.
 --   * @pmCls@ - The 'Polymonad' class.
 --   * @pmInsts@ - The available 'Polymonad' instances.
---   * @givenDerivedCts@ - The given and derived constraints.
---     These may only be 'Polymonad' constraints.
+--   * @givenDerivedCts@ - The given and derived constraints
+--     (all of them, not only polymonad constraints).
 --   * @wantedCts@ - The wanted constraints.
---     These may only be 'Polymonad' constraints.
+--     (all of them, not only polymonad constraints).
 --
 --   Returns the (possibly partially applied) type constructors and type variables
 --   together with class instances and given/derived constraints that
@@ -200,22 +200,31 @@ type GivenCt = Ct
 --   Each polymonad is paired with the list of wanted constraints that need to
 --   be solved with it.
 type SubsetSelectionFunction =
-  TyCon -> Class -> [ClsInst] -> ([Ct], [Ct]) -> TcPluginM [(([Type], [ClsInst], [GivenCt]), [WantedCt])]
+  TyCon -> Class -> [ClsInst] -> ([GivenCt], [WantedCt]) -> TcPluginM [(([Type], [ClsInst], [GivenCt]), [WantedCt])]
 
 selectPolymonadByConnectedComponent :: SubsetSelectionFunction
 selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
   let graphComps = components componentGraph
   let wCtComps = [ nubBy eqCt $ concat [ ctForNode compNode | compNode <- comp ] | comp <- graphComps ]
-  printObj wCtComps
-  -- TODO: Implement
   forM wCtComps $ \wCtComp -> findPolymonadFor wCtComp >>= \pm -> return (pm, wCtComp)
   where
     findPolymonadFor :: [WantedCt] -> TcPluginM ([Type], [ClsInst], [GivenCt])
     findPolymonadFor wantedCts = do
-      -- TODO
-      return (undefined, undefined, givenPmCts)
+      -- Collect all type constructors that are involved in the wanted constraints
+      -- but remove that that are ambiguous.
+      let tyCons = nubBy eqType $ (mkTyConTy idTc :) $ filter (not . isAmbiguous)
+                 $ concat $ catMaybes $ constraintClassTyArgs <$> wantedCts
+      -- filterApplicableInstances :: [GivenCt] -> [ClsInst] -> [Type] -> TcPluginM [ClsInst]
+      -- Filter out the instances that are relevant to this polymonad.
+      insts <- filterApplicableInstances gdCts pmInsts tyCons
+      -- Return the polymonad.
+      -- FIXME/TODO: Is it necessary to also filter the given and
+      -- derived polymonad constraints?
+      return (tyCons, insts, givenPmCts)
 
+    -- The given and derived polymonad constraints.
     givenPmCts = filter (\ct -> isClassConstraint pmCls ct && (isDerivedCt ct || isGivenCt ct)) gdCts
+    -- The wanted polymonad constraints.
     wantedPmCts = filter (\ct -> isClassConstraint pmCls ct && isWantedCt ct) wCts
 
     -- Try to compare two constraints for equality.
@@ -226,7 +235,7 @@ selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
     -- List of wanted constraints together with their arguments
     -- types. Only contains polymonad constraints.
     wCtTypes :: [(WantedCt, Type, Type, Type)]
-    wCtTypes = constraintPolymonadTyArgs' wCts
+    wCtTypes = constraintPolymonadTyArgs' wantedPmCts
 
     wCtTyVarTypes :: [(Node, Type)]
     wCtTyVarTypes = zip [0..]
@@ -300,9 +309,9 @@ selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
 --   The list of constraints contains the given and derived constraints that might be
 --   needed when checking if a instance is instantiated. These constraints
 --   should include non-polymonad constraints as well.
-filterApplicableInstances :: [Ct] -> [ClsInst] -> [Type] -> TcPluginM [ClsInst]
+filterApplicableInstances :: [GivenCt] -> [ClsInst] -> [Type] -> TcPluginM [ClsInst]
 filterApplicableInstances givenCts pmInsts appliedTyCons =
-  fmap concat $ forM pmInsts $ \pmInst -> do
+  fmap (nubBy eqInstance . concat) $ forM pmInsts $ \pmInst -> do
     -- Get the arguments of the instance we are looking at.
     let (_instTvs, _instCtTys, _instCls, instArgs) = instanceSig pmInst
     -- associations :: [(key , [value])] -> [[(key, value)]]

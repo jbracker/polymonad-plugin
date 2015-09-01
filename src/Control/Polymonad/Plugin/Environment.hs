@@ -119,7 +119,7 @@ runPmPlugin givenCts wantedCts pmM = do
           let givenPmCts  = filter (\ct -> (isGivenCt ct || isDerivedCt ct) && isClassConstraint pmCls ct) givenCts
           let wantedPmCts = filter (\ct -> isWantedCt ct && isClassConstraint pmCls ct) wantedCts
           (pmTcs, pmTvs, pmBindClsInsts) <- selectPolymonadSubset idTyCon pmCls pmInsts (givenPmCts, wantedPmCts)
-          _ <- selectPolymonadByConnectedComponent idTyCon pmCls pmInsts (givenPmCts, wantedPmCts)
+          foundPms <- selectPolymonadByConnectedComponent idTyCon pmCls pmInsts (givenCts, wantedCts)
           let currPm = (pmTcs, nubBy eqType pmTvs, pmBindClsInsts, givenPmCts)
           runExceptT $ runReaderT pmM PmPluginEnv
             { pmEnvPolymonadModule = pmMdl
