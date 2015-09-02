@@ -17,19 +17,37 @@
 --   For a more detailed description of these functions refer to
 --   the 'Control.Monad' module.
 --
+--   Most functions are generalized to suite the setting of polymonads better.
+--
 --   This module is thought as a replacement for the "Control.Monad" module.
 module Control.Polymonad.Functions
-  ( (=<<)
-  , (>=>), (<=<)
-  , mapM, mapM_
+  ( -- * @Control.Monad@ replacements
+    -- ** Basic @Polymonad@ functions
+    mapM, mapM_
   , forM, forM_
   , sequence, sequence_
-  , when, unless
-  , liftM, liftM2, liftM3
-  , join, ap
-  , forever
+  , (=<<)
+  , (>=>), (<=<)
+  , forever, void
+    -- ** Generalizations of list functions
+  , join
+  -- , msum, mfilter -- FIXME: Requires an alternative of 'MonadPlus'.
   , filterM
-  , (<$>), (<$!>)
+  , mapAndUnzipM
+  , zipWithM, zipWithM_
+  , foldM, foldM_
+  , replicateM, replicateM_
+    -- ** Conditional execution of monadic expressions
+  -- , guard -- FIXME: Requires an alternative of 'Alternative'
+  , when, unless
+    -- ** Monadic lifting operators
+  , liftM, liftM2, liftM3
+  -- , liftM4, liftM5 -- TODO
+  , ap
+    -- ** Strict monadic functions
+  , (<$!>)
+    -- * Additional generalized polymonad functions
+  , (<$>)
   ) where
 
 import qualified Prelude as P
@@ -137,6 +155,45 @@ filterM f (x : xs) = do
   if keep
     then filterM f xs >>= (return . (x :))
     else filterM f xs
+
+mapAndUnzipM :: ( Polymonad Identity Identity n, Polymonad n Identity n
+                , Polymonad m n n, Polymonad n n n)
+             => (a -> m (b, c)) -> [a] -> n ([b], [c])
+mapAndUnzipM f xs = liftM P.unzip (forM xs f)
+
+zipWithM :: ( Polymonad Identity Identity n, Polymonad n Identity n
+            , Polymonad m n n, Polymonad n n n)
+         => (a -> b -> m c) -> [a] -> [b] -> n [c]
+zipWithM f xs ys = sequence $ P.zipWith f xs ys
+
+zipWithM_ :: ( Polymonad Identity Identity n, Polymonad n Identity n
+             , Polymonad m n n, Polymonad n n n)
+          => (a -> b -> m c) -> [a] -> [b] -> n ()
+zipWithM_ f xs ys = void $ zipWithM f xs ys
+
+foldM :: ( P.Foldable t
+         , Polymonad Identity Identity m, Polymonad m Identity m
+         , Polymonad m m m)
+      => (b -> a -> m b) -> b -> t a -> m b
+foldM f e = P.foldl f'(return e)
+  where f' mb a = mb >>= \b -> f b a
+        -- :: (Polymonad m m m) => m b -> a -> m b
+
+foldM_ :: ( P.Foldable t
+          , Polymonad Identity Identity m, Polymonad m Identity m
+          , Polymonad m m m)
+       => (b -> a -> m b) -> b -> t a -> m ()
+foldM_ f e = void . foldM f e
+
+replicateM :: (Polymonad m Identity n) => Int -> m a -> n [a]
+replicateM n _ma | n <= 0 = return []
+replicateM n ma = do
+  a <- ma
+  as <- replicateM (n - 1) ma
+  return $ a : as
+
+replicateM_ :: ()
+replicateM_ = P.undefined
 
 -- | Make arguments and result of a pure function monadic.
 liftM :: (Polymonad m Identity n) => (a -> b) -> m a -> n b
