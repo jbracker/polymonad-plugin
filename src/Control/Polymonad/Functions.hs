@@ -157,21 +157,26 @@ filterM f (x : xs) = do
     then filterM f xs >>= (return . (x :))
     else filterM f xs
 
+-- | Map a given monadic function on the list and the unzip the results.
 mapAndUnzipM :: ( Polymonad Identity Identity n, Polymonad n Identity n
                 , Polymonad m n n, Polymonad n n n)
              => (a -> m (b, c)) -> [a] -> n ([b], [c])
 mapAndUnzipM f xs = liftM P.unzip (forM xs f)
 
+-- | Zip together two list using a monadic function.
 zipWithM :: ( Polymonad Identity Identity n, Polymonad n Identity n
             , Polymonad m n n, Polymonad n n n)
          => (a -> b -> m c) -> [a] -> [b] -> n [c]
 zipWithM f xs ys = sequence $ P.zipWith f xs ys
 
+-- | Same as 'zipWithM', but ignores the results.
 zipWithM_ :: ( Polymonad Identity Identity n, Polymonad n Identity n
              , Polymonad m n n, Polymonad n n n)
           => (a -> b -> m c) -> [a] -> [b] -> n ()
 zipWithM_ f xs ys = void $ zipWithM f xs ys
 
+-- | Fold the given foldable using a monadic function.
+--   See 'foldl'.
 foldM :: ( P.Foldable t
          , Polymonad Identity Identity m, Polymonad m Identity m
          , Polymonad m m m)
@@ -180,12 +185,15 @@ foldM f e = P.foldl f'(return e)
   where f' mb a = mb >>= \b -> f b a
         -- :: (Polymonad m m m) => m b -> a -> m b
 
+-- | Same as 'foldM', but ignores the result.
 foldM_ :: ( P.Foldable t
           , Polymonad Identity Identity m, Polymonad m Identity m
           , Polymonad m m m)
        => (b -> a -> m b) -> b -> t a -> m ()
 foldM_ f e = void . foldM f e
 
+-- | Repeats the given monadic operation for the given amount of times and
+--   returns the accumulated results.
 replicateM :: ( Polymonad Identity Identity n
               , Polymonad m n n, Polymonad n Identity n)
            => Int -> m a -> n [a]
@@ -195,6 +203,7 @@ replicateM n ma = do
   as <- replicateM (n - 1) ma
   return $ a : as
 
+-- | Same as 'replicateM', but ignores the results.
 replicateM_ :: ( Polymonad Identity Identity n
                , Polymonad m n n, Polymonad n Identity n)
             => Int -> m a -> n ()
