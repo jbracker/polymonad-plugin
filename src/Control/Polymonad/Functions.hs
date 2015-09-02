@@ -13,9 +13,11 @@
 {-# OPTIONS_GHC -fplugin Control.Polymonad.Plugin #-}
 
 -- -----------------------------------------------------------------------------
--- | Collection of the ported monad-based prelude functions for polymonads.
+-- | Collection of the ported monad-based functions for polymonads.
 --   For a more detailed description of these functions refer to
 --   the 'Control.Monad' module.
+--
+--   This module is thought as a replacement for the "Control.Monad" module.
 module Control.Polymonad.Functions
   ( (=<<)
   , (>=>), (<=<)

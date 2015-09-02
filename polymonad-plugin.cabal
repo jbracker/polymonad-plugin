@@ -27,6 +27,7 @@ library
   exposed-modules: Control.Polymonad
                  , Control.Polymonad.Hoare
                  , Control.Polymonad.Functions
+                 , Control.Polymonad.Prelude
                  , Control.Polymonad.Plugin
                  , Control.Polymonad.Plugin.Log
                  , Control.Polymonad.Plugin.Utils
@@ -43,7 +44,7 @@ library
                  , Control.Polymonad.Plugin.Solve
   other-modules:
   other-extensions:
-  build-depends:  base         >=4.7 && <5,
+  build-depends:  base         >=4.8 && <5,
                   safe         >=0.3 && <0.4,
                   ghc          >=7.9 && <7.12,
                   containers   >=0.5 && <0.6,
@@ -54,7 +55,7 @@ library
   ghc-options:         -Wall -dynamic -dcore-lint
 
 executable polymonad-test
-  build-depends:  base         >=4.7 && <5,
+  build-depends:  base         >=4.8 && <5,
                   safe         >=0.3 && <0.4,
                   ghc          >=7.9 && <7.12,
                   containers   >=0.5 && <0.6,
