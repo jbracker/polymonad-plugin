@@ -32,7 +32,7 @@ import Control.Polymonad
 --   __TODO__
 --
 --   Also see the module description.
-class HoareMonad (m :: s -> s -> * -> *) where
+class HoareMonad m where
   -- | Bind operation (Composition).
   hoareBind :: m i j a -> (a -> m j k b) -> m i k b
   -- | Return operation (Skip)
