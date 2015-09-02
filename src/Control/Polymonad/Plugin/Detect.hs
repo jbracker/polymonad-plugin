@@ -104,9 +104,11 @@ import Control.Polymonad.Plugin.Instance
 internalPrint :: String -> TcPluginM ()
 internalPrint = tcPluginIO . putStr
 
+-- | Print a message using the polymonad plugin formatting.
 printMsg :: String -> TcPluginM ()
 printMsg = internalPrint . pmDebugMsg
 
+-- | Print an object using the polymonad plugin formatting.
 printObj :: Outputable o => o -> TcPluginM ()
 printObj = internalPrint . pmObjMsg . pprToStr
 
@@ -211,6 +213,12 @@ findIdentityTyCon = do
 type SubsetSelectionFunction =
   TyCon -> Class -> [ClsInst] -> ([GivenCt], [WantedCt]) -> TcPluginM [(([Type], [ClsInst], [GivenCt]), [WantedCt])]
 
+-- | Separates wanted constraints into different polymonads by looking
+--   at the connected components that are created by the implied bind-operations.
+--   Each component is assumed to be one polymonad.
+--
+--   TODO: Throw an error if a polymonad contains more then two unary type
+--   constructors, because we assume that every polymonad only contains two at most.
 selectPolymonadByConnectedComponent :: SubsetSelectionFunction
 selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
   let graphComps = components componentGraph
