@@ -19,7 +19,6 @@ module Control.Polymonad.Plugin.Detect
     -- * Subset Selection Algorithms
   , SubsetSelectionFunction
   , selectPolymonadByConnectedComponent
-  , selectPolymonadSubset
   , pickInstanceForAppliedConstraint
     -- * TcPluginM print function
   , printMsg, printObj
@@ -31,8 +30,6 @@ import Data.Maybe
   , fromJust )
 import Data.List ( nubBy )
 import Data.Tuple ( swap )
-import Data.Set ( Set )
-import qualified Data.Set as S
 import Data.Graph.Inductive.Graph
   ( Node, mkGraph )
 import Data.Graph.Inductive.PatriciaTree ( Gr )
@@ -47,13 +44,12 @@ import TcRnTypes
   , TcTyThing(..) )
 import Type
   ( Type, TyThing(..)
-  , isTyVarTy, splitAppTys
-  , splitFunTysN, eqType
-  , mkTyConApp, mkTyVarTy, mkTyConTy, mkTopTvSubst
+  , splitAppTys, eqType
+  , mkTyConTy, mkTopTvSubst
   , substTys
   , tyConAppTyCon_maybe
   , getClassPredTys_maybe )
-import TyCon ( TyCon, tyConArity, tyConKind )
+import TyCon ( TyCon )
 import TcPluginM
 import Name
   ( nameModule
@@ -91,7 +87,7 @@ import Control.Polymonad.Plugin.Utils
   , isAmbiguousType )
 import Control.Polymonad.Plugin.Constraint
   ( GivenCt, WantedCt
-  , constraintTyCons, constraintClassTyArgs, constraintPolymonadTyArgs'
+  , constraintClassTyArgs, constraintPolymonadTyArgs'
   , isClassConstraint, isFullyAppliedClassConstraint )
 import Control.Polymonad.Plugin.Instance
   ( matchInstanceTyVars, isInstantiatedBy, eqInstance )
@@ -295,32 +291,6 @@ selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
     isAmbiguous :: Type -> Bool
     isAmbiguous t = isAmbiguousType t || isAmbiguousType (fst $ splitAppTys t)
 
--- | Subset selection algorithm to select the correct subset of
---   type constructor and bind instances that belong to the polymonad
---   being worked with in the list of /given/ and /wanted/ constraints.
---
---   Currently we assume that the plugin is only used for standard and
---   parameterized monads. We also assume that the indices of parameterized
---   monads are phantom and do not incluence the runtime behaviour.
---   Because of these preconditions all polymonad instances together actually
---   form a principal polymonad and the selection of a subset is not necessary
---   and therefore currently not done.
---
---   FIXME: Work in Progress / Unfinished
-selectPolymonadSubset :: TyCon -> Class -> [ClsInst] -> ([Ct], [Ct]) -> TcPluginM (Set TyCon, [Type], [ClsInst])
-selectPolymonadSubset idTyCon pmCls pmInsts (givenCts, wantedCts) = do
-  -- TODO: This is just a very naiv approach to get things up and running.
-  let givenPmTyCons  = S.unions $ fmap constraintTyCons givenPmCts
-  let wantedPmTyCons = S.unions $ fmap constraintTyCons wantedPmCts
-  let pmTyCons = givenPmTyCons `S.union` wantedPmTyCons `S.union` S.singleton idTyCon
-  let varTyCons = filter (isTyVarTy . fst . splitAppTys)
-                $ concat $ catMaybes $ fmap constraintClassTyArgs givenPmCts
-  relevantInsts <- filterApplicableInstances' pmInsts pmTyCons
-  return (pmTyCons, varTyCons, relevantInsts)
-  where
-    givenPmCts = filter (\ct -> isClassConstraint pmCls ct && (isDerivedCt ct || isGivenCt ct)) givenCts
-    wantedPmCts = filter (\ct -> isClassConstraint pmCls ct && isWantedCt ct) wantedCts
-
 -- -----------------------------------------------------------------------------
 -- Utility Functions
 -- -----------------------------------------------------------------------------
@@ -369,34 +339,6 @@ findPolymonadInstancesInScope = do
       instEnvs <- TcPluginM.getInstEnvs
       return $ classInstances instEnvs polymonadClass
     Nothing -> return []
-
--- | Filters the list of polymonads constraints, to only keep those
---   that can be applied to the given type constructors.
--- TODO: Remove when unused.
-filterApplicableInstances' :: [ClsInst] -> Set TyCon -> TcPluginM [ClsInst]
-filterApplicableInstances' pmInsts tcs = do
-  appliedTyCons <- forM (S.toList tcs) $ \tc -> do
-    let (indexKinds, _unaryKind) = splitFunTysN (tyConArity tc - 1) (tyConKind tc)
-    if null indexKinds then do
-      indexVars <- mapM newFlexiTyVar indexKinds
-      return $ mkTyConApp tc $ mkTyVarTy <$> indexVars
-    else
-      return $ mkTyConTy tc
-  filteredInsts <- forM pmInsts $ \pmInst -> do
-    let (_instTvs, _instCtTys, _instCls, instArgs) = instanceSig pmInst
-    --associations :: [(key , [value])] -> [[(key, value)]]
-    let assocs = fmap snd <$> associations [(instArg, appliedTyCons) | instArg <- instArgs]
-    mListInsts <- forM assocs $ \assoc -> case matchInstanceTyVars assoc pmInst of
-      Just instTvArgs -> do
-        eIsInst <- isInstantiatedBy undefined instTvArgs pmInst
-        case eIsInst of
-          Left err -> do
-            printMsg err
-            return Nothing
-          Right isInst -> return $ if isInst then Just pmInst else Nothing
-      Nothing -> return Nothing
-    return $ catMaybes mListInsts
-  return $ concat filteredInsts
 
 -- -----------------------------------------------------------------------------
 -- Selection of instance for fully applied constraints.
