@@ -109,7 +109,8 @@ polymonadSolve' _s = do
   -- Calculate type variables that still require solving and then
   -- try to solve them using the S-Join rule.
   let ambTvs' = ambTvs S.\\ S.fromList (fmap fst eqUpDownCtData)
-  eqJoinCts <- simplifiedTvsToConstraints <$> simplifyAllJoin wanted ambTvs'
+  eqJoinCts <- return [] --simplifiedTvsToConstraints <$> simplifyAllJoin wanted ambTvs'
+  -- FIXME: Reintroduce this
   --printObj eqJoinCts
 
   -- Lets see if we made progress through simplification or if we need to
