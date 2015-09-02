@@ -88,6 +88,8 @@ module Control.Polymonad.Prelude
 
     -- * Polymonads
   , module Control.Polymonad
+  --, PM.Polymonad(..), PM.return, PM.fail
+  --, PM.Identity(..), PM.runIdentity
     -- ** Replacement functions
   , F.mapM_, F.sequence_, (F.=<<)
     -- ** Traversable replacement functions

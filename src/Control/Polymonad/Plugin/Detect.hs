@@ -6,6 +6,7 @@ module Control.Polymonad.Plugin.Detect
     polymonadModuleName
   , polymonadClassName
   , findPolymonadModule
+  , findPolymonadPreludeModule
   , isPolymonadClass
   , isPolymonadModule
   , findPolymonadClass
@@ -75,9 +76,11 @@ import InstEnv
   , instanceSig
   , classInstances
   , lookupInstEnv
-  , lookupUniqueInstEnv )
+  , lookupUniqueInstEnv
+  , ie_global )
 import Outputable ( Outputable )
 import TcEvidence ( EvTerm(..) )
+import HscTypes ( typeEnvClasses )
 
 import Control.Polymonad.Plugin.Log
   ( pmErrMsg, pmDebugMsg, pmObjMsg
@@ -128,6 +131,9 @@ identityModuleName = "Data.Functor.Identity"
 identityTyConName :: String
 identityTyConName = "Identity"
 
+polymonadPreudeModuleName :: String
+polymonadPreudeModuleName = "Control.Polymonad.Prelude"
+
 -- -----------------------------------------------------------------------------
 -- Polymonad Class Detection
 -- -----------------------------------------------------------------------------
@@ -135,11 +141,23 @@ identityTyConName = "Identity"
 -- | Checks if the module 'Control.Polymonad'
 --   is imported and, if so, returns the module.
 findPolymonadModule :: TcPluginM (Either String Module)
-findPolymonadModule = getModule Nothing {- mainPackageKey -} polymonadModuleName
+findPolymonadModule = do
+  eitherMdl <- getModule Nothing polymonadModuleName
+  case eitherMdl of
+    Left _err -> findPolymonadPreludeModule
+    Right mdl -> return $ Right mdl
+
+-- | Checks if the module 'Control.Polymonad.Prelude'
+--   is imported and, if so, returns the module.
+findPolymonadPreludeModule :: TcPluginM (Either String Module)
+findPolymonadPreludeModule = getModule Nothing polymonadPreudeModuleName
 
 -- | Check if the given module is the polymonad module.
 isPolymonadModule :: Module -> Bool
-isPolymonadModule = (mkModuleName polymonadModuleName ==) . moduleName
+isPolymonadModule mdl = mdlName `elem` [pmMdlName, pmPrelName]
+  where mdlName = moduleName mdl
+        pmMdlName = mkModuleName polymonadModuleName
+        pmPrelName = mkModuleName polymonadPreudeModuleName
 
 -- | Checks if the given class matches the shape of the 'Control.Polymonad'
 --   type class and is defined in the given module. Usually the given module
@@ -159,9 +177,12 @@ isPolymonadClass cls =
 --   polymonad module ('getPolymonadModule'). If so returns the class.
 findPolymonadClass :: TcPluginM (Maybe Class)
 findPolymonadClass = do
-  visibleInsts <- fmap (instEnvElts . tcg_inst_env . fst) getEnvs
-  let foundInsts = flip filter visibleInsts $ isPolymonadClass . is_cls
-  return $ case foundInsts of
+  let isPmCls = isPolymonadClass . is_cls
+  -- This is needed while compiling the package itself...
+  foundInstsLcl <- filter isPmCls . instEnvElts . tcg_inst_env . fst <$> getEnvs
+  -- This is needed while compiling an external package depending on it...
+  foundInstsGbl <- filter isPmCls . instEnvElts . ie_global <$> getInstEnvs
+  return $ case foundInstsLcl ++ foundInstsGbl of
     (inst : _) -> Just $ is_cls inst
     [] -> Nothing
 
@@ -179,11 +200,10 @@ findIdentityModule = getModule (Just basePackageKey) identityModuleName
 --   either 'Data.Functor.Identity' or 'Control.Polymonad'.
 findIdentityTyCon :: TcPluginM (Maybe TyCon)
 findIdentityTyCon = do
-  mIdModule <- either (const Nothing) Just<$> findIdentityModule
-  mPolymonadMdl <- either (const Nothing) Just <$> findPolymonadModule
-  case (mIdModule, mPolymonadMdl) of
-    (Nothing, Nothing) -> return Nothing
-    _ -> findTyConByNameAndModule (mkTcOcc identityTyConName) $ catMaybes [mIdModule, mPolymonadMdl]
+  mdls <- findModules [findIdentityModule, findPolymonadModule, findPolymonadPreludeModule]
+  case mdls of
+    [] -> return Nothing
+    _ -> findTyConByNameAndModule (mkTcOcc identityTyConName) mdls
 
 -- -----------------------------------------------------------------------------
 -- Subset Selection
@@ -407,6 +427,13 @@ pickInstanceForAppliedConstraint pmCls ct = do
 -- -----------------------------------------------------------------------------
 -- Local Utility Functions
 -- -----------------------------------------------------------------------------
+
+-- | Tries to find all of the given modules using the given search functions.
+--   Returns the list of all found modules.
+findModules :: [TcPluginM (Either String Module)] -> TcPluginM [Module]
+findModules findMdls = do
+  eitherMdls <- sequence findMdls
+  return $ catMaybes $ fmap (either (const Nothing) Just) eitherMdls
 
 -- | Checks if the module with the given name is imported and,
 --   if so, returns that module.

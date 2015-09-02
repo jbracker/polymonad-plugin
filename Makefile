@@ -14,4 +14,7 @@ opendoc:
 
 init:
 	[ -f ./cabal.sandbox.config ] || [ -d ./.cabal-sandbox ] || cabal sandbox init
+
+session-example: install
+	cabal install ./examples/session
 	

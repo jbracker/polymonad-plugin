@@ -20,17 +20,9 @@
 -- -----------------------------------------------------------------------------
 module Main where
 
-import Prelude
-  ( Num(..)
-  , IO, Int, Bool(..)
-  , Eq(..), Ord(..)
-  , ($), (.)
-  , putStrLn
-  , undefined )
 import qualified Prelude as P
-import Data.Functor.Identity ( Identity( Identity, runIdentity ) )
 
-import Control.Polymonad
+import Control.Polymonad.Prelude
 import Control.Polymonad.Hoare
 
 

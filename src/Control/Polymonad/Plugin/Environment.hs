@@ -63,6 +63,7 @@ import Control.Polymonad.Plugin.Detect
   , findPolymonadInstancesInScope
   , selectPolymonadByConnectedComponent
   , pickInstanceForAppliedConstraint )
+import qualified Control.Polymonad.Plugin.Detect as D
 
 -- -----------------------------------------------------------------------------
 -- Plugin Monad
