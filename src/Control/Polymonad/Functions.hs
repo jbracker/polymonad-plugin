@@ -52,13 +52,14 @@ module Control.Polymonad.Functions
 
 import qualified Prelude as P
 import Prelude
-  ( Bool(..)
+  ( Bool(..), Int
   , (.), ($)
-  , id
+  , id, flip
+  , not
+  , fromInteger
   --, const
-  , flip
   --, otherwise
-  , not )
+  , (<=), (-) )
 --import Data.Foldable ( Foldable(..) )
 
 import Control.Polymonad
@@ -185,15 +186,19 @@ foldM_ :: ( P.Foldable t
        => (b -> a -> m b) -> b -> t a -> m ()
 foldM_ f e = void . foldM f e
 
-replicateM :: (Polymonad m Identity n) => Int -> m a -> n [a]
+replicateM :: ( Polymonad Identity Identity n
+              , Polymonad m n n, Polymonad n Identity n)
+           => Int -> m a -> n [a]
 replicateM n _ma | n <= 0 = return []
 replicateM n ma = do
   a <- ma
   as <- replicateM (n - 1) ma
   return $ a : as
 
-replicateM_ :: ()
-replicateM_ = P.undefined
+replicateM_ :: ( Polymonad Identity Identity n
+               , Polymonad m n n, Polymonad n Identity n)
+            => Int -> m a -> n ()
+replicateM_ n = void . replicateM n
 
 -- | Make arguments and result of a pure function monadic.
 liftM :: (Polymonad m Identity n) => (a -> b) -> m a -> n b
