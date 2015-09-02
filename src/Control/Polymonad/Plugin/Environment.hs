@@ -3,7 +3,7 @@
 --   access to the environment and message printing capabilities.
 module Control.Polymonad.Plugin.Environment
   ( -- * Polymonad Plugin Monad
-    PmPluginM
+    PmPluginM, PmPluginEnv
   , runPmPlugin
   , runTcPlugin
     -- * Polymonad Plugin Environment Access
@@ -240,7 +240,7 @@ getCurrentPolymonad = asks pmEnvCurrentPolymonad
 
 -- | Shortcut to access the instance environments.
 getInstEnvs :: PmPluginM InstEnvs
-getInstEnvs = runTcPlugin $ TcPluginM.getInstEnvs
+getInstEnvs = runTcPlugin TcPluginM.getInstEnvs
 
 -- | Checks wether debugging mode is enabled.
 --   Debug mode allows debug messages to be printed.
@@ -310,7 +310,7 @@ printFormattedObj isDebug obj = do
 --   The boolean indicates wether the debug mode
 --   is ignored or this message only appears when debugging.
 printConstraints :: Bool -> [Ct] -> PmPluginM ()
-printConstraints debug cts = do
+printConstraints debug cts =
   forM_ groupedCts $ \(file, ctGroup) -> do
     printFormattedObj debug $ maybe "From unknown file:" (("From " ++) . (++":") . unpackFS) file
     mapM_ (printFormattedObj debug . formatConstraint) ctGroup

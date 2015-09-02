@@ -45,6 +45,7 @@ import Control.Polymonad.Plugin.Utils
 import Control.Polymonad.Plugin.Constraint
   ( constraintClassType )
 
+-- | Check as best as possible if two class instances are equal.
 eqInstance :: ClsInst -> ClsInst -> Bool
 eqInstance instA instB
   =  is_cls_nm instA == is_cls_nm instB
@@ -57,6 +58,7 @@ eqInstance instA instB
   && is_flag instA == is_flag instB
   && eqOrphan (is_orphan instA) (is_orphan instB)
 
+-- | Check equality of two 'IsOrphan' values.
 eqOrphan :: IsOrphan -> IsOrphan -> Bool
 eqOrphan IsOrphan IsOrphan = True
 eqOrphan (NotOrphan nameA) (NotOrphan nameB) = nameA == nameB
