@@ -11,7 +11,7 @@ import Control.Polymonad.Hoare ( HoareMonad(..) )
 
 
 import Control.Monad.Indexed
-  ( IxMonad(..), (>>>=) )
+  ( IxMonad(..), IxPointed(..), (>>>=) )
 
 import Control.Concurrent
   ( forkIO )
@@ -26,8 +26,8 @@ import Control.Concurrent.SimpleSession.SessionTypes
   , Z )
 
 instance HoareMonad Session where
-  hoareRet = undefined
-  hoareBind = undefined
+  hoareRet = ireturn
+  hoareBind = (>>>=)
 
 type Ping = Eps :+: (String :!: String :?: Var Z)
 type Pong = Eps :&: (String :?: String :!: Var Z)
