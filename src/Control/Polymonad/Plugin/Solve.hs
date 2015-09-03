@@ -42,7 +42,7 @@ solve :: [Ct] -> PmPluginM [Ct]
 solve [] = return []
 solve wantedCts = do
   -- Order in which we shall process the ambiguous type variables.
-  topoOrder <- filter isAmbiguousType <$> topologicalTyConOrder (mkGraphView wantedCts)
+  topoOrder <- filter isAmbiguousType <$> topologicalTyConOrder wantedCts -- (mkGraphView wantedCts)
   subst <- calcSubst [] $ fmap (getTyVar "solve: Not a type variable") topoOrder
   return $ substToCts (ctev_loc . cc_ev . head $ wantedCts) subst
   where
@@ -94,7 +94,44 @@ solve wantedCts = do
           return $ (tv, join) : restSubst
         Nothing -> throwPluginError "solve: Could not find a principal join."
 
+-- | Calculate the topological order of the type constructors involved with
+--   the given polymonad constraints. The given constraints should be the
+--   wanted polymonad constraints.
+topologicalTyConOrder :: [Ct] -> PmPluginM [Type]
+topologicalTyConOrder wantedCts = orderNodes topoGraph
+  where
+    -- Involved type constructors
+    constraintTys :: [(Ct, Type, Type, Type)]
+    constraintTys = constraintPolymonadTyArgs' wantedCts
 
+    nodes :: [LNode Type]
+    nodes = zip [0..] -- with node ids added
+          $ nubBy eqType -- without duplicates
+          $ concatMap (\(_, t0, t1, t2) -> [t0, t1, t2]) constraintTys -- as a list
+
+    nodeForTy :: Type -> Node
+    nodeForTy ty = case find (\(_, ty') -> eqType ty ty') nodes of
+      Just (n, _) -> n
+      Nothing -> error "nodeForTy: Impossible, we should always find a node by construction."
+
+    edges :: [LEdge ()]
+    edges = filter (\(n, n', _) -> n /= n') $ removeDup
+          $ concatMap (\(_, t0, t1, t2)
+                -> [(nodeForTy t0, nodeForTy t2, ()), (nodeForTy t1, nodeForTy t2, ())]) constraintTys
+
+    topoGraph :: Gr Type ()
+    topoGraph = mkGraph nodes edges
+
+    orderNodes :: Gr Type () -> PmPluginM [Type]
+    orderNodes gr = if isEmpty gr
+      then return []
+      else case find (\(n, _) -> indeg gr n == 0) $ labNodes gr of
+        Just (n, ty) -> do
+          restTys <- orderNodes $ delNode n gr
+          return $ ty : restTys
+        Nothing -> throwPluginError "topologicalTyConOrder: No nodes with zero in-degree. There was a cycle!"
+
+{-
 -- | Calculate the topological order of the type constructors involved with
 --   the given polymonad constraints. The given constraints should be the
 --   wanted polymonad constraints.
@@ -135,3 +172,4 @@ topologicalTyConOrder gv = printObj (labNodes collapsedGraph, labEdges collapsed
          $ insEdges newNEdges -- Then link all nodes currently linked with m to n
          $ delEdge (n, m) g -- First, remove the unification edge
       else g
+-}
