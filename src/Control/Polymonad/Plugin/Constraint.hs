@@ -29,7 +29,7 @@ import Data.Maybe ( isJust, catMaybes, fromMaybe )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
-import SrcLoc ( SrcSpan )
+import SrcLoc ( SrcSpan(..) )
 import TcRnTypes
   ( Ct(..), CtLoc(..), CtEvidence(..)
   , TcLclEnv( tcl_loc )
