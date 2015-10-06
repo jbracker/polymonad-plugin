@@ -29,19 +29,19 @@ instance HoareMonad Session where
   hoareRet = ireturn
   hoareBind = (>>>=)
 
-type Ping = Eps :+: (String :!: String :?: Var Z)
+--type Ping = Eps :+: (String :!: String :?: Var Z)
 type Pong = Eps :&: (String :?: String :!: Var Z)
 
-ping :: Int -> Session (Cap (Ping, ()) Ping) () ()
-pong :: Session (Cap (Pong, ()) Pong) () ()
-main :: IO ()
+--ping :: Int -> Session (Cap (Ping, ()) Ping) () ()
 
-main = do
+main :: IO ()
+main = return () {- do
   rv <- newRendezvous
   _ <- forkIO $ accept rv
               $ enter >> ping 3
   request rv $ enter >> pong
-
+-}
+{-
 ping 0 = do
     sel1; close
 ping n = do
@@ -49,12 +49,15 @@ ping n = do
     rsp <- recv
     io $ putStrLn rsp
     zero; ping (n - 1)
+-}
 
+pong :: Session (Cap (Pong, ()) Pong) () ()
 pong = offer close $ do
     rsp <- recv
     io $ putStrLn rsp
     send "Pong"
-    zero; pong
+    zero
+    pong
 
 
 {-

@@ -17,6 +17,7 @@ module Control.Polymonad.Plugin.Utils (
   , subsets
   , removeDup
   , lookupBy
+  , allM, anyM
   ) where
 
 import Data.Maybe ( listToMaybe, catMaybes )
@@ -152,3 +153,16 @@ lookupBy _eq _x [] = Nothing
 lookupBy eq x ((y, b) : ybs)
   | eq x y = Just b
   | otherwise = lookupBy eq x ybs
+
+allM :: (Monad m) => (a -> m Bool) -> [a] -> m Bool
+allM = quantM (&&) True
+
+anyM :: (Monad m) => (a -> m Bool) -> [a] -> m Bool
+anyM = quantM (||) False
+
+quantM :: (Monad m) => (Bool -> Bool -> Bool) -> Bool -> (a -> m Bool) -> [a] -> m Bool
+quantM _comp def _p [] = return def
+quantM  comp def  p (x : xs) = do
+  bx <- p x
+  bxs <- quantM comp def p xs
+  return $ bx `comp` bxs

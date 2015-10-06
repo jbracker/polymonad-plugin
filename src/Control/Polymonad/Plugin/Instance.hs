@@ -140,7 +140,7 @@ isInstantiatedBy givenCts tys inst = do
   let (instVars, cts, _cls, _tyArgs) = instanceSig inst -- ([TyVar], [Type], Class, [Type])
   -- Assert: We have a type for each variable in the instance.
   if length tys /= length instVars then
-    return $ Left "isInstanceOf: Number of type arguments does not match number of variables in instance"
+    return $ Left "isInstantiatedBy: Number of type arguments does not match number of variables in instance"
   else do
     -- How the instance variables for the current instance are bound.
     let varSubst = mkTopTvSubst $ zip instVars tys

@@ -41,8 +41,11 @@ substToCts loc = fmap (uncurry $ mkDerivedTypeEqCt' loc)
 solve :: [Ct] -> PmPluginM [Ct]
 solve [] = return []
 solve wantedCts = do
+  --printObj wantedCts
   -- Order in which we shall process the ambiguous type variables.
   topoOrder <- filter isAmbiguousType <$> topologicalTyConOrder wantedCts -- (mkGraphView wantedCts)
+  --printObj =<< topologicalTyConOrder wantedCts
+  --printObj topoOrder
   subst <- calcSubst [] $ fmap (getTyVar "solve: Not a type variable") topoOrder
   return $ substToCts (ctev_loc . cc_ev . head $ wantedCts) subst
   where
@@ -71,16 +74,13 @@ solve wantedCts = do
     calcSubst subst [] = return subst
     calcSubst subst (tv:tvs) = do
       -- Get the outgoing types of the current type.
-      let outTys -- Make sure that if there are is another ambiguous type variables
+      let outTys -- Make sure that if there is another ambiguous type variable
                  -- among the outgoing types to remove it. This is important,
                  -- because that other ambigous type variable will never match
                  -- any instances. FIXME: This is a hack. I do not know if this is the right thing to do.
                  = filter (\t -> not (isAmbiguousType t && not (eqType t $ mkTyVarTy tv)))
                    -- Get the outgoing types of the current type.
                  $ (applySubst subst) <$> outTypes tv
-      -- Check of there are exactly one or two outgoing types.
-      assert (length outTys == 1 || length outTys == 2)
-        "solve: There are either no or more then two outgoing types of a type variable."
       let inTys = (applySubst subst *** applySubst subst) <$> inTypes tv
       -- Calculate the principal join. Be sure the
       -- already solved type variables are replaced with their solution
