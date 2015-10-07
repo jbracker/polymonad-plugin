@@ -12,6 +12,7 @@ module Control.Polymonad.Plugin.Utils (
   , eqTyVar, eqTyVar'
   , eqTyCon
   , isAmbiguousType
+  , getTyConWithArgKinds
   , atIndex
   , associations
   , subsets
@@ -33,8 +34,10 @@ import Type
   , mkTyConTy
   , mkTopTvSubst
   , eqType )
-import TyCon ( TyCon, tyConArity )
+import TyCon ( TyCon, tyConArity, tyConKind )
+import Var ( tyVarKind )
 import TcType ( isAmbiguousTyVar )
+import Kind ( Kind, splitKindFunTys )
 
 -- -----------------------------------------------------------------------------
 -- Constraint and type inspection
@@ -118,6 +121,25 @@ atIndex xs i = listToMaybe $ drop i xs
 -- | Checks if the given type is an ambiguous type variable.
 isAmbiguousType :: Type -> Bool
 isAmbiguousType ty = maybe False isAmbiguousTyVar $ getTyVar_maybe ty
+
+-- | Takes a type that is considered to be a unary type constructor.
+--   Tries to get the base type constructor within this, for example:
+--
+-- > getTyConWithArgKinds (StateT String)
+-- > > (Left StateT, [*, *])
+-- > getTyConWithArgKinds m
+-- > > (Right m, [*])
+-- > getTyConWithArgKinds (p s)
+-- > > (Right p, [*, *]) -- Assuming the kind of s is *.
+-- > getTyConWithArgKinds Identity
+-- > > (Left Identity, [*])
+getTyConWithArgKinds :: Type -> (Either TyCon TyVar, [Kind])
+getTyConWithArgKinds t = case getTyVar_maybe tcTy of
+  Just tv -> (Right tv, fst $ splitKindFunTys $ tyVarKind tv)
+  Nothing -> case tyConAppTyCon_maybe tcTy of
+    Just tc -> (Left tc, fst $ splitKindFunTys $ tyConKind tc)
+    Nothing -> error "getTyConWithArity: Type does not contain a type constructor or variable."
+  where (tcTy, _args) = splitAppTys t
 
 -- | Takes a list of keys and all of their possible values and returns a list
 --   of all possible associations between keys and values

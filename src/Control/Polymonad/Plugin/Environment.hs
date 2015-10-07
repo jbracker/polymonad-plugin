@@ -35,8 +35,9 @@ import Control.Monad.Trans.Class ( lift )
 import Class ( Class )
 import Module ( Module )
 import InstEnv ( ClsInst, InstEnvs )
-import Type ( Type )
+import Type ( TyVar )
 import TyCon ( TyCon )
+import Kind ( Kind )
 import TcRnTypes
   ( Ct, TcPluginResult(..) )
 import TcPluginM
@@ -47,6 +48,7 @@ import Outputable ( Outputable )
 import SrcLoc ( srcSpanFileName_maybe )
 import FastString ( unpackFS )
 
+import Control.Polymonad.Plugin.Utils ( getTyConWithArgKinds )
 import Control.Polymonad.Plugin.Log
   ( pmErrMsg, pmDebugMsg, pmObjMsg
   , pprToStr
@@ -95,7 +97,7 @@ data PmPluginEnv = PmPluginEnv
   , pmEnvWantedPolymonadConstraints :: [WantedCt]
   -- ^ The wanted polymonad constraints
   --   (that are related to the currently selected polymonad).
-  , pmEnvCurrentPolymonad  :: ([Type], [ClsInst], [GivenCt])
+  , pmEnvCurrentPolymonad  :: ([(Either TyCon TyVar, [Kind])], [ClsInst], [GivenCt])
   -- ^ The currently selected polymonad.
   , pmEnvDebugEnabled :: Bool
   -- ^ If debugging messages are enabled or not.
@@ -130,7 +132,7 @@ runPmPlugin givenCts allWantedCts pmM = do
           foundPms <- selectPolymonadByConnectedComponent idTyCon pmCls pmInsts (givenCts, wantedCts)
           -- ...and run the solver on each one of them.
           results <- nestedSequence $ flip fmap foundPms $ \((pmTcs, pmRelevantInsts, gPmCts), wPmCts) -> do
-            let currPm = (pmTcs, pmRelevantInsts, gPmCts)
+            let currPm = (fmap getTyConWithArgKinds pmTcs, pmRelevantInsts, gPmCts)
             runExceptT $ runReaderT pmM PmPluginEnv
               { pmEnvPolymonadModule = pmMdl
               , pmEnvPolymonadClass  = pmCls
@@ -228,15 +230,15 @@ getWantedConstraints = asks pmEnvWantedConstraints
 
 -- | Returns the polymonad that the wanted constraints need solving for.
 --
---   The available type constructors are given by the first and second elements
+--   The available type constructors are given by the first element
 --   of the triple. They can be not-applied type constructors, e.g. 'Identity',
 --   or type variables in case there are given constraints that involve them.
 --
---   The available bind operations are given by the thrid and fourth elements
+--   The available bind operations are given by the second and third elements
 --   of the triple. They come as class instances that provide bind operations
 --   or given constraints that need to be assumed to be existing bind
 --   operations.
-getCurrentPolymonad :: PmPluginM ([Type], [ClsInst], [GivenCt])
+getCurrentPolymonad :: PmPluginM ([(Either TyCon TyVar, [Kind])], [ClsInst], [GivenCt])
 getCurrentPolymonad = asks pmEnvCurrentPolymonad
 
 -- | Shortcut to access the instance environments.
