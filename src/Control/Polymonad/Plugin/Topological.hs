@@ -2,37 +2,26 @@
 module Control.Polymonad.Plugin.Topological
   ( topologicalTyConOrder ) where
 
-import Data.Maybe ( fromJust )
 import Data.List ( nubBy, find )
 import Data.Graph.Inductive
   ( Graph(..), Gr
   , Node, LNode, LEdge )
 import Data.Graph.Inductive.Graph
-  ( delNode, insEdges, delEdge, delEdges
-  , indeg, gelem
-  --, edges
-  , nmap
-  , out, inn )
+  ( delNode, indeg )
 
-import Control.Arrow ( (***) )
+import Type ( Type, eqType )
+import TcRnTypes ( Ct(..) )
 
-import Type ( TyVar, Type, eqType, getTyVar_maybe, getTyVar, mkTyVarTy )
-import TcRnTypes ( Ct(..), CtLoc, CtEvidence(..) )
-
-import Control.Polymonad.Plugin.Utils ( isAmbiguousType, removeDup )
+import Control.Polymonad.Plugin.Utils ( removeDup )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
-  , assert
-  , throwPluginError
-  , printObj )
-import Control.Polymonad.Plugin.PrincipalJoin ( principalJoinFor )
-import Control.Polymonad.Plugin.Constraint ( mkDerivedTypeEqCt', constraintPolymonadTyArgs' )
-import Control.Polymonad.Plugin.GraphView
+  , throwPluginError )
+import Control.Polymonad.Plugin.Constraint ( WantedCt, constraintPolymonadTyArgs' )
 
 -- | Calculate the topological order of the type constructors involved with
 --   the given polymonad constraints. The given constraints should be the
 --   wanted polymonad constraints.
-topologicalTyConOrder :: [Ct] -> PmPluginM [Type]
+topologicalTyConOrder :: [WantedCt] -> PmPluginM [Type]
 topologicalTyConOrder wantedCts = orderNodes topoGraph
   where
     -- Involved type constructors
@@ -60,11 +49,11 @@ topologicalTyConOrder wantedCts = orderNodes topoGraph
     orderNodes :: Gr Type () -> PmPluginM [Type]
     orderNodes gr = if isEmpty gr
       then return []
-      else case find (\(n, _) -> indeg gr n == 0) $ labNodes gr of
-        Just (n, ty) -> do
-          restTys <- orderNodes $ delNode n gr
-          return $ ty : restTys
-        Nothing -> throwPluginError "topologicalTyConOrder: No nodes with zero in-degree. There was a cycle!"
+      else case filter (\(n, _) -> indeg gr n == 0) $ labNodes gr of
+        [] -> throwPluginError "topologicalTyConOrder: No nodes with zero in-degree. There was a cycle!"
+        ns -> do
+          restTys <- orderNodes $ foldr delNode gr (fmap fst ns)
+          return $ fmap snd ns ++ restTys
 
 {-
 -- | Calculate the topological order of the type constructors involved with
