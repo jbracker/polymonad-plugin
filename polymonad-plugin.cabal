@@ -41,6 +41,7 @@ library
                  , Control.Polymonad.Plugin.Simplification
                  , Control.Polymonad.Plugin.PrincipalJoin
                  , Control.Polymonad.Plugin.Environment
+                 , Control.Polymonad.Plugin.Topological
                  , Control.Polymonad.Plugin.Solve
   other-modules:
   other-extensions:
