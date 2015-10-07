@@ -16,6 +16,7 @@ import Type
   , mkTyConTy
   , eqType
   , getTyVar_maybe
+  , splitAppTys
   , substTy )
 import TcType ( isAmbiguousTyVar )
 import InstEnv ( ClsInst(..), instanceSig, instanceBindFun )
@@ -28,6 +29,7 @@ import Control.Polymonad.Plugin.Environment
   , assert
   , throwPluginError
   , getCurrentPolymonad
+  , getWantedPolymonadConstraints
   , getIdentityTyCon
   , printObj, printMsg )
 import Control.Polymonad.Plugin.Instance
@@ -36,12 +38,13 @@ import Control.Polymonad.Plugin.Core ( isInstanceOf )
 import Control.Polymonad.Plugin.Constraint
   ( GivenCt, constraintPolymonadTyArgs )
 import Control.Polymonad.Plugin.Utils
-  ( allM, anyM )
+  ( allM, anyM, isAmbiguousType )
+import Control.Polymonad.Plugin.Topological
+  ( topologicalTyConOrder )
 
---   Assumes that there are no ambiguous type constructors in the set @f@.
+-- Assumes that there are no ambiguous type constructors in the set @f@.
 principalJoin :: [(Type, Type)] -> [Type] -> PmPluginM (Maybe Type)
-principalJoin f m = do
-  printMsg "CUSTOM JOIN BEGIN"
+principalJoin f mWithAmbVars = do
   -- Assert
   assert (not $ null f) "principalJoinFor: F is empty"
   --assert (not $ null m) "principalJoinFor: m is empty"
@@ -52,35 +55,23 @@ principalJoin f m = do
   -- Look at each pair of incoming types
   -- [[(Either ClsInst GivenCt, Type)]]
   foundMatchingInstances <- forM f $ \(m1, m2) -> do
-    -- Match them against the polymonad instances
+    -- Match them against the polymonad instances to find possible joins
     instMatchResult <- forM pmInsts $ \pmInst -> do
       -- Look at the current instance arguments
       mInstM3 <- case instanceSig pmInst of -- ([TyVar], [Type], Class, [Type])
-        (_instVars, _cts, _cls, [im1, im2, im3]) ->
-          -- Unify the first two arguments
-          case tcUnifyTys instanceBindFun [im1, im2] [m1, m2] of
-            -- Determine the third argument using the unification substitution
-            Just subst -> do
-              let m3 = substTy subst im3
-              return $ Just m3
-            -- They don't match up, therefore there is not suitable third argument
-            Nothing -> return Nothing
+        -- Try to find a join candidate based on the current instance.
+        -- Looking at an instance we may not keep one of its variables as a
+        -- possible candidate, since they are quantified within the instance only.
+        (instVars, _cts, _cls, [im1, im2, im3]) -> findJoinCandidate instVars (im1, im2, im3) (m1, m2)
         -- This should never happen if instances were filtered correctly by the environment.
         _ -> throwPluginError "principalJoin: Polymonad instance does not have exactly three arguments."
       return (Left pmInst, mInstM3)
-
+    -- Match them against the given olymonad constraints to find possible joins
     cnstrMatchResult <- forM pmGivenCts $ \pmGivenCt -> do
       -- Look at the current instance arguments
-      mCnstrM3 <- case constraintPolymonadTyArgs pmGivenCt of -- ([TyVar], [Type], Class, [Type])
-        Just (im1, im2, im3) ->
-          -- Unify the first two arguments
-          case tcUnifyTys instanceBindFun [im1, im2] [m1, m2] of
-            -- Determine the third argument using the unification substitution
-            Just subst -> do
-              let m3 = substTy subst im3
-              return $ Just m3
-            -- They don't match up, therefore there is not suitable third argument
-            Nothing -> return Nothing
+      mCnstrM3 <- case constraintPolymonadTyArgs pmGivenCt of
+        -- Try to find a join candidate based on the current constraint.
+        Just (im1, im2, im3) -> findJoinCandidate [] (im1, im2, im3) (m1, m2)
         -- This should never happen if instances were filtered correctly by the environment.
         _ -> throwPluginError "principalJoin: Polymonad given constraints do not have exactly three arguments."
       return (Right pmGivenCt, mCnstrM3)
@@ -104,26 +95,45 @@ principalJoin f m = do
       else pickSolution foundMatchingInstances
 
   where
+    m :: [Type]
+    m = filter (not . isAmbiguousType) mWithAmbVars
+
     pickSolution :: [[(Either ClsInst GivenCt, Type)]] -> PmPluginM (Maybe Type)
     pickSolution foundMatchingJoins = do
-      printMsg "M:"
-      printObj m
       idTC <- mkTyConTy <$> getIdentityTyCon
-      (_, pmInsts, pmGivenCts) <- getCurrentPolymonad
-      _ <- forM foundMatchingJoins $ \joinPairs -> do
-        let possibleJoins = nubBy eqType $ snd <$> joinPairs
-        printObj possibleJoins
-        mCheckedJoins <- forM possibleJoins $ \possibleJoin -> do
-          allOutBinds <- allM (\m3 -> printObj (possibleJoin, idTC, m3) >> hasMatch (possibleJoin, idTC, m3) (pmInsts, pmGivenCts)) m
-          return $ if allOutBinds then Just possibleJoin else Nothing
-        let checkedJoins = catMaybes mCheckedJoins
-        printObj checkedJoins
-        --undefined
-      return Nothing
+      (_pmTyCons, pmInsts, pmGivenCts) <- getCurrentPolymonad
+      let possibleJoins = nubBy eqType $ concatMap (fmap snd) foundMatchingJoins
+      mCheckedJoins <- forM possibleJoins $ \possibleJoin -> do
+        allOutBinds <- allM (\m3 -> hasMatch (possibleJoin, idTC, m3) (pmInsts, pmGivenCts)) m
+        return $ if allOutBinds then Just possibleJoin else Nothing
+      let checkedJoins = catMaybes mCheckedJoins
+      case checkedJoins of
+        [] -> return Nothing
+        [join] -> return $ Just join
+        _ -> do
+          wantedCts <- getWantedPolymonadConstraints
+          topoOrder <- filter (not . isAmbiguousType) <$> topologicalTyConOrder wantedCts
+          let orderedJoins = filter (`elem` checkedJoins) topoOrder
+          assert (length orderedJoins == length checkedJoins) "principalJoin: Ordering of joins led to missing joins."
+          return $ Just $ head orderedJoins
       --throwPluginError "principalJoin: There are several possible solutions for one of the join pairs."
 
     -- hasMatch :: (Type, Type, Type) -> ([ClsInst], [Ct]) -> PmPluginM Bool
 
+    findJoinCandidate :: [TyVar] -> (Type, Type, Type) -> (Type, Type) -> PmPluginM (Maybe Type)
+    findJoinCandidate invalidVars (im1, im2, im3) (m1, m2) =
+      -- Unify the first two arguments
+      case tcUnifyTys instanceBindFun [im1, im2] [m1, m2] of
+        -- Determine the third argument using the unification substitution
+        Just subst -> do
+          let m3 = substTy subst im3
+          -- Incase we have type constructor variables that may not leave the scope
+          -- be sure to filter them out.
+          return $ case getTyVar_maybe $ fst (splitAppTys m3) of
+            Just tv -> if tv `elem` invalidVars then Nothing else Just m3
+            Nothing -> Just m3
+        -- They don't match up, therefore there is not suitable third argument
+        Nothing -> return Nothing
 
     removeDuplicateTypes :: (a -> Type) -> [a] -> [a]
     removeDuplicateTypes _ [] = []

@@ -9,18 +9,23 @@ import Data.Graph.Inductive
 import Data.Graph.Inductive.Graph
   ( delNode, indeg )
 
-import Type ( Type, eqType )
+import Type ( Type, eqType, mkTyConTy )
 import TcRnTypes ( Ct(..) )
 
 import Control.Polymonad.Plugin.Utils ( removeDup )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
+  , getIdentityTyCon
   , throwPluginError )
 import Control.Polymonad.Plugin.Constraint ( WantedCt, constraintPolymonadTyArgs' )
 
 -- | Calculate the topological order of the type constructors involved with
 --   the given polymonad constraints. The given constraints should be the
 --   wanted polymonad constraints.
+--   The returned list of types contains the types from least to greatest type,
+--   where the bind operation of the wanted constraints is used as ordering:
+--
+--   @M a -> (a -> N b) -> P b@ ==> @M < P@ and @N < P@.
 topologicalTyConOrder :: [WantedCt] -> PmPluginM [Type]
 topologicalTyConOrder wantedCts = orderNodes topoGraph
   where
@@ -53,7 +58,20 @@ topologicalTyConOrder wantedCts = orderNodes topoGraph
         [] -> throwPluginError "topologicalTyConOrder: No nodes with zero in-degree. There was a cycle!"
         ns -> do
           restTys <- orderNodes $ foldr delNode gr (fmap fst ns)
-          return $ fmap snd ns ++ restTys
+          -- If identity is among other smallest types, put it at
+          -- the smallest position. (The functor law allows us to apply this
+          -- ordering among these types.)
+          bottomNs <- idToBottom $ fmap snd ns
+          return $ bottomNs ++ restTys
+
+    -- If the given list contains the identity type constructor, then move it
+    -- to the beginning of the list.
+    idToBottom :: [Type] -> PmPluginM [Type]
+    idToBottom ts = do
+      idTC <- mkTyConTy <$> getIdentityTyCon
+      return $ case find (eqType idTC) ts of
+        Just _ -> idTC : filter (not . eqType idTC) ts
+        Nothing -> ts
 
 {-
 -- | Calculate the topological order of the type constructors involved with
