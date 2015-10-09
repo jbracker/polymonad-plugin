@@ -6,6 +6,7 @@ module Control.Polymonad.Plugin.PrincipalJoin
 
 import Data.List ( nubBy, find )
 import Data.Maybe ( catMaybes, fromJust, isJust )
+import qualified Data.Set as S
 --import qualified Data.Set as S
 
 import Control.Monad ( forM ) --, when )
@@ -38,12 +39,14 @@ import Control.Polymonad.Plugin.Environment
   , getIdentityTyCon
   , printObj, printMsg )
 import Control.Polymonad.Plugin.Instance
-  ( matchInstanceTyVars, isInstantiatedBy )
+  ( matchInstanceTyVars
+  , instancePolymonadTyArgs
+  , isInstantiatedBy )
 import Control.Polymonad.Plugin.Core ( isInstanceOf )
 import Control.Polymonad.Plugin.Constraint
   ( GivenCt, constraintPolymonadTyArgs )
 import Control.Polymonad.Plugin.Utils
-  ( allM, anyM, isAmbiguousType )
+  ( allM, anyM, isAmbiguousType, collectTyVars )
 import Control.Polymonad.Plugin.Topological
   ( topologicalTyConOrder )
 
@@ -220,8 +223,9 @@ principalJoinFor mAmbTv f m = do
     let substM = nubBy eqType
                $ maybe m (\ambTv -> substTopTyVar (ambTv, joinCand) <$> m) mAmbTv
     -- Check if all the incoming binds are actually there
-    fMatches <- fmap and $ forM substF
-              $ \(t0, t1) -> hasMatch (t0, t1, joinCand) (pmInsts, pmGivenCts)
+    fMatches <- fmap and $ forM substF $ \(t0, t1) -> do
+                _ <- determineJoinCandidates tyVarAndCons (pmInsts, pmGivenCts) (t0, t1)
+                hasMatch (t0, t1, joinCand) (pmInsts, pmGivenCts)
     -- Check if all the outgoing binds are actually there
     mMatches <- fmap and $ forM substM
               $ \t2 -> hasMatch (joinCand, idT, t2) (pmInsts, pmGivenCts)
@@ -256,15 +260,52 @@ applyTyCon (eTcTv, ks) = do
   let t = either mkTyConTy mkTyVarTy eTcTv
   return (mkAppTys t $ fmap mkTyVarTy tyVarArgs, tyVarArgs)
 
-bindMeF :: [TyVar] -> TyVar -> BindFlag
-bindMeF vars var = case find (var ==) vars of
-  Just _  -> BindMe
-  Nothing -> Skolem
-
 isPolymonadCtMatch :: (Type, Type, Type) -> Ct -> Bool
 isPolymonadCtMatch (t0, t1, t2) ct
   = maybe False (\(t0', t1', t2') -> eqType t0 t0' && eqType t1 t1' && eqType t2 t2')
   $ constraintPolymonadTyArgs ct
+
+instance Show BindFlag where
+  show Skolem = "Skolem"
+  show BindMe = "BindMe"
+
+determineJoinCandidates :: (Either TyCon TyVar, [Kind]) -> ([ClsInst], [Ct]) -> (Type, Type) -> PmPluginM [Type]
+determineJoinCandidates tyVarOrCons (pmInsts, pmCnstrs) (t0, t1) = do
+  printMsg "DETERMINE JOIN CAND:"
+  (joinCand, joinCandVars) <- applyTyCon tyVarOrCons
+  printObj (t0, t1, joinCand)
+  let dontBindTvs = either (const []) (: []) $ fst $ tyVarOrCons
+  instanceCands <- forM pmInsts $ \pmInst -> do
+    let (instVars, _cts, _cls, instTys@[it0, it1, it2]) = instanceSig pmInst
+    printMsg "INST"
+    printObj instTys
+    case tcUnifyTys (skolemVarsBindFun dontBindTvs) instTys [t0, t1, joinCand] of
+      Just subst -> do
+        printObj (t0, t1, substTy subst joinCand)
+        return $ Just $ substTy subst joinCand
+      Nothing -> return Nothing
+  constraintCands <- forM pmCnstrs $ \pmCnstr ->
+    case constraintPolymonadTyArgs pmCnstr of
+      Just ctTys@(ct0, ct1, ct2) -> do
+        let ctVars = S.toList $ S.unions $ fmap collectTyVars [ct0, ct1, ct2]
+        printMsg "CT"
+        printObj ctTys
+        case tcUnifyTys (skolemVarsBindFun $ dontBindTvs ++ ctVars) [ct0, ct1, ct2] [t0, t1, joinCand] of
+          Just subst -> do
+            printObj (t0, t1, substTy subst joinCand)
+            return $ Just $ substTy subst joinCand
+          Nothing -> return Nothing
+      Nothing -> return Nothing
+  printMsg "CANDS"
+  printObj $ nubBy eqType $ catMaybes $ instanceCands ++ constraintCands
+  return $ nubBy eqType $ catMaybes $ instanceCands ++ constraintCands
+
+-- | Override the standard bind flag of a given list of variables to 'Skolem'.
+--   The standard bind flad is determined using 'instanceBindFun'.
+skolemVarsBindFun :: [TyVar] -> TyVar -> BindFlag
+skolemVarsBindFun tvs var = case find (var ==) tvs of
+  Just _ -> Skolem
+  Nothing -> instanceBindFun var
 
 hasMatch :: (Type, Type, Type) -> ([ClsInst], [Ct]) -> PmPluginM Bool
 hasMatch tys@(t0, t1, t2) (pmInsts, pmCts) = do
