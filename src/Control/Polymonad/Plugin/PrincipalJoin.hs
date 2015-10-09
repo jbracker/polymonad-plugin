@@ -1,8 +1,7 @@
 
 -- | Functions to calculate the principal join.
 module Control.Polymonad.Plugin.PrincipalJoin
-  ( principalJoinFor
-  ) where
+  where --( principalJoinFor ) where
 
 import Data.List ( nubBy, find )
 import Data.Maybe ( catMaybes, fromJust, isJust )
@@ -166,20 +165,6 @@ principalJoin f mWithAmbVars = do
               $ filter isAmbiguousType
               $ m ++ concatMap (\(a, b) -> [a, b]) f
 
-    -- | Check of all of the given types are unifiable with each other and
-    --   returns the most general type that all of them can agree on.
-    allUnifiable :: [Type] -> Maybe Type
-    allUnifiable [] = Nothing
-    allUnifiable [t] = return t
-    allUnifiable (t : ts) = do
-      let unifSubsts = fmap (tcUnifyTy t) ts
-      if all isJust unifSubsts
-        then do
-          resT' <- allUnifiable ts
-          subst <- tcUnifyTy t resT'
-          return $ substTy subst t
-        else Nothing
-
 -- | Calculate the principal join of a set of unary type constructors.
 --   For this to work properly all of the given types need to be
 --   type constructors or partially applied type constructors.
@@ -211,10 +196,10 @@ principalJoinFor mAmbTv f m = do
   idT <- mkTyConTy <$> getIdentityTyCon
   -- The polymonad we want to work with
   (pmTyVarsAndCons, pmInsts, pmGivenCts) <- getCurrentPolymonad
+  joinCands <- determineCommonJoinCandidates pmTyVarsAndCons (pmInsts, pmGivenCts) f
   -- Go through all of the candidates and check if they fulfill the conditions
   -- of a principal join.
-  mSuitableJoinCands <- forM pmTyVarsAndCons $ \tyVarAndCons -> do
-    (joinCand, joinCandVars) <- applyTyCon tyVarAndCons
+  mSuitableJoinCands <- forM joinCands $ \joinCand -> do
     -- FIXME: Check join precondition
     -- Remove duplicates and substitute the top level ambiguous type variable
     -- if it is there.
@@ -223,9 +208,8 @@ principalJoinFor mAmbTv f m = do
     let substM = nubBy eqType
                $ maybe m (\ambTv -> substTopTyVar (ambTv, joinCand) <$> m) mAmbTv
     -- Check if all the incoming binds are actually there
-    fMatches <- fmap and $ forM substF $ \(t0, t1) -> do
-                _ <- determineJoinCandidates tyVarAndCons (pmInsts, pmGivenCts) (t0, t1)
-                hasMatch (t0, t1, joinCand) (pmInsts, pmGivenCts)
+    fMatches <- fmap and $ forM substF
+              $ \(t0, t1) -> hasMatch (t0, t1, joinCand) (pmInsts, pmGivenCts)
     -- Check if all the outgoing binds are actually there
     mMatches <- fmap and $ forM substM
               $ \t2 -> hasMatch (joinCand, idT, t2) (pmInsts, pmGivenCts)
@@ -269,35 +253,30 @@ instance Show BindFlag where
   show Skolem = "Skolem"
   show BindMe = "BindMe"
 
-determineJoinCandidates :: (Either TyCon TyVar, [Kind]) -> ([ClsInst], [Ct]) -> (Type, Type) -> PmPluginM [Type]
-determineJoinCandidates tyVarOrCons (pmInsts, pmCnstrs) (t0, t1) = do
-  printMsg "DETERMINE JOIN CAND:"
-  (joinCand, joinCandVars) <- applyTyCon tyVarOrCons
-  printObj (t0, t1, joinCand)
-  let dontBindTvs = either (const []) (: []) $ fst $ tyVarOrCons
+determineCommonJoinCandidates :: [(Either TyCon TyVar, [Kind])] -> ([ClsInst], [GivenCt]) -> [(Type, Type)] -> PmPluginM [Type]
+determineCommonJoinCandidates tyVarOrCons (pmInsts, pmCts) f = do
+  joinCandList <- forM tyVarOrCons $ \tyVarOrCon -> do
+    joinCandList <- forM f $ determineJoinCandidates tyVarOrCon (pmInsts, pmCts)
+    return $ catMaybes $ allUnifiable <$> oneOfAll joinCandList
+  return $ concat joinCandList
+
+determineJoinCandidates :: (Either TyCon TyVar, [Kind]) -> ([ClsInst], [GivenCt]) -> (Type, Type) -> PmPluginM [Type]
+determineJoinCandidates tyVarOrCons (pmInsts, pmCts) (t0, t1) = do
+  (joinCand, _joinCandVars) <- applyTyCon tyVarOrCons
+  let dontBindTvs = either (const []) (: []) $ fst tyVarOrCons
   instanceCands <- forM pmInsts $ \pmInst -> do
-    let (instVars, _cts, _cls, instTys@[it0, it1, it2]) = instanceSig pmInst
-    printMsg "INST"
-    printObj instTys
-    case tcUnifyTys (skolemVarsBindFun dontBindTvs) instTys [t0, t1, joinCand] of
-      Just subst -> do
-        printObj (t0, t1, substTy subst joinCand)
-        return $ Just $ substTy subst joinCand
+    let (_instVars, _cts, _cls, instArgTys) = instanceSig pmInst
+    case tcUnifyTys (skolemVarsBindFun dontBindTvs) instArgTys [t0, t1, joinCand] of
+      Just subst -> return $ Just $ substTy subst joinCand
       Nothing -> return Nothing
-  constraintCands <- forM pmCnstrs $ \pmCnstr ->
-    case constraintPolymonadTyArgs pmCnstr of
-      Just ctTys@(ct0, ct1, ct2) -> do
+  constraintCands <- forM pmCts $ \pmCt ->
+    case constraintPolymonadTyArgs pmCt of
+      Just (ct0, ct1, ct2) -> do
         let ctVars = S.toList $ S.unions $ fmap collectTyVars [ct0, ct1, ct2]
-        printMsg "CT"
-        printObj ctTys
         case tcUnifyTys (skolemVarsBindFun $ dontBindTvs ++ ctVars) [ct0, ct1, ct2] [t0, t1, joinCand] of
-          Just subst -> do
-            printObj (t0, t1, substTy subst joinCand)
-            return $ Just $ substTy subst joinCand
+          Just subst -> return $ Just $ substTy subst joinCand
           Nothing -> return Nothing
       Nothing -> return Nothing
-  printMsg "CANDS"
-  printObj $ nubBy eqType $ catMaybes $ instanceCands ++ constraintCands
   return $ nubBy eqType $ catMaybes $ instanceCands ++ constraintCands
 
 -- | Override the standard bind flag of a given list of variables to 'Skolem'.
@@ -307,7 +286,9 @@ skolemVarsBindFun tvs var = case find (var ==) tvs of
   Just _ -> Skolem
   Nothing -> instanceBindFun var
 
-hasMatch :: (Type, Type, Type) -> ([ClsInst], [Ct]) -> PmPluginM Bool
+-- | Checks if there is a matching instance or given constraints that matches
+--   the given combination of arguments.
+hasMatch :: (Type, Type, Type) -> ([ClsInst], [GivenCt]) -> PmPluginM Bool
 hasMatch tys@(t0, t1, t2) (pmInsts, pmCts) = do
   instanceMatches <- forM pmInsts $ \pmInst ->
     case matchInstanceTyVars [t0, t1, t2] pmInst of
@@ -315,3 +296,35 @@ hasMatch tys@(t0, t1, t2) (pmInsts, pmCts) = do
       Nothing -> return False
   let constraintMatches = any (isPolymonadCtMatch tys) pmCts
   return $ or instanceMatches || constraintMatches
+
+-- | Create all lists that contain exactly one element from each given list.
+--   All lists are unique if the elements being worked with are unique.
+--   Examples:
+--
+-- > oneOfAll [ [1,2], [3], [4] ]
+-- > > [ [1,3,4], [2,3,4] ]
+-- >
+-- > oneOfAll [ [2], [], [5] ]
+-- > > []
+-- >
+-- > oneOfAll [ [1,2], [3], [4,5] ]
+-- > > [ [1,3,4], [1,3,5], [2,3,4], [2,3,5] ]
+oneOfAll :: [[a]] -> [[a]]
+oneOfAll [] = [[]]
+oneOfAll ([] : _xxs) = []
+oneOfAll ([x] : xxs) = fmap (x :) (oneOfAll xxs)
+oneOfAll ((x : xs) : xxs) = fmap (x :) (oneOfAll xxs) ++ oneOfAll (xs : xxs)
+
+-- | Check of all of the given types are unifiable with each other and
+--   returns the most general type that all of them can agree on.
+allUnifiable :: [Type] -> Maybe Type
+allUnifiable [] = Nothing
+allUnifiable [t] = return t
+allUnifiable (t : ts) = do
+  let unifSubsts = fmap (tcUnifyTy t) ts
+  if all isJust unifSubsts
+    then do
+      resT' <- allUnifiable ts
+      subst <- tcUnifyTy t resT'
+      return $ substTy subst t
+    else Nothing
