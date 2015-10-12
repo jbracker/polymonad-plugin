@@ -1,5 +1,5 @@
 
--- | Core functions the plugin relies on to interact with GHCs API.
+-- | A collection of functions that did not fit anywhere else.
 module Control.Polymonad.Plugin.Core
   ( isInstanceOf
   ) where
