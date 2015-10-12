@@ -5,30 +5,16 @@ module Control.Polymonad.Plugin.Solve
   , solve
   ) where
 
-import Data.Maybe ( fromJust )
-import Data.List ( nubBy, find )
-import Data.Graph.Inductive
-  ( Graph(..), Gr
-  , Node, LNode, LEdge )
-import Data.Graph.Inductive.Graph
-  ( delNode, insEdges, delEdge, delEdges
-  , indeg, gelem
-  , edges
-  , nmap
-  , out, inn )
+import Data.List ( nubBy )
 
 import Control.Arrow ( (***) )
 
 import Type ( TyVar, Type, eqType, getTyVar_maybe, getTyVar, mkTyVarTy )
 import TcRnTypes ( Ct(..), CtLoc, CtEvidence(..) )
-import Name ( NamedThing( getName, getOccName ) )
-import Unique ( Uniquable( getUnique ) )
-import Var ( varType, varUnique, varName )
 
-import Control.Polymonad.Plugin.Utils ( isAmbiguousType, removeDup )
+import Control.Polymonad.Plugin.Utils ( isAmbiguousType )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
-  , assert
   , throwPluginError
   , printObj, printMsg )
 import Control.Polymonad.Plugin.PrincipalJoin ( principalJoinFor )
@@ -38,13 +24,6 @@ import Control.Polymonad.Plugin.Topological ( topologicalTyConOrder )
 
 substToCts :: CtLoc -> [(TyVar, Type)] -> [Ct]
 substToCts loc = fmap (uncurry $ mkDerivedTypeEqCt' loc)
-
-showVar :: TyVar -> PmPluginM ()
-showVar tv = do
-  printObj tv
-  printObj (varName tv)
-  printObj (varUnique tv)
-  printObj (varType tv)
 
 -- | Given the set of wanted constraints that shall be solved this produces
 --   a set of derived constraints that link the ambiguous type variables to

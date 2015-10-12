@@ -27,6 +27,8 @@ import Data.List ( find )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
+import Control.Arrow ( second )
+
 import Type
   ( Type, TyVar, TvSubst
   , getTyVar_maybe
@@ -81,7 +83,7 @@ collectTyVars t =
 -- | Create a substitution that replaces the given type variables with their
 --   associated type constructors.
 mkTcVarSubst :: [(TyVar, TyCon)] -> TvSubst
-mkTcVarSubst substs = mkTopTvSubst $ fmap (\(tv, tc) -> (tv, mkTyConTy tc)) substs
+mkTcVarSubst substs = mkTopTvSubst $ fmap (second mkTyConTy) substs
 
 -- | Split type constructor applications into their type constructor and arguments. Only
 --   keeps those in the result list where this split actually worked.

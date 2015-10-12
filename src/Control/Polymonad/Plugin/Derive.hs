@@ -57,7 +57,7 @@ derivePolymonadConstraints =  do
       let derivedFunctorCts = fmap (\(t, loc) -> mkDerivedClassCt loc pmCls [t, idTc, t]) tcvs
       -- Filter constraints that were created but already existed in the set of
       -- given constraints.
-      return $ filter (\dCt -> isNothing $ find (eqClassCt dCt) givenCts) $ derivedFunctorCts
+      return $ filter (\dCt -> isNothing $ find (eqClassCt dCt) givenCts) derivedFunctorCts
       where
         eqTy :: (Type, a) -> (Type, b) -> Bool
         eqTy (t0, _) (t1, _) = eqType t0 t1

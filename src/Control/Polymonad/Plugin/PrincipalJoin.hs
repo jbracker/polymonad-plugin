@@ -3,51 +3,39 @@
 module Control.Polymonad.Plugin.PrincipalJoin
   where --( principalJoinFor ) where
 
-import Data.List ( nubBy, find )
-import Data.Maybe ( catMaybes, fromJust, isJust )
+import Data.List ( nubBy )
+import Data.Maybe ( catMaybes, isJust )
 import qualified Data.Set as S
---import qualified Data.Set as S
 
 import Control.Monad ( forM ) --, when )
-import Control.Arrow ( (***), second )
+import Control.Arrow ( (***) )
 
-import BasicTypes ( Arity )
 import Kind ( Kind )
 import Type
   ( Type, TyVar
   , mkTyConTy, mkTyVarTy, mkAppTys
   , eqType
-  , getTyVar_maybe, getTyVar
-  , splitAppTys
+  , getTyVar_maybe
   , substTy )
 import TyCon ( TyCon )
-import TcType ( isAmbiguousTyVar )
-import InstEnv ( ClsInst(..), instanceSig, instanceBindFun )
+import InstEnv ( ClsInst(..), instanceSig )
 import TcRnTypes ( Ct )
 import TcPluginM ( newFlexiTyVar )
-import Unify ( tcUnifyTy, tcUnifyTys, tcMatchTys, BindFlag(..) )
-import Unique ( unpkUnique, getUnique )
-import VarSet ( mkVarSet )
+import Unify ( tcUnifyTy, tcUnifyTys )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runTcPlugin
   , assert
   , throwPluginError
   , getCurrentPolymonad
-  , getWantedPolymonadConstraints
-  , getIdentityTyCon
-  , printObj, printMsg )
+  , printObj )
 import Control.Polymonad.Plugin.Instance
-  ( matchInstanceTyVars
-  , instancePolymonadTyArgs
-  , isInstantiatedBy )
+  ( matchInstanceTyVars )
 import Control.Polymonad.Plugin.Core ( isInstanceOf )
 import Control.Polymonad.Plugin.Constraint
   ( GivenCt, constraintPolymonadTyArgs )
 import Control.Polymonad.Plugin.Utils
-  ( allM, anyM, isAmbiguousType, collectTyVars, skolemVarsBindFun )
-import Control.Polymonad.Plugin.Topological
-  ( topologicalTyConOrder )
+  ( collectTyVars, skolemVarsBindFun )
 
 -- | Calculate the principal join of a set of unary type constructors.
 --   For this to work properly all of the given types need to be

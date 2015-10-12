@@ -80,7 +80,6 @@ import InstEnv
   , ie_global )
 import Outputable ( Outputable )
 import TcEvidence ( EvTerm(..) )
-import HscTypes ( typeEnvClasses )
 
 import Control.Polymonad.Plugin.Log
   ( pmErrMsg, pmDebugMsg, pmObjMsg
@@ -368,7 +367,7 @@ findPolymonadInstancesInScope = do
 --   that matches it. This is ok to do, because for polymonads it does
 --   not make a difference which bind-operation we pick if the type is equal.
 pickInstanceForAppliedConstraint :: Class -> WantedCt -> TcPluginM (Maybe (EvTerm, Ct))
-pickInstanceForAppliedConstraint pmCls ct = do
+pickInstanceForAppliedConstraint pmCls ct =
   case constraintClassTyArgs ct of
     -- We found the polymonad class constructor and the given constraint
     -- is a instance constraint.
