@@ -34,9 +34,8 @@ import TcRnTypes ( Ct )
 import Control.Polymonad.Plugin.Log ( pprToStr )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
-  , getIdentityTyCon, getPolymonadInstances
-  , getGivenPolymonadConstraints
-  , printErr, printObj, printMsg )
+  , getIdentityTyCon
+  , printErr )
 import Control.Polymonad.Plugin.Utils
   ( eqTyVar', eqTyCon )
 import Control.Polymonad.Plugin.Constraint
@@ -112,19 +111,11 @@ simplifyJoin ps rho = do
   let f = flowsTo ps rho
   if (not . null $ f) && all (\(t0,t1) -> isConcreteTyConApp t0 && isConcreteTyConApp t1) f
     then do
-      -- TODO: We might have to restrict the set of instances we look at.
-      pmInsts <- getPolymonadInstances
       -- TODO: This is the only possibility I can think of to get targets.
       let ms = flowsFrom ps rho
       if length ms == 2 || length ms == 1
         then do
-          givenCts <- getGivenPolymonadConstraints
           mJoinM <- principalJoinFor Nothing f ms
-          printMsg "Apply simplifyJoin:"
-          printObj (pmInsts, givenCts)
-          printObj f
-          printObj ms
-          printObj mJoinM
           -- It does not help to say some type variables equals itself.
           return $ if maybe True (eqType (mkTyVarTy rho)) mJoinM
             then Nothing
