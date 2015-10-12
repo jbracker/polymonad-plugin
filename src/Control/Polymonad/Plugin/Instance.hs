@@ -82,7 +82,7 @@ matchInstanceTyVars instArgs inst = do
   -- let instVarSet = printObjTrace $ mkVarSet instVars
   -- subst <- printObjTrace $ tcMatchTys instVarSet tyArgs instArgs
   let ctVars = filter (not . isAmbiguousTyVar) $ S.toList $ S.unions $ fmap collectTyVars instArgs
-  subst <- printObjTrace $ tcUnifyTys (skolemVarsBindFun ctVars) tyArgs instArgs
+  subst <- tcUnifyTys (skolemVarsBindFun ctVars) tyArgs instArgs
   return $ substTy subst . mkTyVarTy <$> instVars
 
 -- | Returns the type constructors of the class is instance instantiates.
