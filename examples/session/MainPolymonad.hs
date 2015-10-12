@@ -52,12 +52,24 @@ ping n = do
 -}
 
 pong :: Session (Cap (Pong, ()) Pong) () ()
+{-
 pong = offer close $ do
     rsp <- recv
     io $ putStrLn rsp
     send "Pong"
     zero
     pong
+-}
+pong = offer close
+  $ recv
+  >>= \rsp ->
+  io (putStrLn rsp)
+  >>
+  send "Pong"
+  >>
+  zero
+  >>
+  pong
 
 
 {-
