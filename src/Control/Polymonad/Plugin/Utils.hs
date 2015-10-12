@@ -191,12 +191,18 @@ lookupBy eq x ((y, b) : ybs)
   | eq x y = Just b
   | otherwise = lookupBy eq x ybs
 
+-- | Iterate over a list of items and check if the given predicate holds for
+--   all of them.
 allM :: (Monad m) => (a -> m Bool) -> [a] -> m Bool
 allM = quantM (&&) True
 
+-- | Iterate over a list of items and check if the given predicate holds for
+--   at least one of them.
 anyM :: (Monad m) => (a -> m Bool) -> [a] -> m Bool
 anyM = quantM (||) False
 
+-- | Generalization of 'allM' and 'anyM' that is used to implement each of those
+--   functions.
 quantM :: (Monad m) => (Bool -> Bool -> Bool) -> Bool -> (a -> m Bool) -> [a] -> m Bool
 quantM _comp def _p [] = return def
 quantM  comp def  p (x : xs) = do

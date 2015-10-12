@@ -1,7 +1,7 @@
 
 -- | Functions to calculate the principal join.
 module Control.Polymonad.Plugin.PrincipalJoin
-  where --( principalJoinFor ) where
+  ( principalJoinFor ) where
 
 import Data.List ( nubBy )
 import Data.Maybe ( catMaybes, isJust )
@@ -93,6 +93,7 @@ principalJoinFor mAmbTv f _m = do
       throwPluginError "principalJoinFor: Found more then one join. FIXME"
 
   where
+    -- TODO: This also has to work on partially applied type constructor variables.
     substTopTyVar :: (TyVar, Type) -> Type -> Type
     substTopTyVar (tv, ty) t = case getTyVar_maybe t of
       Just tv' -> if tv == tv' then ty else t
@@ -113,11 +114,16 @@ applyTyCon (eTcTv, ks) = do
   let t = either mkTyConTy mkTyVarTy eTcTv
   return (mkAppTys t $ fmap mkTyVarTy tyVarArgs, tyVarArgs)
 
+-- | Check if the given combination of types matches the given constraints
+--   arguments.
 isPolymonadCtMatch :: (Type, Type, Type) -> Ct -> Bool
 isPolymonadCtMatch (t0, t1, t2) ct
   = maybe False (\(t0', t1', t2') -> eqType t0 t0' && eqType t1 t1' && eqType t2 t2')
   $ constraintPolymonadTyArgs ct
 
+-- | Check if there is a common join candidate for all of the given
+--   type constructors, variables and input type pairs. Details
+--   of determining a join candidate can be seen in 'determineJoinCandidates'.
 determineCommonJoinCandidates :: [(Either TyCon TyVar, [Kind])] -> ([ClsInst], [GivenCt]) -> [(Type, Type)] -> PmPluginM [Type]
 determineCommonJoinCandidates tyVarOrCons (pmInsts, pmCts) f = do
   joinCandList <- forM tyVarOrCons $ \tyVarOrCon -> do
@@ -125,6 +131,9 @@ determineCommonJoinCandidates tyVarOrCons (pmInsts, pmCts) f = do
     return $ catMaybes $ allUnifiable <$> oneOfAll joinCandList
   return $ nubBy eqType $ concat joinCandList
 
+-- | Determine the join candidates that result from the given type constructor
+--   or variable using the given set of instances and given constraints and
+--   and the given pair of input types.
 determineJoinCandidates :: (Either TyCon TyVar, [Kind]) -> ([ClsInst], [GivenCt]) -> (Type, Type) -> PmPluginM [Type]
 determineJoinCandidates tyVarOrCons (pmInsts, pmCts) (t0, t1) = do
   (joinCand, _joinCandVars) <- applyTyCon tyVarOrCons

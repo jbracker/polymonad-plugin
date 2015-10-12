@@ -1,4 +1,6 @@
 
+-- | Provides an algorithm to topologically sort the types involved in
+--   a set of constraints.
 module Control.Polymonad.Plugin.Topological
   ( topologicalTyConOrder ) where
 
