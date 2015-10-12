@@ -16,6 +16,7 @@ module Control.Polymonad.Plugin.Instance
 import Data.Maybe ( catMaybes, isJust )
 import Data.List ( find )
 import Data.Set ( Set )
+import qualified Data.Set as S
 
 import Control.Monad ( forM, liftM2 )
 
@@ -32,16 +33,19 @@ import Type
   , eqTypes )
 import Class ( Class, classTyCon )
 import TyCon ( TyCon )
-import Unify ( tcMatchTys )
-import VarSet ( mkVarSet )
+import Unify ( tcUnifyTys )
+--import VarSet ( mkVarSet )
 import TcPluginM ( TcPluginM, getInstEnvs )
 import TcRnTypes ( Ct )
+import TcType ( isAmbiguousTyVar )
 
 import Control.Polymonad.Plugin.Log
-  ( missingCaseError )
+  ( missingCaseError, printObjTrace )
 import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
-  , collectTopTcVars )
+  , collectTopTcVars
+  , collectTyVars
+  , skolemVarsBindFun )
 import Control.Polymonad.Plugin.Constraint
   ( constraintClassType )
 
@@ -74,9 +78,11 @@ eqOrphan _ _ = False
 matchInstanceTyVars :: [Type] -> ClsInst -> Maybe [Type]
 matchInstanceTyVars instArgs inst = do
   let (instVars, _cts, _cls, tyArgs) = instanceSig inst
-  let instVarSet = mkVarSet instVars
-  subst <- tcMatchTys instVarSet tyArgs instArgs
-  --subst <- tcUnifyTys instanceBindFun instArgs tyArgs
+  -- Old Version:
+  -- let instVarSet = printObjTrace $ mkVarSet instVars
+  -- subst <- printObjTrace $ tcMatchTys instVarSet tyArgs instArgs
+  let ctVars = filter (not . isAmbiguousTyVar) $ S.toList $ S.unions $ fmap collectTyVars instArgs
+  subst <- printObjTrace $ tcUnifyTys (skolemVarsBindFun ctVars) tyArgs instArgs
   return $ substTy subst . mkTyVarTy <$> instVars
 
 -- | Returns the type constructors of the class is instance instantiates.
