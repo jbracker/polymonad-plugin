@@ -9,6 +9,7 @@ module Control.Polymonad.Plugin.Utils (
   , splitTyConApps
   , isGroundUnaryTyCon
   -- * General Utilities
+  , skolemVarsBindFun
   , eqTyVar, eqTyVar'
   , eqTyCon
   , isAmbiguousType
@@ -22,6 +23,7 @@ module Control.Polymonad.Plugin.Utils (
   ) where
 
 import Data.Maybe ( listToMaybe, catMaybes )
+import Data.List ( find )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
@@ -38,6 +40,8 @@ import TyCon ( TyCon, tyConArity, tyConKind )
 import Var ( tyVarKind )
 import TcType ( isAmbiguousTyVar )
 import Kind ( Kind, splitKindFunTys )
+import Unify ( BindFlag(..) )
+import InstEnv ( instanceBindFun )
 
 -- -----------------------------------------------------------------------------
 -- Constraint and type inspection
@@ -94,6 +98,15 @@ isGroundUnaryTyCon t = case splitTyConApp_maybe t of
 -- -----------------------------------------------------------------------------
 -- General utilities
 -- -----------------------------------------------------------------------------
+
+-- | Override the standard bind flag of a given list of variables to 'Skolem'.
+--   The standard bind flad is determined using 'instanceBindFun'.
+--   This can be used to keep 'tcUnifyTys' from unifying the given variables
+--   and to view them as constants.
+skolemVarsBindFun :: [TyVar] -> TyVar -> BindFlag
+skolemVarsBindFun tvs var = case find (var ==) tvs of
+  Just _ -> Skolem
+  Nothing -> instanceBindFun var
 
 -- | Check if both types contain type variables and if those type
 --   variables are equal.
