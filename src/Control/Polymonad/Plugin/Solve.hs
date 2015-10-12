@@ -21,6 +21,9 @@ import Control.Arrow ( (***) )
 
 import Type ( TyVar, Type, eqType, getTyVar_maybe, getTyVar, mkTyVarTy )
 import TcRnTypes ( Ct(..), CtLoc, CtEvidence(..) )
+import Name ( NamedThing( getName, getOccName ) )
+import Unique ( Uniquable( getUnique ) )
+import Var ( varType, varUnique, varName )
 
 import Control.Polymonad.Plugin.Utils ( isAmbiguousType, removeDup )
 import Control.Polymonad.Plugin.Environment
@@ -30,11 +33,18 @@ import Control.Polymonad.Plugin.Environment
   , printObj, printMsg )
 import Control.Polymonad.Plugin.PrincipalJoin ( principalJoinFor )
 import Control.Polymonad.Plugin.Constraint ( mkDerivedTypeEqCt', constraintPolymonadTyArgs' )
-import Control.Polymonad.Plugin.GraphView
 import Control.Polymonad.Plugin.Topological ( topologicalTyConOrder )
+
 
 substToCts :: CtLoc -> [(TyVar, Type)] -> [Ct]
 substToCts loc = fmap (uncurry $ mkDerivedTypeEqCt' loc)
+
+showVar :: TyVar -> PmPluginM ()
+showVar tv = do
+  printObj tv
+  printObj (varName tv)
+  printObj (varUnique tv)
+  printObj (varType tv)
 
 -- | Given the set of wanted constraints that shall be solved this produces
 --   a set of derived constraints that link the ambiguous type variables to
@@ -42,15 +52,13 @@ substToCts loc = fmap (uncurry $ mkDerivedTypeEqCt' loc)
 solve :: [Ct] -> PmPluginM [Ct]
 solve [] = return []
 solve wantedCts = do
-  printMsg "SOLVE"
+  printMsg "SOLVE FOR:"
   printObj wantedCts
   -- Order in which we shall process the ambiguous type variables.
   topoOrder <- filter isAmbiguousType <$> topologicalTyConOrder wantedCts
   --printObj =<< topologicalTyConOrder wantedCts
   --printObj topoOrder
   subst <- calcSubst [] $ fmap (getTyVar "solve: Not a type variable") topoOrder
-  printMsg "Subst:"
-  printObj subst
   return $ substToCts (ctev_loc . cc_ev . head $ wantedCts) subst
   where
     -- Involved type constructors
@@ -77,10 +85,6 @@ solve wantedCts = do
     calcSubst :: [(TyVar, Type)] -> [TyVar] -> PmPluginM [(TyVar, Type)]
     calcSubst subst [] = return subst
     calcSubst subst (tv:tvs) = do
-      printMsg "In/Out of:"
-      printObj tv
-      printObj $ inTypes tv
-      printObj $ outTypes tv
       -- Get the outgoing types of the current type.
       let outTys -- Make sure that if there is another ambiguous type variable
                  -- among the outgoing types to remove it. This is important,
