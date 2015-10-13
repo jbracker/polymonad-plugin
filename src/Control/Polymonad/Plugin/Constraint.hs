@@ -13,6 +13,7 @@ module Control.Polymonad.Plugin.Constraint
     -- * Constraint inspection
   , isClassConstraint
   , isFullyAppliedClassConstraint
+  , isTyConAppliedClassConstraint
   , constraintClassType
   , constraintClassTyArgs
   , constraintClassTyCon
@@ -40,6 +41,7 @@ import Type
   , mkTyVarTy, mkAppTys, mkTyConTy
   , getTyVar_maybe
   , getClassPredTys_maybe
+  , splitTyConApp_maybe
   )
 import TyCon ( TyCon )
 import TcType ( mkTcEqPred, isAmbiguousTyVar )
@@ -101,6 +103,25 @@ isClassConstraint wantedClass ct =
 isFullyAppliedClassConstraint :: Ct -> Bool
 isFullyAppliedClassConstraint ct = case constraintClassTyArgs ct of
   Just tyArgs -> all S.null (collectTyVars <$> tyArgs)
+  Nothing -> False
+
+-- | Check if the given constraint is a class constraint and all arguments
+--   consist of non-variable type constructor (partially) applied to their
+--   arguments.
+--
+--   /Examples/:
+--
+-- >>> isTyConAppliedClassConstraint (Polymonad m Identity Maybe)
+-- False -- because of 'm'
+--
+-- >>> isTyConAppliedClassConstraint (Polymonad (Session a b) (Session () ()) Maybe)
+-- True -- because 'a' and 'b' are not the top level type-constructor
+--
+-- >>> isTyConAppliedClassConstraint (Polymonad Maybe (m () ()) (m () ()))
+-- False -- because of 'm'
+isTyConAppliedClassConstraint :: Ct -> Bool
+isTyConAppliedClassConstraint ct = case constraintClassTyArgs ct of
+  Just tyArgs -> all isJust $ splitTyConApp_maybe <$> tyArgs
   Nothing -> False
 
 -- | Retrieves the class and type arguments of the given
