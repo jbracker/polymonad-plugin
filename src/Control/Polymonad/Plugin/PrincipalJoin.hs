@@ -173,16 +173,17 @@ hasMatch tys@(t0, t1, t2) (pmInsts, pmCts) = do
 
 -- | Create all lists that contain exactly one element from each given list.
 --   All lists are unique if the elements being worked with are unique.
---   Examples:
 --
--- > oneOfAll [ [1,2], [3], [4] ]
--- > > [ [1,3,4], [2,3,4] ]
--- >
--- > oneOfAll [ [2], [], [5] ]
--- > > []
--- >
--- > oneOfAll [ [1,2], [3], [4,5] ]
--- > > [ [1,3,4], [1,3,5], [2,3,4], [2,3,5] ]
+--   /Examples/:
+-- 
+-- >>> oneOfAll [ [1,2], [3], [4] ]
+-- [ [1,3,4], [2,3,4] ]
+--
+-- >>> oneOfAll [ [2], [], [5] ]
+-- []
+--
+-- >>> oneOfAll [ [1,2], [3], [4,5] ]
+-- [ [1,3,4], [1,3,5], [2,3,4], [2,3,5] ]
 oneOfAll :: [[a]] -> [[a]]
 oneOfAll [] = [[]]
 oneOfAll ([] : _xxs) = []
