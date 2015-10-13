@@ -18,7 +18,9 @@ import Control.Polymonad.Plugin.Environment
   , throwPluginError
   , printObj, printMsg )
 import Control.Polymonad.Plugin.PrincipalJoin ( principalJoinFor )
-import Control.Polymonad.Plugin.Constraint ( mkDerivedTypeEqCt', constraintPolymonadTyArgs' )
+import Control.Polymonad.Plugin.Constraint
+  ( WantedCt
+  , mkDerivedTypeEqCt', constraintPolymonadTyArgs' )
 import Control.Polymonad.Plugin.Topological ( topologicalTyConOrder )
 
 
@@ -28,7 +30,7 @@ substToCts loc = fmap (uncurry $ mkDerivedTypeEqCt' loc)
 -- | Given the set of wanted constraints that shall be solved this produces
 --   a set of derived constraints that link the ambiguous type variables to
 --   their principal joins.
-solve :: [Ct] -> PmPluginM [Ct]
+solve :: [WantedCt] -> PmPluginM [Ct]
 solve [] = return []
 solve wantedCts = do
   printMsg "SOLVE FOR:"
@@ -41,7 +43,7 @@ solve wantedCts = do
   return $ substToCts (ctev_loc . cc_ev . head $ wantedCts) subst
   where
     -- Involved type constructors
-    constraintTys :: [(Ct, Type, Type, Type)]
+    constraintTys :: [(WantedCt, Type, Type, Type)]
     constraintTys = constraintPolymonadTyArgs' wantedCts
 
     inTypes :: TyVar -> [(Type, Type)]
