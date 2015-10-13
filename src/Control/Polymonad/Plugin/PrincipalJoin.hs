@@ -16,6 +16,7 @@ import Type
   , mkTyConTy, mkTyVarTy, mkAppTys
   , eqType
   , getTyVar_maybe
+  , splitAppTys
   , substTy )
 import TyCon ( TyCon )
 import InstEnv ( ClsInst(..), instanceSig )
@@ -93,11 +94,15 @@ principalJoinFor mAmbTv f _m = do
       throwPluginError "principalJoinFor: Found more then one join. FIXME"
 
   where
-    -- TODO: This also has to work on partially applied type constructor variables.
+    -- | Substitute the type variables if it is the top level
+    --   (partially applied) type constructor of the given type.
     substTopTyVar :: (TyVar, Type) -> Type -> Type
-    substTopTyVar (tv, ty) t = case getTyVar_maybe t of
-      Just tv' -> if tv == tv' then ty else t
-      Nothing -> t
+    substTopTyVar (tv, ty) t = mkAppTys substTc appArgs
+      where
+        (appTc, appArgs) = splitAppTys t
+        substTc = case getTyVar_maybe appTc of
+          Just tv' -> if tv == tv' then ty else t
+          Nothing -> t
 
 -- | Applies the given type constructor or type constructor variables to enought
 --   correctly kinded variables to make it a partially applied unary type
