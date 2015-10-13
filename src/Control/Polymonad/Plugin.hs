@@ -16,7 +16,7 @@ import TcPluginM ( TcPluginM, tcPluginIO )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getWantedPolymonadConstraints, getGivenPolymonadConstraints
-  , printDebug, printMsg, printObj
+  , printDebug, printMsg
   , printConstraints )
 import Control.Polymonad.Plugin.Constraint
   ( constraintTopAmbiguousTyVars
@@ -66,7 +66,7 @@ polymonadSolve s given derived wanted = do
   res <- runPmPlugin (given ++ derived) wanted $ do
     if not $ null wanted
       then do
-        printMsg "INVOKE POLYMONAD PLUGIN..."
+        printMsg "Invoke polymonad plugin..."
         polymonadSolve' s
       else return noResult
   case res of

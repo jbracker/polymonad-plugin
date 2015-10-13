@@ -2,16 +2,21 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE RebindableSyntax #-}
 
+-- Ignore our orphan instance in this file.
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
+-- Use the polymonad plugin.
 {-# OPTIONS_GHC -fplugin Control.Polymonad.Plugin #-}
 
-module MainPolymonad ( main ) where
+-- Remove this so compilation creates a proper executable.
+--module MainPolymonad ( main ) where
 
 import Control.Polymonad.Prelude
 import Control.Polymonad.Hoare ( HoareMonad(..) )
 
 
 import Control.Monad.Indexed
-  ( IxMonad(..), IxPointed(..), (>>>=) )
+  ( IxPointed(..), (>>>=) )
 
 import Control.Concurrent
   ( forkIO )
@@ -29,19 +34,20 @@ instance HoareMonad Session where
   hoareRet = ireturn
   hoareBind = (>>>=)
 
---type Ping = Eps :+: (String :!: String :?: Var Z)
+type Ping = Eps :+: (String :!: String :?: Var Z)
 type Pong = Eps :&: (String :?: String :!: Var Z)
 
---ping :: Int -> Session (Cap (Ping, ()) Ping) () ()
+ping :: Int -> Session (Cap (Ping, ()) Ping) () ()
+pong :: Session (Cap (Pong, ()) Pong) () ()
 
 main :: IO ()
-main = return () {- do
+main = do
   rv <- newRendezvous
   _ <- forkIO $ accept rv
               $ enter >> ping 3
   request rv $ enter >> pong
--}
-{-
+
+
 ping 0 = do
     sel1; close
 ping n = do
@@ -49,17 +55,14 @@ ping n = do
     rsp <- recv
     io $ putStrLn rsp
     zero; ping (n - 1)
--}
 
-pong :: Session (Cap (Pong, ()) Pong) () ()
-{-
 pong = offer close $ do
     rsp <- recv
     io $ putStrLn rsp
     send "Pong"
     zero
     pong
--}
+{-
 pong = offer close
   $ recv
   >>= \rsp ->
@@ -70,7 +73,7 @@ pong = offer close
   zero
   >>
   pong
-
+-}
 
 {-
 main = do

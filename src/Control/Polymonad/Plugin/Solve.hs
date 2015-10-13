@@ -15,8 +15,7 @@ import TcRnTypes ( Ct(..), CtLoc, CtEvidence(..) )
 import Control.Polymonad.Plugin.Utils ( isAmbiguousType )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
-  , throwPluginError
-  , printObj, printMsg )
+  , throwPluginError )
 import Control.Polymonad.Plugin.PrincipalJoin ( principalJoinFor )
 import Control.Polymonad.Plugin.Constraint
   ( WantedCt
@@ -33,8 +32,6 @@ substToCts loc = fmap (uncurry $ mkDerivedTypeEqCt' loc)
 solve :: [WantedCt] -> PmPluginM [Ct]
 solve [] = return []
 solve wantedCts = do
-  printMsg "SOLVE FOR:"
-  printObj wantedCts
   -- Order in which we shall process the ambiguous type variables.
   topoOrder <- filter isAmbiguousType <$> topologicalTyConOrder wantedCts
   --printObj =<< topologicalTyConOrder wantedCts
