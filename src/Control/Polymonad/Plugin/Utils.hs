@@ -51,10 +51,11 @@ import InstEnv ( instanceBindFun )
 
 -- | Retrieve the type constructors at top level involved in the given types.
 --   If there are type constructors nested within the type they are ignored.
---   /Example:/
 --
---   > collectTopTyCons [Maybe (Identity ())]
---   > > { Maybe }
+--   /Example/:
+--
+-- >>> collectTopTyCons [Maybe (Identity ())]
+-- { Maybe }
 collectTopTyCons :: [Type] -> Set TyCon
 collectTopTyCons tys = S.fromList $ catMaybes $ fmap tyConAppTyCon_maybe tys
 
@@ -62,10 +63,11 @@ collectTopTyCons tys = S.fromList $ catMaybes $ fmap tyConAppTyCon_maybe tys
 --   given types. If there are nested type variables they are ignored.
 --   There is no actual check if the returned type variables are actually type
 --   constructor variables.
---   /Example:/
 --
---   > collectTopTcVars [m a b, Identity c, n]
---   > > { m, n }
+--   /Example/:
+--
+-- >>> collectTopTcVars [m a b, Identity c, n]
+-- { m, n }
 collectTopTcVars :: [Type] -> Set TyVar
 collectTopTcVars tys = S.fromList $ catMaybes $ fmap (getTyVar_maybe . fst . splitAppTys) tys
 
@@ -140,14 +142,17 @@ isAmbiguousType ty = maybe False isAmbiguousTyVar $ getTyVar_maybe ty
 -- | Takes a type that is considered to be a unary type constructor.
 --   Tries to get the base type constructor within this, for example:
 --
--- > getTyConWithArgKinds (StateT String)
--- > > (Left StateT, [*, *])
--- > getTyConWithArgKinds m
--- > > (Right m, [*])
--- > getTyConWithArgKinds (p s)
--- > > (Right p, [*, *]) -- Assuming the kind of s is *.
--- > getTyConWithArgKinds Identity
--- > > (Left Identity, [*])
+-- >>> getTyConWithArgKinds (StateT String)
+-- (Left StateT, [*, *])
+--
+-- >>> getTyConWithArgKinds m
+-- (Right m, [*])
+--
+-- >>> getTyConWithArgKinds (p s)
+-- (Right p, [*, *]) -- Assuming the kind of s is *.
+--
+-- >>> getTyConWithArgKinds Identity
+-- (Left Identity, [*])
 getTyConWithArgKinds :: Type -> (Either TyCon TyVar, [Kind])
 getTyConWithArgKinds t = case getTyVar_maybe tcTy of
   Just tv -> (Right tv, fst $ splitKindFunTys $ tyVarKind tv)
@@ -158,12 +163,13 @@ getTyConWithArgKinds t = case getTyVar_maybe tcTy of
 
 -- | Takes a list of keys and all of their possible values and returns a list
 --   of all possible associations between keys and values
---   /Example:/
 --
---   > associations [('a', [1,2,3]), ('b', [4,5])]
---   > > [ [('a', 1), ('b', 4)], [('a', 1), ('b', 5)]
---   > > , [('a', 2), ('b', 4)], [('a', 2), ('b', 5)]
---   > > , [('a', 3), ('b', 4)], [('a', 3), ('b', 5)] ]
+--   /Examples/:
+--
+-- >>> associations [('a', [1,2,3]), ('b', [4,5])]
+-- [ [('a', 1), ('b', 4)], [('a', 1), ('b', 5)]
+-- , [('a', 2), ('b', 4)], [('a', 2), ('b', 5)]
+-- , [('a', 3), ('b', 4)], [('a', 3), ('b', 5)] ]
 associations :: [(key , [value])] -> [[(key, value)]]
 associations [] = [[]]
 associations ((_x, []) : _xys) = []
