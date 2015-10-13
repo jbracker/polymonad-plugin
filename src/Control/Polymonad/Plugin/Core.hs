@@ -63,7 +63,6 @@ trySolveAmbiguousForAppliedTyConConstraint :: WantedCt -> PmPluginM (Maybe [(TyV
 trySolveAmbiguousForAppliedTyConConstraint ct = do
   pmCls <- getPolymonadClass
   (_, pmInsts, pmCts) <- getCurrentPolymonad
-  printObj ct
   case constraintClassTyArgs ct of
     -- We found the polymonad class constructor and the given constraint
     -- is a instance constraint.
@@ -80,8 +79,7 @@ trySolveAmbiguousForAppliedTyConConstraint ct = do
         printObj pmInst
         let instArgs = instanceTyArgs pmInst
         case tcUnifyTys (skolemVarsBindFun dontBind) tyArgs instArgs of
-          Just subst -> do
-            printObj $ substTys subst tyArgs
+          Just subst ->
             return $ Just $ zip ambTyVars (substTyVar subst <$> ambTyVars)
           Nothing -> return Nothing
 
@@ -89,8 +87,7 @@ trySolveAmbiguousForAppliedTyConConstraint ct = do
         printObj pmCt
         let ctArgs = fromJust $ constraintClassTyArgs pmCt
         case tcUnifyTys (skolemVarsBindFun dontBind) tyArgs ctArgs of
-          Just subst -> do
-            printObj $ substTys subst tyArgs
+          Just subst ->
             return $ Just $ zip ambTyVars (substTyVar subst <$> ambTyVars)
           Nothing -> return Nothing
 

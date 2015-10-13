@@ -2,9 +2,10 @@
 module Control.Polymonad.Plugin
   ( plugin ) where
 
+import Data.List ( partition )
 import qualified Data.Set as S
 
-import Control.Monad ( unless )
+import Control.Monad ( unless, forM )
 
 import Plugins ( Plugin(tcPlugin), defaultPlugin )
 import TcRnTypes
@@ -15,10 +16,12 @@ import TcPluginM ( TcPluginM, tcPluginIO )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getWantedPolymonadConstraints, getGivenPolymonadConstraints
-  , printDebug, printMsg --, printObj
+  , printDebug, printMsg, printObj
   , printConstraints )
 import Control.Polymonad.Plugin.Constraint
-  ( constraintTopAmbiguousTyVars )
+  ( constraintTopAmbiguousTyVars
+  , isTyConAppliedClassConstraint
+  , mkDerivedTypeEqCt )
 import Control.Polymonad.Plugin.GraphView
   ( mkGraphView )
 import Control.Polymonad.Plugin.Solve
@@ -28,7 +31,8 @@ import Control.Polymonad.Plugin.Ambiguity
 import Control.Polymonad.Plugin.Simplification
   ( simplifyAllUpDown, simplifyAllJoin
   , simplifiedTvsToConstraints )
--- import Control.Polymonad.Plugin.Derive ( derivePolymonadConstraints )
+import Control.Polymonad.Plugin.Core
+  ( trySolveAmbiguousForAppliedTyConConstraint )
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -97,7 +101,18 @@ polymonadSolve' _s = do
   -}
   -- Simplification ------------------------------------------------------------
   printDebug "Try simplification of constraints..."
-  wanted <- getWantedPolymonadConstraints
+  allWanted <- getWantedPolymonadConstraints
+
+  -- Try to solved ambiguous indices in polymonad constraints that contain
+  -- concrete type constructors, but still miss a solution for some of their
+  -- indices.
+  -- FIXME: Unsure if this is a valid thing to do.
+  let (tyConAppCts, wanted) = partition isTyConAppliedClassConstraint allWanted
+  solvedAmbIndices <- fmap concat $ forM tyConAppCts $ \tyConAppCt -> do
+    mRes <- trySolveAmbiguousForAppliedTyConConstraint tyConAppCt
+    return $ case mRes of
+      Just res -> uncurry (mkDerivedTypeEqCt tyConAppCt) <$> res
+      Nothing -> []
 
   -- We can now try to simplify constraints using the S-Up and S-Down rules.
   --printMsg "Solve wanted incompletes:"
@@ -118,7 +133,7 @@ polymonadSolve' _s = do
   -- leads the constraint solver to stop asking for further help, though there
   -- still is ambiguity. Therefore we ignore the wanted evidence in this test
   -- and always deliver it.
-  if null eqUpDownCts && null eqJoinCts then do
+  if null eqUpDownCts && null eqJoinCts && null solvedAmbIndices then do
     printDebug "Simplification could not solve all constraints. Solving..."
     let ctGraph = mkGraphView wanted
     if isAllUnambiguous ctGraph then do
@@ -136,7 +151,7 @@ polymonadSolve' _s = do
     printDebug "Simplification made progress. Not solving."
     --printObj $ wantedEvidence
     --printObj $ eqUpDownCts ++ eqJoinCts
-    return $ TcPluginOk [] (eqUpDownCts ++ eqJoinCts)
+    return $ TcPluginOk [] (eqUpDownCts ++ eqJoinCts ++ solvedAmbIndices)
 
 -- -----------------------------------------------------------------------------
 -- Utility Functions
