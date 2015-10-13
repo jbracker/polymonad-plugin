@@ -68,21 +68,26 @@ trySolveAmbiguousForAppliedTyConConstraint ct = do
     -- is a instance constraint.
     Just tyArgs
         -- Be sure to only proceed if the constraint is a polymonad constraint
-        -- and is fully applied to concrete types.
+        -- and is fully applied to concrete type constructors.
         |  isClassConstraint pmCls ct
         && isTyConAppliedClassConstraint ct -> do
-      let ambTyVars = filter isAmbiguousTyVar $ S.toList $ S.unions $ fmap collectTyVars tyArgs
-      let dontBind =  (filter (not . isAmbiguousTyVar) $ S.toList $ S.unions $ fmap collectTyVars tyArgs)
-                   ++ (S.toList $ S.unions $ concat $ fmap (maybe [] (fmap collectTyVars) . constraintClassTyArgs) pmCts)
-
+      -- Collect all ambiguous variables that appear in the constraint.
+      let ambTyVars = filter isAmbiguousTyVar (S.toList $ S.unions $ fmap collectTyVars tyArgs)
+      -- Collect variables that are to be seen as constants.
+      -- The first batch of these are the non ambiguous type variables in the constraint arguments...
+      let dontBind =  filter (not . isAmbiguousTyVar) (S.toList $ S.unions $ fmap collectTyVars tyArgs)
+                   -- and the second batch are the type variables in given constraints.
+                   ++ S.toList (S.unions $ concat $ fmap (maybe [] (fmap collectTyVars) . constraintClassTyArgs) pmCts)
+      -- Now look at all instances and see if they match our constraint by unification.
       instMatches <- forM pmInsts $ \pmInst -> do
         printObj pmInst
         let instArgs = instanceTyArgs pmInst
         case tcUnifyTys (skolemVarsBindFun dontBind) tyArgs instArgs of
           Just subst ->
+            -- If so, we return the mapping of ambiguous variabels to specific types.
             return $ Just $ zip ambTyVars (substTyVar subst <$> ambTyVars)
           Nothing -> return Nothing
-
+      -- We repeat the process for the given constraints.
       ctMatches <- forM pmCts $ \pmCt -> do
         printObj pmCt
         let ctArgs = fromJust $ constraintClassTyArgs pmCt
@@ -90,7 +95,9 @@ trySolveAmbiguousForAppliedTyConConstraint ct = do
           Just subst ->
             return $ Just $ zip ambTyVars (substTyVar subst <$> ambTyVars)
           Nothing -> return Nothing
-
+      -- Finally, we collect all association we found. If there is no
+      -- ambiguity (only one possible association, as concluded through available instances)
+      -- we can use that association.
       return $ case catMaybes (instMatches ++ ctMatches) of
         [binds] -> Just binds
         _ -> Nothing
