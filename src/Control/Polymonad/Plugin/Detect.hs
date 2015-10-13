@@ -232,9 +232,6 @@ type SubsetSelectionFunction =
 -- | Separates wanted constraints into different polymonads by looking
 --   at the connected components that are created by the implied bind-operations.
 --   Each component is assumed to be one polymonad.
---
---   TODO: Throw an error if a polymonad contains more then two unary type
---   constructors, because we assume that every polymonad only contains two at most.
 selectPolymonadByConnectedComponent :: SubsetSelectionFunction
 selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
   let graphComps = components componentGraph
