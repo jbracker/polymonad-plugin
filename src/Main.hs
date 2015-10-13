@@ -60,10 +60,10 @@ data SessionT where
   Recv :: a -> SessionT -> SessionT
   End  :: SessionT
 
-send :: a -> SessionM (Send a q) q ()
+send :: a -> SessionM ('Send a q) q ()
 send _ = SessionM ()
 
-recv :: SessionM (Recv a q) q a
+recv :: SessionM ('Recv a q) q a
 recv = SessionM undefined
 
 instance HoareMonad SessionM where
