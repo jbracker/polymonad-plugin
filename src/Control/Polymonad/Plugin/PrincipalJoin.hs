@@ -141,21 +141,30 @@ determineCommonJoinCandidates tyVarOrCons (pmInsts, pmCts) f = do
 --   and the given pair of input types.
 determineJoinCandidates :: (Either TyCon TyVar, [Kind]) -> ([ClsInst], [GivenCt]) -> (Type, Type) -> PmPluginM [Type]
 determineJoinCandidates tyVarOrCons (pmInsts, pmCts) (t0, t1) = do
+  -- We apply our current candidate to temporary variables
   (joinCand, _joinCandVars) <- applyTyCon tyVarOrCons
+  -- Remember that we do not want to substitute our candidate if it is a type variable
   let dontBindTvs = either (const []) (: []) $ fst tyVarOrCons
+  -- Now look at each instance and see of unification with out desired
+  -- triplet of arguments delivers a match. If so substitute the temporary
+  -- type variables and keep the substituted type constructor as possible condidate
   instanceCands <- forM pmInsts $ \pmInst -> do
     let (_instVars, _cts, _cls, instArgTys) = instanceSig pmInst
     case tcUnifyTys (skolemVarsBindFun dontBindTvs) instArgTys [t0, t1, joinCand] of
       Just subst -> return $ Just $ substTy subst joinCand
       Nothing -> return Nothing
+  -- Repeat the same process for given constraints.
   constraintCands <- forM pmCts $ \pmCt ->
     case constraintPolymonadTyArgs pmCt of
       Just (ct0, ct1, ct2) -> do
+        -- Here we have to make sure that type variable constructors from
+        -- the given constraints are not substituted
         let ctVars = S.toList $ S.unions $ fmap collectTyVars [ct0, ct1, ct2]
         case tcUnifyTys (skolemVarsBindFun $ dontBindTvs ++ ctVars) [ct0, ct1, ct2] [t0, t1, joinCand] of
           Just subst -> return $ Just $ substTy subst joinCand
           Nothing -> return Nothing
       Nothing -> return Nothing
+  -- Finally return all found candidates and remove and duplicates among them.
   return $ nubBy eqType $ catMaybes $ instanceCands ++ constraintCands
 
 -- | Checks if there is a matching instance or given constraints that matches
@@ -175,7 +184,7 @@ hasMatch tys@(t0, t1, t2) (pmInsts, pmCts) = do
 --   All lists are unique if the elements being worked with are unique.
 --
 --   /Examples/:
--- 
+--
 -- >>> oneOfAll [ [1,2], [3], [4] ]
 -- [ [1,3,4], [2,3,4] ]
 --
