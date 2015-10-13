@@ -13,7 +13,7 @@ import Control.Monad ( forM )
 import InstEnv ( ClsInst )
 import Type
   ( Type, TyVar
-  , substTys, substTyVar )
+  , substTyVar )
 import Unify ( tcUnifyTys )
 import TcType ( isAmbiguousTyVar )
 
