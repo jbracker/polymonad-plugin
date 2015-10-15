@@ -43,6 +43,19 @@ plugin :: Plugin
 plugin = defaultPlugin { tcPlugin = \_clOpts -> Just polymonadPlugin }
 
 -- -----------------------------------------------------------------------------
+-- Static Flags
+-- -----------------------------------------------------------------------------
+
+-- | Enable solving of ambiguous indices in concrete type constructors
+--   through unification with available instances. This only applies
+--   if all type constructor of a constraint are not variable and there
+--   is only one matching instance.
+--
+--   See 'trySolveAmbiguousForAppliedTyConConstraint' for what is done.
+enableUnificationIndexSolving :: Bool
+enableUnificationIndexSolving = True
+
+-- -----------------------------------------------------------------------------
 -- Actual Plugin Code
 -- -----------------------------------------------------------------------------
 
@@ -63,7 +76,7 @@ polymonadStop _s = return ()
 
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve s given derived wanted = do
-  res <- runPmPlugin (given ++ derived) wanted $ do
+  res <- runPmPlugin (given ++ derived) wanted $
     if not $ null wanted
       then do
         printMsg "Invoke polymonad plugin..."
@@ -106,13 +119,17 @@ polymonadSolve' _s = do
   -- Try to solved ambiguous indices in polymonad constraints that contain
   -- concrete type constructors, but still miss a solution for some of their
   -- indices.
-  -- FIXME: Unsure if this is a valid thing to do.
-  let (tyConAppCts, wanted) = partition isTyConAppliedClassConstraint allWanted
-  solvedAmbIndices <- fmap concat $ forM tyConAppCts $ \tyConAppCt -> do
-    mRes <- trySolveAmbiguousForAppliedTyConConstraint tyConAppCt
-    return $ case mRes of
-      Just res -> uncurry (mkDerivedTypeEqCt tyConAppCt) <$> res
-      Nothing -> []
+  -- FIXME: Unsure if this is a valid thing to do. Therefore, there is a flag to deactivate it.
+  let (tyConAppCts, wanted) = if enableUnificationIndexSolving
+        then partition isTyConAppliedClassConstraint allWanted
+        else ([], allWanted)
+  solvedAmbIndices <- if enableUnificationIndexSolving
+    then fmap concat $ forM tyConAppCts $ \tyConAppCt -> do
+      mRes <- trySolveAmbiguousForAppliedTyConConstraint tyConAppCt
+      return $ case mRes of
+        Just res -> uncurry (mkDerivedTypeEqCt tyConAppCt) <$> res
+        Nothing -> []
+    else return []
 
   -- We can now try to simplify constraints using the S-Up and S-Down rules.
   --printMsg "Solve wanted incompletes:"
