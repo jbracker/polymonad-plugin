@@ -5,6 +5,8 @@ install: init
 
 clean: init
 	cabal clean
+	rm -fR ./examples/session/dist
+	rm -fR ./examples/effect/dist
 
 doc: init
 	cabal configure && cabal haddock
