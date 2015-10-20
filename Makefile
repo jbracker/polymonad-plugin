@@ -20,3 +20,5 @@ init:
 session-example: install
 	cabal install ./examples/session
 	
+effect-example: install
+	cabal install ./examples/effect
