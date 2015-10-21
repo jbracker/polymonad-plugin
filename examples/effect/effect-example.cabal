@@ -12,17 +12,15 @@ cabal-version:       >=1.10
 
 executable effect-example
   build-depends:  base            == 4.8.1.0,
-                  indexed         == 0.1,
-                  simple-sessions == 0.1.3
+                  effect-monad    == 0.6.1
   main-is:             Main.hs
   hs-source-dirs:      .
   default-language:    Haskell2010
-  ghc-options:         -Wall -dcore-lint
+  ghc-options:         -Wall -dcore-lint -fno-warn-unused-binds -fno-warn-unused-matches
 
 executable effect-example-pm
   build-depends:  base             == 4.8.1.0,
-                  indexed          == 0.1,
-                  simple-sessions  == 0.1.3,
+                  effect-monad     == 0.6.1,
                   polymonad-plugin == 0.1
   main-is:             MainPolymonad.hs
   hs-source-dirs:      .
