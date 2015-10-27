@@ -7,6 +7,8 @@ module Control.Polymonad.Plugin.Log
   , formatConstraint, formatSpan
   -- * Debug Functions
   , printTrace, printObjTrace, trace
+  -- * Debigging and priniting from within TcPluginM
+  , printObj, printMsg
   ) where
 
 import Data.List ( groupBy, intercalate )
@@ -25,6 +27,7 @@ import FastString ( unpackFS )
 import TcRnTypes
   ( Ct(..), CtFlavour(..)--, CtLoc(..)
   , ctFlavour, ctPred )
+import TcPluginM ( TcPluginM, tcPluginIO )
 
 import Control.Polymonad.Plugin.Utils ( removeDup )
 import Control.Polymonad.Plugin.Constraint ( constraintSourceLocation )
@@ -92,7 +95,7 @@ formatSpan (RealSrcSpan s) =
 --   irrelevant to the plugin.
 --
 --   /Example:/
--- 
+--
 -- >>> [G] Polymonad m Identity m (129:12-131:41, CDictCan)
 -- [D] m_a1kdW ~ m (134:3-14, CNonCanonical)
 formatConstraint :: Ct -> String
@@ -130,3 +133,19 @@ printTrace x = trace (show x) x
 -- | Print the result of the 'Outputable' instance of the given object.
 printObjTrace :: (Outputable o) => o -> o
 printObjTrace o = trace (pprToStr o) o
+
+-- -----------------------------------------------------------------------------
+-- Debugging and printing from within TcPluginM
+-- -----------------------------------------------------------------------------
+
+-- | Internal function for printing from within the monad.
+internalPrint :: String -> TcPluginM ()
+internalPrint = tcPluginIO . putStr
+
+-- | Print a message using the polymonad plugin formatting.
+printMsg :: String -> TcPluginM ()
+printMsg = internalPrint . pmDebugMsg
+
+-- | Print an object using the polymonad plugin formatting.
+printObj :: Outputable o => o -> TcPluginM ()
+printObj = internalPrint . pmObjMsg . pprToStr

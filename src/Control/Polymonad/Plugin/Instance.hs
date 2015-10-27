@@ -40,7 +40,7 @@ import TcRnTypes ( Ct )
 import TcType ( isAmbiguousTyVar )
 
 import Control.Polymonad.Plugin.Log
-  ( missingCaseError )
+  ( missingCaseError, printObj, printMsg )
 import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
   , collectTopTcVars
@@ -150,6 +150,7 @@ isInstantiatedBy givenCts tys inst = do
   else do
     -- How the instance variables for the current instance are bound.
     let varSubst = mkTopTvSubst $ zip instVars tys
+    printObj varSubst
     -- Split the constraints into their class and arguments.
     -- FIXME: We ignore constraints where this is not possible.
     -- Don't know if this is the right thing to do.

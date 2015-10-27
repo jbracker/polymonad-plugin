@@ -22,8 +22,6 @@ module Control.Polymonad.Plugin.Detect
   , selectPolymonadByConnectedComponent
   , pickInstanceForAppliedConstraint
   , produceEvidenceFor
-    -- * TcPluginM print function
-  , printMsg, printObj
   ) where
 
 import Data.Maybe
@@ -53,6 +51,10 @@ import Type
   , getClassPredTys_maybe )
 import TyCon ( TyCon )
 import TcPluginM
+  ( TcPluginM
+  , getEnvs, getInstEnvs
+  , findImportedModule, FindResult(..)
+  , tcLookup )
 import Name
   ( nameModule
   , getOccName )
@@ -79,11 +81,11 @@ import InstEnv
   , lookupInstEnv
   , lookupUniqueInstEnv
   , ie_global )
-import Outputable ( Outputable )
 import TcEvidence ( EvTerm(..) )
 
 import Control.Polymonad.Plugin.Log
-  ( pmErrMsg, pmDebugMsg, pmObjMsg
+  ( pmErrMsg
+  , printObj, printMsg
   , pprToStr )
 import Control.Polymonad.Plugin.Utils
   ( associations, lookupBy
@@ -94,22 +96,6 @@ import Control.Polymonad.Plugin.Constraint
   , isClassConstraint, isFullyAppliedClassConstraint )
 import Control.Polymonad.Plugin.Instance
   ( matchInstanceTyVars, isInstantiatedBy, eqInstance )
-
--- -----------------------------------------------------------------------------
--- Debugging
--- -----------------------------------------------------------------------------
-
--- | Internal function for printing from within the monad.
-internalPrint :: String -> TcPluginM ()
-internalPrint = tcPluginIO . putStr
-
--- | Print a message using the polymonad plugin formatting.
-printMsg :: String -> TcPluginM ()
-printMsg = internalPrint . pmDebugMsg
-
--- | Print an object using the polymonad plugin formatting.
-printObj :: Outputable o => o -> TcPluginM ()
-printObj = internalPrint . pmObjMsg . pprToStr
 
 -- -----------------------------------------------------------------------------
 -- Constant Names (Magic Numbers...)
@@ -324,6 +310,8 @@ selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
 filterApplicableInstances :: [GivenCt] -> [ClsInst] -> [Type] -> TcPluginM [ClsInst]
 filterApplicableInstances givenCts pmInsts appliedTyCons =
   fmap (nubBy eqInstance . concat) $ forM pmInsts $ \pmInst -> do
+    printMsg "Consider instance"
+    printObj pmInst
     -- Get the arguments of the instance we are looking at.
     let (_instTvs, _instCtTys, _instCls, instArgs) = instanceSig pmInst
     -- associations :: [(key , [value])] -> [[(key, value)]]
