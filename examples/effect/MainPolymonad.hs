@@ -4,9 +4,12 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+
+{-# LANGUAGE UndecidableInstances #-}
 
 -- Ignore our orphan instance in this file.
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -17,19 +20,23 @@
 import Control.Polymonad.Prelude
 
 import Control.Effect ( Effect, Plus, Unit )
---import qualified Control.Effect as E
+import qualified Control.Effect as E
 --import Control.Effect.State ( State )
 --import qualified Control.Effect.State as ES
 
--- FIXME
-instance (Effect m, h ~ Plus m f g) => Polymonad (m f) (m g) (m h) where
-  (>>=) = undefined
+-- FIXME:
+instance (Effect m, h ~ Plus m f g, E.Inv m f g) => Polymonad (m f) (m g) (m h) where
+  (>>=) = (E.>>=)
+
 instance (Effect m) => Polymonad Identity (m g) (m g) where
   (>>=) = undefined
+
 instance (Effect m) => Polymonad (m f) Identity (m f) where
   (>>=) = undefined
+
 instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m h) where
   (>>=) = undefined
+
 
 main :: IO ()
 main = do
