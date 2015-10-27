@@ -232,6 +232,7 @@ getWantedConstraints = asks pmEnvWantedConstraints
 --   The available type constructors are given by the first element
 --   of the triple. They can be not-applied type constructors, e.g. 'Identity',
 --   or type variables in case there are given constraints that involve them.
+--   A list of its arguments kinds is supplied with each type constructor.
 --
 --   The available bind operations are given by the second and third elements
 --   of the triple. They come as class instances that provide bind operations
