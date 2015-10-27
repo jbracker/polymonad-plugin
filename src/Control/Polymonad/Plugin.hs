@@ -116,10 +116,12 @@ polymonadSolve' _s = do
   printDebug "Try simplification of constraints..."
   allWanted <- getWantedPolymonadConstraints
 
-  -- Try to solved ambiguous indices in polymonad constraints that contain
+  -- Try to solve ambiguous indices in polymonad constraints that contain
   -- concrete type constructors, but still miss a solution for some of their
-  -- indices.
-  -- FIXME: Unsure if this is a valid thing to do. Therefore, there is a flag to deactivate it.
+  -- indices. This should be valid as long as the possible solutions are unique,
+  -- because we just narrow down the specific type constructor we actually want.
+  -- FIXME: This should be done within the solver in addition to determining
+  -- the concrete type constructor.
   let (tyConAppCts, wanted) = if enableUnificationIndexSolving
         then partition isTyConAppliedClassConstraint allWanted
         else ([], allWanted)
