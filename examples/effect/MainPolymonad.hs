@@ -21,7 +21,7 @@ import Control.Polymonad.Prelude
 
 import Control.Effect ( Effect, Plus, Unit )
 import qualified Control.Effect as E
---import Control.Effect.State ( State )
+import Control.Effect.State
 --import qualified Control.Effect.State as ES
 
 instance (Effect m, h ~ Plus m f g, E.Inv m f g) => Polymonad (m f) (m g) (m h) where
@@ -37,12 +37,10 @@ instance ( Effect m, E.Inv m f (Unit m), f ~ Plus m f (Unit m))
 instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m h) where
   a >>= f = (E.return . runIdentity . f . runIdentity) a
 
-
 main :: IO ()
 main = do
   return ()
 
-{-
 data Tree = Leaf Int
           | Branch Tree Tree
 
@@ -61,7 +59,7 @@ update v f = do
   let fx = f x
   put v fx
   return fx
-
+{-
 type ProcessEffects =
   '[ "flatten" :-> Bool :! 'R
    , "leaves"  :-> Int  :! 'RW
