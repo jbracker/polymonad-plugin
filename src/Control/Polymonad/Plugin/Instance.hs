@@ -141,6 +141,9 @@ instanceTcVars inst = collectTopTcVars $ instanceTyArgs inst
 --   equality or type function constraints properly.
 isInstantiatedBy :: [Ct] -> [Type] -> ClsInst -> TcPluginM (Either String Bool)
 isInstantiatedBy givenCts tys inst = do
+  printMsg "IS INSTANTIATED BY"
+  printObj inst
+  printObj tys
   -- Get the instance type variables and constraints (by that we know
   -- the numner of type arguments)
   let (instVars, cts, _cls, _tyArgs) = instanceSig inst -- ([TyVar], [Type], Class, [Type])
@@ -161,11 +164,14 @@ isInstantiatedBy givenCts tys inst = do
       let substArgs = substTys varSubst ctArgs
       -- Get the current instance environment
       instEnvs <- getInstEnvs
+      printObj ctCls
+      printObj substArgs
       -- Look for suitable instance. Since we are not necessarily working
       -- with polymonads anymore we need to find a unique one.
       case lookupUniqueInstEnv instEnvs ctCls substArgs of
         -- No instance found, but maybe a given constraint will do the deed...
         Left _err -> do
+          printMsg "NO INSTANCE"
           -- Split the given constraints into their class and arguments.
           -- FIXME: We ignore constraints where this is not possible.
           let givenInstCts = catMaybes $ fmap constraintClassType givenCts
@@ -179,5 +185,9 @@ isInstantiatedBy givenCts tys inst = do
           return $ Right $ isJust $ find eqInstCt givenInstCts
         -- We found one: Now we also need to check the found instance for
         -- its preconditions.
-        Right (clsInst, instArgs) -> isInstantiatedBy givenCts instArgs clsInst
+        Right (clsInst, instArgs) -> do
+          printMsg "FOUND INSTANCE"
+          printObj clsInst
+          printObj instArgs
+          isInstantiatedBy givenCts instArgs clsInst
     return $ foldr (liftM2 (&&)) (Right True) results
