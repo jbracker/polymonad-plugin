@@ -40,7 +40,7 @@ import TcRnTypes ( Ct )
 import TcType ( isAmbiguousTyVar )
 
 import Control.Polymonad.Plugin.Log
-  ( missingCaseError, printObj, printMsg )
+  ( missingCaseError, printObj, printMsg, printObjTrace, printTrace )
 import Control.Polymonad.Plugin.Utils
   ( collectTopTyCons
   , collectTopTcVars
