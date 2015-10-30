@@ -45,9 +45,8 @@ import TcRnTypes
 import Type
   ( Type, TyThing(..)
   , splitAppTys, eqType
-  , mkTyConTy, mkTopTvSubst, mkTyVarTy
+  , mkTyConTy, mkTopTvSubst
   , substTys
-  , splitTyConApp_maybe
   , tyConAppTyCon_maybe
   , getClassPredTys_maybe )
 import TyCon ( TyCon )
@@ -58,9 +57,7 @@ import TcPluginM
   , tcLookup )
 import Name
   ( nameModule
-  , getOccName
-  , mkSystemName
-  , mkVarOccFS )
+  , getOccName )
 import OccName
   ( OccName
   , occNameString, mkTcOcc )
@@ -83,18 +80,12 @@ import InstEnv
   , classInstances
   , lookupInstEnv
   , lookupUniqueInstEnv
-  , instanceBindFun
   , ie_global )
 import TcEvidence ( EvTerm(..) )
-import Var ( mkTyVar )
-import FastString ( mkFastString )
-import Unique ( mkVarOccUnique )
-import Kind ( liftedTypeKind, typeKind )
-import Unify ( tcUnifyTys )
 
 import Control.Polymonad.Plugin.Log
   ( pmErrMsg
-  , printObj, printMsg
+  , printMsg
   , pprToStr )
 import Control.Polymonad.Plugin.Utils
   ( associations, lookupBy
@@ -319,31 +310,16 @@ selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
 filterApplicableInstances :: [GivenCt] -> [ClsInst] -> [Type] -> TcPluginM [ClsInst]
 filterApplicableInstances givenCts pmInsts appliedTyCons =
   fmap (nubBy eqInstance . concat) $ forM pmInsts $ \pmInst -> do
-    printMsg "Consider instance"
-    printObj pmInst
     -- Get the arguments of the instance we are looking at.
     let (_instTvs, _instCtTys, _instCls, instArgs) = instanceSig pmInst
     -- associations :: [(key , [value])] -> [[(key, value)]]
     -- Now create all associations between arguments and type constructors that are available.
     let assocs = fmap snd <$> associations [(instArg, appliedTyCons) | instArg <- instArgs]
     -- Look at each of those associations and check if it actually instantiates.
-    mListInsts <- forM assocs $ \assoc -> do
-      printObj assoc
-      let stateTy = filter (\t -> let mt = splitTyConApp_maybe t in isJust mt && not (null (snd (fromJust mt)))) assoc
-      let tyVarName = mkFastString "x"
-      let tyVarOfKindStar = mkTyVarTy $ mkTyVar (mkSystemName (mkVarOccUnique tyVarName) (mkVarOccFS tyVarName)) liftedTypeKind
-      _ <- forM stateTy $ \t -> do
-        --printObj t
-        --printObj $ splitAppTys t
-        printObj $ splitTyConApp_maybe t
-        printObj $ fmap (\(b, (a:_)) -> tcUnifyTys instanceBindFun [tyVarOfKindStar] [a])
-                 $ splitTyConApp_maybe t
-        printObj $ fmap (fmap typeKind . snd) $ splitTyConApp_maybe t
-        printObj $ typeKind tyVarOfKindStar
+    mListInsts <- forM assocs $ \assoc ->
       case matchInstanceTyVars assoc pmInst of
         -- Association matches instance arguments, proceed...
         Just instTvArgs -> do
-          printMsg "Success Assoc"
           -- Check if the given association actually instanctiates.
           eIsInst <- isInstantiatedBy givenCts instTvArgs pmInst
           -- Return instance if association instantiates.
@@ -353,9 +329,7 @@ filterApplicableInstances givenCts pmInsts appliedTyCons =
               return Nothing
             Right isInst -> return $ if isInst then Just pmInst else Nothing
         -- Association does not even match instance arguments, so it will not instantiate.
-        Nothing -> do
-          printMsg "Fail Assoc"
-          return Nothing
+        Nothing -> return Nothing
     -- Only keep those instances that actually are instantiated.
     return $ catMaybes mListInsts
 
