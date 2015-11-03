@@ -3,6 +3,7 @@ module Control.Polymonad.Plugin
   ( plugin ) where
 
 import Data.List ( partition )
+import Data.Maybe ( catMaybes )
 import qualified Data.Set as S
 
 import Control.Monad ( unless, forM )
@@ -16,7 +17,7 @@ import TcPluginM ( TcPluginM, tcPluginIO )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getWantedPolymonadConstraints, getGivenPolymonadConstraints
-  , printDebug, printMsg
+  , printDebug, printMsg --, printObj
   , printConstraints )
 import Control.Polymonad.Plugin.Constraint
   ( constraintTopAmbiguousTyVars
@@ -32,7 +33,8 @@ import Control.Polymonad.Plugin.Simplification
   ( simplifyAllUpDown, simplifyAllJoin
   , simplifiedTvsToConstraints )
 import Control.Polymonad.Plugin.Core
-  ( trySolveAmbiguousForAppliedTyConConstraint )
+  ( trySolveAmbiguousForAppliedTyConConstraint
+  , detectOverlappingInstancesAndTrySolve )
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -96,6 +98,7 @@ polymonadSolve' _s = do
   printConstraints True =<< getWantedPolymonadConstraints
   --printDebug "Selected Polymonad:"
   --printConstraints True =<< getCurrentPolymonad
+
   -- Derive Constraints --------------------------------------------------------
   -- Deriving constraints is ignored for now, because for some reason GHCs
   -- constraint solver throws some of the derived constraints away and says
@@ -112,6 +115,7 @@ polymonadSolve' _s = do
       return $ TcPluginOk [] derivedPmCts
     else do
   -}
+
   -- Simplification ------------------------------------------------------------
   printDebug "Try simplification of constraints..."
   allWanted <- getWantedPolymonadConstraints
@@ -128,23 +132,33 @@ polymonadSolve' _s = do
   solvedAmbIndices <- if enableUnificationIndexSolving
     then fmap concat $ forM tyConAppCts $ \tyConAppCt -> do
       mRes <- trySolveAmbiguousForAppliedTyConConstraint tyConAppCt
-      return $ case mRes of
-        Just res -> uncurry (mkDerivedTypeEqCt tyConAppCt) <$> res
-        Nothing -> []
+      case mRes of
+        Just res@(_:_) -> return $ uncurry (mkDerivedTypeEqCt tyConAppCt) <$> res
+        -- If there is no unfication to solve
+        _ -> return []
+    else return []
+
+  -- If there are several instances that overlap for a already solved constraint
+  -- and the constraint is free of ambiguous variables, we can check if only
+  -- one of those instances actually instantiated the constraint. That
+  -- means, for each of those overlapping instances we check if the super
+  -- class constraints hold and if that is only the case for one of them,
+  -- we provice evidence to pick that instance.
+  solvedOverlaps <- if null solvedAmbIndices
+    then fmap catMaybes $ forM tyConAppCts $ \tyConAppCt -> do
+      mEv <- detectOverlappingInstancesAndTrySolve tyConAppCt
+      return $ (\ev -> (ev, tyConAppCt)) <$> mEv
     else return []
 
   -- We can now try to simplify constraints using the S-Up and S-Down rules.
-  --printMsg "Solve wanted incompletes:"
-  --printObj wantedIncomplete
   let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
   eqUpDownCtData <- simplifyAllUpDown wanted ambTvs
   let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
-  --printObj eqUpDownCts
+
   -- Calculate type variables that still require solving and then
   -- try to solve them using the S-Join rule.
   let ambTvs' = ambTvs S.\\ S.fromList (fmap fst eqUpDownCtData)
   eqJoinCts <- simplifiedTvsToConstraints <$> simplifyAllJoin wanted ambTvs'
-  --printObj eqJoinCts
 
   -- Lets see if we made progress through simplification or if we need to
   -- move on to actually trying to solve things.
@@ -152,7 +166,7 @@ polymonadSolve' _s = do
   -- leads the constraint solver to stop asking for further help, though there
   -- still is ambiguity. Therefore we ignore the wanted evidence in this test
   -- and always deliver it.
-  if null eqUpDownCts && null eqJoinCts && null solvedAmbIndices then do
+  if null eqUpDownCts && null eqJoinCts && null solvedAmbIndices && null solvedOverlaps then do
     printDebug "Simplification could not solve all constraints. Solving..."
     let ctGraph = mkGraphView wanted
     if isAllUnambiguous ctGraph then do
@@ -168,9 +182,7 @@ polymonadSolve' _s = do
       return noResult
   else do
     printDebug "Simplification made progress. Not solving."
-    --printObj $ wantedEvidence
-    --printObj $ eqUpDownCts ++ eqJoinCts
-    return $ TcPluginOk [] (eqUpDownCts ++ eqJoinCts ++ solvedAmbIndices)
+    return $ TcPluginOk solvedOverlaps (eqUpDownCts ++ eqJoinCts ++ solvedAmbIndices)
 
 -- -----------------------------------------------------------------------------
 -- Utility Functions

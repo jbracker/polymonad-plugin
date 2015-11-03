@@ -3,6 +3,7 @@
 module Control.Polymonad.Plugin.Core
   ( isInstanceOf
   , trySolveAmbiguousForAppliedTyConConstraint
+  , detectOverlappingInstancesAndTrySolve
   ) where
 
 import Data.Maybe ( fromJust, catMaybes )
@@ -13,23 +14,28 @@ import Control.Monad ( forM )
 import InstEnv ( ClsInst )
 import Type
   ( Type, TyVar
-  , substTyVar )
+  , substTyVar, substTys )
 import Unify ( tcUnifyTys )
 import TcType ( isAmbiguousTyVar )
+import TcEvidence ( EvTerm )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runTcPlugin
   , getGivenConstraints
   , getPolymonadClass, getCurrentPolymonad
+  --, printObj
   , throwPluginError )
 import Control.Polymonad.Plugin.Instance
   ( isInstantiatedBy
-  , instanceTyArgs )
+  , instanceTyArgs
+  , matchInstanceTyVars )
 import Control.Polymonad.Plugin.Constraint
   ( WantedCt
   , constraintClassTyArgs
   , isClassConstraint
   , isTyConAppliedClassConstraint )
+import Control.Polymonad.Plugin.Evidence
+  ( produceEvidenceFor )
 import Control.Polymonad.Plugin.Utils
   ( collectTyVars
   , skolemVarsBindFun )
@@ -37,7 +43,8 @@ import Control.Polymonad.Plugin.Utils
 -- | Checks if the given arguments types to the free variables in the
 --   class instance actually form a valid instantiation of that instance.
 --   The given arguments need to match up with the list of free type variables
---   given for the class instance ('is_tvs').
+--   given for the class instance ('is_tvs'). See 'matchInstanceTyVars' for
+--   matching up the arguments.
 --
 --   Caveat: This currently only matches class constraints, but not type
 --   equality or type function constraints properly.
@@ -48,6 +55,10 @@ isInstanceOf tys inst = do
   case res of
     Left err -> throwPluginError err
     Right b -> return b
+
+produceEvidenceForPM :: ClsInst -> [Type] -> PmPluginM (Maybe EvTerm)
+produceEvidenceForPM inst args = runTcPlugin $ produceEvidenceFor inst args
+
 
 -- | Tries to solve ambiguous type variables in polymonad constraints using
 --   the available polymonad instances. Only unification is applied. This
@@ -98,4 +109,31 @@ trySolveAmbiguousForAppliedTyConConstraint ct = do
       return $ case catMaybes (instMatches ++ ctMatches) of
         [binds] -> Just binds
         _ -> Nothing
+    _ -> return Nothing
+
+-- | Determines if there are two overlapping instances for a given constraint.
+--   If so, try to solve them and see if there if there is a single instance that
+--   fulfills all requirements.
+detectOverlappingInstancesAndTrySolve :: WantedCt -> PmPluginM (Maybe EvTerm)
+detectOverlappingInstancesAndTrySolve ct =
+  case constraintClassTyArgs ct of
+    Just tyArgs -> do
+      (_, pmInsts, pmCts) <- getCurrentPolymonad
+      -- Collect variables that are to be seen as constants.
+      -- The first batch of these are the non ambiguous type variables in the constraint arguments...
+      let dontBind =  filter (not . isAmbiguousTyVar) (S.toList $ S.unions $ fmap collectTyVars tyArgs)
+                   -- and the second batch are the type variables in given constraints.
+                   ++ S.toList (S.unions $ concat $ fmap (maybe [] (fmap collectTyVars) . constraintClassTyArgs) pmCts)
+      instMatches <- forM pmInsts $ \pmInst -> do
+        let instArgs = instanceTyArgs pmInst
+        case tcUnifyTys (skolemVarsBindFun dontBind) tyArgs instArgs of
+          Just subst -> case matchInstanceTyVars (substTys subst tyArgs) pmInst of
+            Just args -> do
+              isInst <- args `isInstanceOf` pmInst
+              return $ if isInst then Just (pmInst, args) else Nothing
+            Nothing -> return Nothing
+          Nothing -> return Nothing
+      case catMaybes instMatches of
+        [instWithArgs] -> uncurry produceEvidenceForPM instWithArgs
+        _ -> return Nothing
     _ -> return Nothing
