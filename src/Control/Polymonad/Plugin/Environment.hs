@@ -24,10 +24,10 @@ module Control.Polymonad.Plugin.Environment
   , printConstraints
   ) where
 
-import Data.Maybe ( catMaybes )
+import Data.Maybe ( catMaybes, isNothing )
 import Data.List ( groupBy, partition )
 
-import Control.Monad ( when, unless, forM_ )
+import Control.Monad ( when, unless, forM_, forM )
 import Control.Monad.Trans.Reader ( ReaderT, runReaderT, asks, local )
 import Control.Monad.Trans.Except ( ExceptT, runExceptT, throwE )
 import Control.Monad.Trans.Class ( lift )
@@ -125,8 +125,15 @@ runPmPlugin givenCts allWantedCts pmM = do
           -- the set of constraints we pass on to the solver.
           -- This is done here (one single time), so it is not done in every
           -- run of the solver on another polymonad.
-          let (wantedApplied, wantedCts) = partition isFullyAppliedClassConstraint allWantedCts
-          wantedEvidence <- catMaybes <$> mapM (pickInstanceForAppliedConstraint pmCls) wantedApplied
+          let (wantedApplied, wantedCts') = partition isFullyAppliedClassConstraint allWantedCts
+          -- Now pick instances.
+          mWantedEvidence <- forM wantedApplied $ \wAppCt -> do
+            instEv <- pickInstanceForAppliedConstraint pmCls wAppCt
+            return (wAppCt, instEv)
+          -- If some of these does not produce good evidence, because there are overlapping instances
+          -- sort those out and hand them to the plugin as usual.
+          let (wantedAppliedUnsolved, wantedAppliedSolved) = partition (isNothing . snd) mWantedEvidence
+          let wantedCts = fmap fst wantedAppliedUnsolved ++ wantedCts'
           -- Now select the different polymonads...
           foundPms <- selectPolymonadByConnectedComponent idTyCon pmCls pmInsts (givenCts, wantedCts)
           -- ...and run the solver on each one of them.
@@ -146,7 +153,7 @@ runPmPlugin givenCts allWantedCts pmM = do
               , pmEnvDebugEnabled = False
               }
           -- Add the evidence for fully applied constraints to the results of all solvers.
-          return $ fmap (TcPluginOk wantedEvidence [] :) results
+          return $ fmap (TcPluginOk (catMaybes $ fmap snd wantedAppliedSolved) [] :) results
         (Left errId, _) -> return $ Left
           $ pmErrMsg ("Could not find " ++ identityModuleName ++ " module:\n")
           ++ errId

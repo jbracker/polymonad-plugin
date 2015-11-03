@@ -23,7 +23,7 @@ import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runTcPlugin
   , getGivenConstraints
   , getPolymonadClass, getCurrentPolymonad
-  --, printObj
+  , printObj, printMsg
   , throwPluginError )
 import Control.Polymonad.Plugin.Instance
   ( isInstantiatedBy
@@ -118,6 +118,8 @@ detectOverlappingInstancesAndTrySolve :: WantedCt -> PmPluginM (Maybe EvTerm)
 detectOverlappingInstancesAndTrySolve ct =
   case constraintClassTyArgs ct of
     Just tyArgs -> do
+      printMsg "Overlap solving"
+      printObj ct
       (_, pmInsts, pmCts) <- getCurrentPolymonad
       -- Collect variables that are to be seen as constants.
       -- The first batch of these are the non ambiguous type variables in the constraint arguments...
@@ -133,6 +135,7 @@ detectOverlappingInstancesAndTrySolve ct =
               return $ if isInst then Just (pmInst, args) else Nothing
             Nothing -> return Nothing
           Nothing -> return Nothing
+      printObj $ catMaybes instMatches
       case catMaybes instMatches of
         [instWithArgs] -> uncurry produceEvidenceForPM instWithArgs
         _ -> return Nothing

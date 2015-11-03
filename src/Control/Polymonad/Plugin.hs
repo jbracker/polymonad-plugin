@@ -17,7 +17,7 @@ import TcPluginM ( TcPluginM, tcPluginIO )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getWantedPolymonadConstraints, getGivenPolymonadConstraints
-  , printDebug, printMsg --, printObj
+  , printDebug, printMsg, printObj
   , printConstraints )
 import Control.Polymonad.Plugin.Constraint
   ( constraintTopAmbiguousTyVars
@@ -35,6 +35,7 @@ import Control.Polymonad.Plugin.Simplification
 import Control.Polymonad.Plugin.Core
   ( trySolveAmbiguousForAppliedTyConConstraint
   , detectOverlappingInstancesAndTrySolve )
+import qualified Control.Polymonad.Plugin.Log as L
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -119,7 +120,7 @@ polymonadSolve' _s = do
   -- Simplification ------------------------------------------------------------
   printDebug "Try simplification of constraints..."
   allWanted <- getWantedPolymonadConstraints
-
+  --printObj allWanted
   -- Try to solve ambiguous indices in polymonad constraints that contain
   -- concrete type constructors, but still miss a solution for some of their
   -- indices. This should be valid as long as the possible solutions are unique,
@@ -181,7 +182,11 @@ polymonadSolve' _s = do
       printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."
       return noResult
   else do
-    printDebug "Simplification made progress. Not solving."
+    --printMsg "Simplification made progress. Not solving."
+    --printObj solvedAmbIndices
+    --printObj solvedOverlaps
+    --printObj eqUpDownCts
+    --printObj eqJoinCts
     return $ TcPluginOk solvedOverlaps (eqUpDownCts ++ eqJoinCts ++ solvedAmbIndices)
 
 -- -----------------------------------------------------------------------------

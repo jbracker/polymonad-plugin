@@ -94,9 +94,15 @@ module Control.Polymonad.Prelude
   , F.mapM_, F.sequence_, (F.=<<)
     -- ** Traversable replacement functions
   , F.mapM, F.sequence
+    -- * Fix rebindable syntax
+  , ifThenElse
   ) where
 
 import qualified Prelude as P
 
 import Control.Polymonad
 import qualified Control.Polymonad.Functions as F
+
+ifThenElse :: P.Bool -> a -> a -> a
+ifThenElse P.True  t _ = t
+ifThenElse P.False _ f = f
