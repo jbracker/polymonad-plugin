@@ -22,8 +22,7 @@ import TcType ( isAmbiguousTyVar )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
   , getGivenPolymonadConstraints
-  , getIdentityTyCon, getPolymonadClass
-  , printObj )
+  , getIdentityTyCon, getPolymonadClass )
 import Control.Polymonad.Plugin.Constraint
   ( mkDerivedClassCt
   , constraintLocation, constraintPolymonadTyArgs )
@@ -39,7 +38,6 @@ derivePolymonadConstraints :: PmPluginM [Ct]
 derivePolymonadConstraints =  do
   -- Get the given polymonad constraints to derive from.
   givenCts <- getGivenPolymonadConstraints
-  printObj givenCts
   -- Only proceed of there are no derived constraints yet.
   if any isDerivedCt givenCts
     then return []

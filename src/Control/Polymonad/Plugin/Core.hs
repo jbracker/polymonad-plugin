@@ -21,8 +21,7 @@ import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runTcPlugin
   , getGivenConstraints
   , getPolymonadClass, getCurrentPolymonad
-  , throwPluginError
-  , printObj )
+  , throwPluginError )
 import Control.Polymonad.Plugin.Instance
   ( isInstantiatedBy
   , instanceTyArgs )
@@ -80,7 +79,6 @@ trySolveAmbiguousForAppliedTyConConstraint ct = do
                    ++ S.toList (S.unions $ concat $ fmap (maybe [] (fmap collectTyVars) . constraintClassTyArgs) pmCts)
       -- Now look at all instances and see if they match our constraint by unification.
       instMatches <- forM pmInsts $ \pmInst -> do
-        printObj pmInst
         let instArgs = instanceTyArgs pmInst
         case tcUnifyTys (skolemVarsBindFun dontBind) tyArgs instArgs of
           Just subst ->
@@ -89,7 +87,6 @@ trySolveAmbiguousForAppliedTyConConstraint ct = do
           Nothing -> return Nothing
       -- We repeat the process for the given constraints.
       ctMatches <- forM pmCts $ \pmCt -> do
-        printObj pmCt
         let ctArgs = fromJust $ constraintClassTyArgs pmCt
         case tcUnifyTys (skolemVarsBindFun dontBind) tyArgs ctArgs of
           Just subst ->
