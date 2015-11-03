@@ -32,6 +32,7 @@ library
                  , Control.Polymonad.Plugin.Log
                  , Control.Polymonad.Plugin.Utils
                  , Control.Polymonad.Plugin.Detect
+                 , Control.Polymonad.Plugin.Evidence
                  , Control.Polymonad.Plugin.Constraint
                  , Control.Polymonad.Plugin.Instance
                  , Control.Polymonad.Plugin.Core
