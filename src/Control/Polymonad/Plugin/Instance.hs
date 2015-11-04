@@ -34,7 +34,6 @@ import Type
 import Class ( Class, classTyCon )
 import TyCon ( TyCon )
 import Unify ( tcUnifyTys )
---import VarSet ( mkVarSet )
 import TcPluginM ( TcPluginM, getInstEnvs )
 import TcRnTypes ( Ct )
 import TcType ( isAmbiguousTyVar )
