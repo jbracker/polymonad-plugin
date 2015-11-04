@@ -60,7 +60,6 @@ update v f = do
   put v fx
   return fx
 
-
 type ProcessEffects =
   '[ "flatten" :-> Bool :! 'R
    , "leaves"  :-> Int  :! 'RW
@@ -70,17 +69,15 @@ type ProcessEffects =
 -- Nubable is not exported by Control.Effect.State
 process :: Tree -> State ProcessEffects (Either Tree [Int])
 process (Leaf i) = do
-  _ <- update leavesV (+ 1)
+  _ <- update leavesV (+ (1 :: Int))
   _ <- update sumV (+ i)
   flatten <- get flattenV
   if flatten
     then return $ Right [i]
     else return $ Left $ Leaf i
-{-
 process (Branch tl tr) = do
   eitherL <- process tl
   eitherR <- process tr
   case (eitherL, eitherR) of
     (Left  l, Left  r) -> return $ Left  $ Branch l r
     (Right l, Right r) -> return $ Right $ l ++ r
--}

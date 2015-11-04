@@ -15,9 +15,10 @@ import Type
   ( Type, TyVar
   , mkTyConTy, mkTyVarTy, mkAppTys
   , eqType
-  , getTyVar_maybe
   , splitAppTys
-  , substTy )
+  , mkTopTvSubst
+  , substTy
+  , typeKind )
 import TyCon ( TyCon )
 import InstEnv ( ClsInst(..), instanceSig )
 import TcRnTypes ( Ct )
@@ -28,8 +29,8 @@ import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runTcPlugin
   , assert
   , throwPluginError
-  , getCurrentPolymonad
-  , printObj )
+  , printObj --, printMsg
+  , getCurrentPolymonad )
 import Control.Polymonad.Plugin.Instance
   ( matchInstanceTyVars )
 import Control.Polymonad.Plugin.Core ( isInstanceOf )
@@ -37,6 +38,7 @@ import Control.Polymonad.Plugin.Constraint
   ( GivenCt, constraintPolymonadTyArgs )
 import Control.Polymonad.Plugin.Utils
   ( collectTyVars, skolemVarsBindFun )
+import Control.Polymonad.Plugin.Evaluate ( evaluateTypeEqualities )
 
 -- | Calculate the principal join of a set of unary type constructors.
 --   For this to work properly all of the given types need to be
@@ -71,10 +73,11 @@ principalJoinFor mAmbTv f _m = do
   -- Go through all of the candidates and check if they fulfill the conditions
   -- of a principal join.
   mSuitableJoinCands <- forM joinCands $ \joinCand -> do
+    let ambSubst ambTv = mkTopTvSubst [(ambTv, joinCand)]
     -- Remove duplicates and substitute the top level ambiguous type variable
     -- if it is there.
     let substF = nubBy (\(t0, t1) (t0', t1') -> eqType t0 t0' && eqType t1 t1')
-               $ maybe f (\ambTv -> (substTopTyVar (ambTv, joinCand) *** substTopTyVar (ambTv, joinCand)) <$> f) mAmbTv
+               $ maybe f (\ambTv -> (substTy (ambSubst ambTv) *** substTy (ambSubst ambTv)) <$> f) mAmbTv
     -- let substM = nubBy eqType
     --            $ maybe m (\ambTv -> substTopTyVar (ambTv, joinCand) <$> m) mAmbTv
     -- Check if all the incoming binds are actually there
@@ -92,17 +95,6 @@ principalJoinFor mAmbTv f _m = do
     _ -> do
       printObj suitableJoinCands
       throwPluginError "principalJoinFor: Found more then one join. FIXME"
-
-  where
-    -- | Substitute the type variables if it is the top level
-    --   (partially applied) type constructor of the given type.
-    substTopTyVar :: (TyVar, Type) -> Type -> Type
-    substTopTyVar (tv, ty) t = mkAppTys substTc appArgs
-      where
-        (appTc, appArgs) = splitAppTys t
-        substTc = case getTyVar_maybe appTc of
-          Just tv' -> if tv == tv' then ty else t
-          Nothing -> t
 
 -- | Applies the given type constructor or type constructor variables to enought
 --   correctly kinded variables to make it a partially applied unary type
@@ -149,9 +141,18 @@ determineJoinCandidates tyVarOrCons (pmInsts, pmCts) (t0, t1) = do
   -- triplet of arguments delivers a match. If so substitute the temporary
   -- type variables and keep the substituted type constructor as possible condidate
   instanceCands <- forM pmInsts $ \pmInst -> do
-    let (_instVars, _cts, _cls, instArgTys) = instanceSig pmInst
+    let (_instVars, superCts, _cls, instArgTys) = instanceSig pmInst
     case tcUnifyTys (skolemVarsBindFun dontBindTvs) instArgTys [t0, t1, joinCand] of
-      Just subst -> return $ Just $ substTy subst joinCand
+      Just subst -> do
+        -- Substitute the correct matchings in our candidate.
+        let substJoinCand = substTy subst joinCand
+        -- Now also evaluate type equalities to some extent.
+        -- This is necessary, because there are some type classes with type
+        -- equality constraints on them (see the effect monad example). We
+        -- need to evaluate these so we do not end up looking at our temporarly
+        -- generated variables.
+        let evalJoinCand = evaluateTypeEqualities ([], fmap (substTy subst) superCts) substJoinCand
+        return $ Just evalJoinCand
       Nothing -> return Nothing
   -- Repeat the same process for given constraints.
   constraintCands <- forM pmCts $ \pmCt ->
@@ -171,7 +172,11 @@ determineJoinCandidates tyVarOrCons (pmInsts, pmCts) (t0, t1) = do
 --   the given combination of arguments.
 hasMatch :: (Type, Type, Type) -> ([ClsInst], [GivenCt]) -> PmPluginM Bool
 hasMatch tys@(t0, t1, t2) (pmInsts, pmCts) = do
-  instanceMatches <- forM pmInsts $ \pmInst ->
+  printObj tys
+  printObj $ fmap typeKind $ snd (splitAppTys t0)
+  printObj $ fmap typeKind $ snd (splitAppTys t1)
+  printObj $ fmap typeKind $ snd (splitAppTys t2)
+  instanceMatches <- forM pmInsts $ \pmInst -> do
     case matchInstanceTyVars [t0, t1, t2] pmInst of
       Just args ->
         args `isInstanceOf` pmInst

@@ -15,6 +15,7 @@ import TcRnTypes ( Ct(..), CtLoc, CtEvidence(..) )
 import Control.Polymonad.Plugin.Utils ( isAmbiguousType )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
+  , printMsg, printObj
   , throwPluginError )
 import Control.Polymonad.Plugin.PrincipalJoin ( principalJoinFor )
 import Control.Polymonad.Plugin.Constraint
@@ -75,6 +76,10 @@ solve wantedCts = do
       -- Calculate the principal join. Be sure the
       -- already solved type variables are replaced with their solution
       -- before calculating the principal join.
+      printMsg "solve: principalJoinFor"
+      printObj tv
+      printObj inTys
+      printObj outTys
       mJoin <- principalJoinFor (Just tv) inTys outTys
       case mJoin of
         Just join -> do
