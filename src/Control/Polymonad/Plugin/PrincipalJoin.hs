@@ -15,10 +15,8 @@ import Type
   ( Type, TyVar
   , mkTyConTy, mkTyVarTy, mkAppTys
   , eqType
-  , splitAppTys
   , mkTopTvSubst
-  , substTy
-  , typeKind )
+  , substTy )
 import TyCon ( TyCon )
 import InstEnv ( ClsInst(..), instanceSig )
 import TcRnTypes ( Ct )
@@ -172,10 +170,6 @@ determineJoinCandidates tyVarOrCons (pmInsts, pmCts) (t0, t1) = do
 --   the given combination of arguments.
 hasMatch :: (Type, Type, Type) -> ([ClsInst], [GivenCt]) -> PmPluginM Bool
 hasMatch tys@(t0, t1, t2) (pmInsts, pmCts) = do
-  printObj tys
-  printObj $ fmap typeKind $ snd (splitAppTys t0)
-  printObj $ fmap typeKind $ snd (splitAppTys t1)
-  printObj $ fmap typeKind $ snd (splitAppTys t2)
   instanceMatches <- forM pmInsts $ \pmInst -> do
     case matchInstanceTyVars [t0, t1, t2] pmInst of
       Just args ->

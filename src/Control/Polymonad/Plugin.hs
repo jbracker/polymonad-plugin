@@ -177,13 +177,12 @@ polymonadSolve' _s = do
       unless (null derivedSolution) $ do
         printDebug "Derived solutions:"
         printConstraints True derivedSolution
-      printObj solvedOverlaps
       return $ TcPluginOk solvedOverlaps derivedSolution
     else do
       printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."
       return $ TcPluginOk solvedOverlaps []
   else do
-    printMsg "Simplification made progress. Not solving."
+    printDebug "Simplification made progress. Not solving."
     --printObj solvedAmbIndices
     --printObj solvedOverlaps
     --printObj eqUpDownCts

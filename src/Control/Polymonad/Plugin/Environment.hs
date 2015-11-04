@@ -112,7 +112,6 @@ data PmPluginEnv = PmPluginEnv
 --   are kept, respectivly.
 runPmPlugin :: [GivenCt] -> [WantedCt] -> PmPluginM TcPluginResult -> TcPluginM (Either String [TcPluginResult])
 runPmPlugin givenCts allWantedCts pmM = do
-  tcPluginIO . putStrLn . pprToStr $ allWantedCts
   mPmMdl <- findPolymonadModule
   mPmCls <- findPolymonadClass
   case (mPmMdl, mPmCls) of
