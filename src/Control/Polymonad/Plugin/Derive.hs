@@ -21,11 +21,36 @@ import TcType ( isAmbiguousTyVar )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM
+  , assert
   , getGivenPolymonadConstraints
   , getIdentityTyCon, getPolymonadClass )
 import Control.Polymonad.Plugin.Constraint
-  ( mkDerivedClassCt
+  ( WantedCt, DerivedCt
+  , isClassConstraint
+  , mkDerivedClassCt
   , constraintLocation, constraintPolymonadTyArgs )
+
+-- | Tries to derive a given wanted constraint from the given and already
+--   derived constraints. A constraint can only be derived if there
+--   is a polymonad laws that guards it being derived from already given
+--   or derived constraints.
+--
+--   This function is limited in its functionality. It will only perform a
+--   one level search of polymonad law applications onto the given derived
+--   constraints.
+--
+--   FIXME/TODO: Not all polymonad laws are currently supported.
+tryDerivePolymonadConstraint :: WantedCt -> PmPluginM (Maybe DerivedCt)
+tryDerivePolymonadConstraint wantedPmCt = do
+  -- Ensure the given wanted constraint is a polymonad constraint.
+  pmCls <- getPolymonadClass
+  assert (isClassConstraint pmCls wantedPmCt) "tryDerivePolymonadConstraint: Wanted constraint is not a polymonad constraint!"
+  -- Take a look at the given an derived constraints to see if we can derive
+  -- the wanted constraint from them.
+  givenPmCts <- getGivenPolymonadConstraints
+
+  -- TODO/FIXME
+  return Nothing
 
 -- | Derives polymonad constraints that need to exists by the definition
 --   of polymonads from the set of given constraints.
