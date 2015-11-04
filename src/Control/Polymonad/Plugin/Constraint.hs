@@ -5,7 +5,7 @@
 --   of the GHC API.
 module Control.Polymonad.Plugin.Constraint
   ( -- * Types
-    GivenCt, WantedCt
+    GivenCt, WantedCt, DerivedCt
     -- * Constraint Creation
   , mkDerivedTypeEqCt
   , mkDerivedTypeEqCt'
@@ -53,6 +53,9 @@ import Control.Polymonad.Plugin.Utils
 
 -- | Type synonym to label given or derived constraints.
 type GivenCt = Ct
+
+-- | Type synonym to label derived constraints.
+type DerivedCt = Ct
 
 -- | Type synonym to label wanted constraints.
 type WantedCt = Ct
