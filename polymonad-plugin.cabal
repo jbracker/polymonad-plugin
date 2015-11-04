@@ -39,6 +39,7 @@ library
                  , Control.Polymonad.Plugin.Derive
                  , Control.Polymonad.Plugin.GraphView
                  , Control.Polymonad.Plugin.Ambiguity
+                 , Control.Polymonad.Plugin.Evaluate
                  , Control.Polymonad.Plugin.Simplification
                  , Control.Polymonad.Plugin.PrincipalJoin
                  , Control.Polymonad.Plugin.Environment
