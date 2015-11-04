@@ -18,7 +18,7 @@ module Control.Polymonad.Plugin.Environment
   , withDebug, withoutDebug
   , throwPluginError
     -- * Debug and Error Output
-  , assert
+  , assert, assertM
   , printErr, printMsg, printObj
   , printDebug, printDebugObj
   , printConstraints
@@ -274,6 +274,13 @@ withoutDebug = local (\env -> env { pmEnvDebugEnabled = False })
 --   be thrown the plugin aborts.
 assert :: Bool -> String -> PmPluginM ()
 assert cond msg = unless cond $ throwPluginError msg
+
+-- | Assert the given condition. Same as 'assert' but with
+--   a monadic condition.
+assertM :: PmPluginM Bool -> String -> PmPluginM ()
+assertM condM msg = do
+  cond <- condM
+  assert cond msg
 
 -- | Throw an error with the given message in the plugin.
 --   This will abort all further actions.
