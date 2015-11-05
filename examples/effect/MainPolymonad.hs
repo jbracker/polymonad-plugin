@@ -39,10 +39,16 @@ instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m (h :: [*])) wh
 
 main :: IO ()
 main = do
-  return ()
+  putStrLn $ show $ runState
+    ( process $ Branch (Leaf 2) (Branch (Branch (Leaf 8) (Leaf 5)) (Leaf 3)) )
+    ( Ext (flattenV :-> True :! Eff) (Ext (leavesV :-> 0 :! Eff) (Ext (sumV :-> 0 :! Eff) Empty)) )
 
 data Tree = Leaf Int
           | Branch Tree Tree
+
+instance Show Tree where
+  show (Leaf i) = show i
+  show (Branch l r) = "(" ++ show l ++ " | " ++ show r ++ ")"
 
 leavesV :: Var "leaves"
 leavesV = Var :: (Var "leaves")
@@ -67,7 +73,7 @@ type ProcessEffects =
    ]
 
 -- Nubable is not exported by Control.Effect.State
-process :: Tree -> State ProcessEffects (Either Tree [Int])
+--process :: Tree -> State ProcessEffects (Either Tree [Int])
 process (Leaf i) = do
   _ <- update leavesV (+ (1 :: Int))
   _ <- update sumV (+ i)
