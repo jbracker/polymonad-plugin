@@ -1,6 +1,7 @@
 
 module Control.Polymonad.Plugin.Evaluate
   ( evaluateTypeEqualities
+  , evaluateType
   ) where
 
 import Data.Maybe ( catMaybes )
@@ -13,6 +14,19 @@ import Type
   , mkFamilyTyConApp, mkAppTy, mkFunTy )
 import TcRnTypes
   ( Ct(..), CtEvidence(..) )
+import TcPluginM
+  ( TcPluginM
+  , getFamInstEnvs )
+import CoAxiom ( Role(..) )
+import FamInstEnv ( normaliseType )
+
+-- | Try to evaluate the given type as far as possible by evaluating contained
+--   type families and expanding type synonyms.
+evaluateType :: Type -> TcPluginM Type
+evaluateType t = do
+  famInstEnvs <- getFamInstEnvs
+  let (_coer, normT) = normaliseType famInstEnvs Nominal t
+  return normT
 
 -- | Try to apply the type equality constraints given in the pair of arguments
 --   to the given type. This will ignore non type equalities in the first
