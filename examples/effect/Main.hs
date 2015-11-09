@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Main ( main, process ) where
+module Main ( main, write ) where
 
 import Prelude
 import qualified Prelude as P
@@ -18,9 +18,11 @@ ifThenElse False t e = e
 
 main :: IO ()
 main = do
-  return ()
+  putStrLn $ show $ runState
+    ( write "abc" )
+    ( Ext (Var :-> 0 :! Eff) (Ext (Var :-> [] :! Eff) Empty) )
   where
-    return = P.return
+    --return = P.return
 
 data Tree = Leaf Int
           | Branch Tree Tree
@@ -47,7 +49,7 @@ update v f = do
 
 type ProcessEffects =
   '[ "flatten" :-> Bool :! 'R
-   , "leaves"  :-> Int  :! 'RW
+   --, "leaves"  :-> Int  :! 'RW
    , "sum"     :-> Int  :! 'RW
    ]
 {-
@@ -56,9 +58,11 @@ process :: (Nubable ProcessEffects)
         => Tree
         -> State ProcessEffects (Either Tree [Int])
 -}
+{-
 process (Leaf i) = do
-  _ <- update leavesV (+ 1)
-  _ <- update sumV (+ i)
+  --_ <- update leavesV (+ 1)
+  sum <- get sumV
+  put sumV (sum + i)
   flatten <- get flattenV
   if flatten
     then return $ Right [i]
@@ -79,5 +83,39 @@ process (Branch tl tr) = do
         (>>=) = (E.>>=)
         (>>) :: (E.Inv State f g) => State f a -> State g b -> State (E.Plus State f g) b
         (>>) = (E.>>)
+        return = E.return
+        fail = E.fail
+-}
+
+varC = Var :: Var "count"
+varS = Var :: Var "out"
+
+incC :: State '["count" :-> Int :! RW] ()
+incC = do { x <- get varC; put varC (x + 1) }
+  where (>>=) :: (E.Inv State f g) => State f a -> (a -> State g b) -> State (E.Plus State f g) b
+        (>>=) = (E.>>=)
+        (>>) :: (E.Inv State f g) => State f a -> State g b -> State (E.Plus State f g) b
+        (>>) = (E.>>)
+        return :: a -> State '[] a
+        return = E.return
+        fail = E.fail
+
+writeS :: [a] -> State '["out" :-> [a] :! RW] ()
+writeS y = do { x <- get varS; put varS (x ++ y) }
+  where (>>=) :: (E.Inv State f g) => State f a -> (a -> State g b) -> State (E.Plus State f g) b
+        (>>=) = (E.>>=)
+        (>>) :: (E.Inv State f g) => State f a -> State g b -> State (E.Plus State f g) b
+        (>>) = (E.>>)
+        return :: a -> State '[] a
+        return = E.return
+        fail = E.fail
+
+write :: [a] -> State '["count" :-> Int :! RW, "out" :-> [a] :! RW] ()
+write x = do { writeS x; incC }
+  where (>>=) :: (E.Inv State f g) => State f a -> (a -> State g b) -> State (E.Plus State f g) b
+        (>>=) = (E.>>=)
+        (>>) :: (E.Inv State f g) => State f a -> State g b -> State (E.Plus State f g) b
+        (>>) = (E.>>)
+        return :: a -> State '[] a
         return = E.return
         fail = E.fail

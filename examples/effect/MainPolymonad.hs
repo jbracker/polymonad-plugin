@@ -40,8 +40,10 @@ instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m (h :: [*])) wh
 main :: IO ()
 main = do
   putStrLn $ show $ runState
-    ( process $ Branch (Leaf 2) (Branch (Branch (Leaf 8) (Leaf 5)) (Leaf 3)) )
-    ( Ext (flattenV :-> True :! Eff) (Ext (leavesV :-> 0 :! Eff) (Ext (sumV :-> 0 :! Eff) Empty)) )
+    ( write "abc" )
+    ( Ext (Var :-> 0 :! Eff) (Ext (Var :-> [] :! Eff) Empty) )
+
+-- '["count" :-> Int :! RW, "out" :-> [a] :! RW]
 
 data Tree = Leaf Int
           | Branch Tree Tree
@@ -74,8 +76,9 @@ type ProcessEffects =
 
 -- Nubable is not exported by Control.Effect.State
 --process :: Tree -> State ProcessEffects (Either Tree [Int])
+{-
 process (Leaf i) = do
-  _ <- update leavesV (+ (1 :: Int))
+  --_ <- update leavesV (+ 1)
   _ <- update sumV (+ i)
   flatten <- get flattenV
   if flatten
@@ -87,3 +90,16 @@ process (Branch tl tr) = do
   case (eitherL, eitherR) of
     (Left  l, Left  r) -> return $ Left  $ Branch l r
     (Right l, Right r) -> return $ Right $ l ++ r
+-}
+
+varC = Var :: Var "count"
+varS = Var :: Var "out"
+
+incC :: State '["count" :-> Int :! RW] ()
+incC = do { x <- get varC; put varC (x + 1) }
+
+writeS :: [a] -> State '["out" :-> [a] :! RW] ()
+writeS y = do { x <- get varS; put varS (x ++ y) }
+
+write :: [a] -> State '["count" :-> Int :! RW, "out" :-> [a] :! RW] ()
+write x = do { writeS x; incC }

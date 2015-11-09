@@ -150,7 +150,7 @@ polymonadSolve' _s = do
       mEv <- detectOverlappingInstancesAndTrySolve tyConAppCt
       return $ (\ev -> (ev, tyConAppCt)) <$> mEv
     else return []
-
+  printObj solvedOverlaps
   -- We can now try to simplify constraints using the S-Up and S-Down rules.
   let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
   eqUpDownCtData <- simplifyAllUpDown wanted ambTvs
@@ -177,9 +177,11 @@ polymonadSolve' _s = do
       unless (null derivedSolution) $ do
         printDebug "Derived solutions:"
         printConstraints True derivedSolution
+      --return $ TcPluginOk [] derivedSolution
       return $ TcPluginOk solvedOverlaps derivedSolution
     else do
       printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."
+      --return noResult
       return $ TcPluginOk solvedOverlaps []
   else do
     printDebug "Simplification made progress. Not solving."
