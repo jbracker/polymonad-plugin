@@ -31,12 +31,11 @@ library
                  , Control.Polymonad.Plugin
                  , Control.Polymonad.Plugin.Log
                  , Control.Polymonad.Plugin.Utils
-                 , Control.Polymonad.Plugin.Detect
                  , Control.Polymonad.Plugin.Evidence
                  , Control.Polymonad.Plugin.Constraint
                  , Control.Polymonad.Plugin.Instance
                  , Control.Polymonad.Plugin.Core
-                 , Control.Polymonad.Plugin.Derive
+                 , Control.Polymonad.Plugin.Detect
                  , Control.Polymonad.Plugin.GraphView
                  , Control.Polymonad.Plugin.Ambiguity
                  , Control.Polymonad.Plugin.Evaluate
