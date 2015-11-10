@@ -17,7 +17,8 @@ import TcPluginM ( TcPluginM, tcPluginIO )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getWantedPolymonadConstraints, getGivenPolymonadConstraints
-  , printDebug, printMsg, printObj
+  , printDebug, printMsg
+  --, printObj
   , printConstraints )
 import Control.Polymonad.Plugin.Constraint
   ( constraintTopAmbiguousTyVars
@@ -35,7 +36,6 @@ import Control.Polymonad.Plugin.Simplification
 import Control.Polymonad.Plugin.Core
   ( trySolveAmbiguousForAppliedTyConConstraint
   , detectOverlappingInstancesAndTrySolve )
-import qualified Control.Polymonad.Plugin.Log as L
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -150,7 +150,7 @@ polymonadSolve' _s = do
       mEv <- detectOverlappingInstancesAndTrySolve tyConAppCt
       return $ (\ev -> (ev, tyConAppCt)) <$> mEv
     else return []
-  printObj solvedOverlaps
+
   -- We can now try to simplify constraints using the S-Up and S-Down rules.
   let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
   eqUpDownCtData <- simplifyAllUpDown wanted ambTvs
