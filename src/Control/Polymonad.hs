@@ -41,6 +41,30 @@ fail = error
 --
 --   <<docs/definition-polymonad.png>>
 --
+--   /Id/ is the 'Identity' type class in Haskell.
+--
+--   Polymonads representing parameterized monads or the standard monad usually
+--   consist of the two type constructors 'Identity' and the monad type constructor.
+--   The monad type constructor can be indexed in case of a parameterized monad.
+--   Usually, these require four instances:
+--
+--     [Bind-Instance]
+--       An instance of the form @Polymonad m1 m2 m3@, that implements the
+--       actual bind-operator. @m1@, @m2@ and @m3@ are usually partially applied,
+--       such that they have kind @* -> *@.
+--     [Functor-Instance]
+--       An instance of the form @Polymonad m Identity m@, resembling a functor.
+--     [Apply-Instance]
+--       An instance of the form @Polymonad Identity m m@, which just
+--       applies the first argument to the function.
+--     [Return-Instance]
+--       An instance of the form @Polymonad Identity Identity m@, that can
+--       be used to model the 'return'-function.
+--
+--   An example of this can be seen in the standard monad instances already
+--   given here, or by looking into the examples that are provided in the
+--   <https://github.com/jbracker/polymonad-plugin polymonad-plugin> repository.
+--
 class Polymonad m n p where
   (>>=) :: m a -> (a -> n b) -> p b
   (>>) :: m a -> n b -> p b
