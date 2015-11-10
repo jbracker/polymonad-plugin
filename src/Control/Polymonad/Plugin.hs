@@ -180,7 +180,7 @@ polymonadSolve' _s = do
       --return $ TcPluginOk [] derivedSolution
       return $ TcPluginOk solvedOverlaps derivedSolution
     else do
-      printMsg "Constraint graph is ambiguous, unable to solve polymonad constraints..."
+      printDebug "Constraint graph is ambiguous, unable to solve polymonad constraints..."
       --return noResult
       return $ TcPluginOk solvedOverlaps []
   else do
