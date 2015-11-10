@@ -91,9 +91,9 @@ import Control.Polymonad.Plugin.Constraint
   , constraintClassTyArgs, constraintPolymonadTyArgs'
   , isClassConstraint, isFullyAppliedClassConstraint )
 import Control.Polymonad.Plugin.Instance
-  ( matchInstanceTyVars, isInstantiatedBy, eqInstance )
+  ( eqInstance )
 import Control.Polymonad.Plugin.Evidence
-  ( produceEvidenceFor )
+  ( produceEvidenceFor, matchInstanceTyVars, isInstantiatedBy )
 
 -- -----------------------------------------------------------------------------
 -- Constant Names (Magic Numbers...)

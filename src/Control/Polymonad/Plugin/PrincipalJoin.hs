@@ -29,7 +29,7 @@ import Control.Polymonad.Plugin.Environment
   , throwPluginError
   , printObj --, printMsg
   , getCurrentPolymonad )
-import Control.Polymonad.Plugin.Instance
+import Control.Polymonad.Plugin.Evidence
   ( matchInstanceTyVars )
 import Control.Polymonad.Plugin.Core ( isInstanceOf )
 import Control.Polymonad.Plugin.Constraint

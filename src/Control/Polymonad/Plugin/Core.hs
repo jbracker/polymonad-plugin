@@ -25,17 +25,16 @@ import Control.Polymonad.Plugin.Environment
   , getPolymonadClass, getCurrentPolymonad
   --, printObj, printMsg
   , throwPluginError )
-import Control.Polymonad.Plugin.Instance
-  ( isInstantiatedBy
-  , instanceTyArgs
-  , matchInstanceTyVars )
+import Control.Polymonad.Plugin.Instance ( instanceTyArgs )
 import Control.Polymonad.Plugin.Constraint
   ( WantedCt, GivenCt
   , constraintClassTyArgs
   , isClassConstraint
   , isTyConAppliedClassConstraint )
 import Control.Polymonad.Plugin.Evidence
-  ( produceEvidenceFor )
+  ( isInstantiatedBy
+  , produceEvidenceFor
+  , matchInstanceTyVars )
 import Control.Polymonad.Plugin.Utils
   ( collectTyVars
   , skolemVarsBindFun )
