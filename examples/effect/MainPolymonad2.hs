@@ -43,55 +43,6 @@ main = do
     ( write "abc" )
     ( Ext (Var :-> 0 :! Eff) (Ext (Var :-> [] :! Eff) Empty) )
 
--- '["count" :-> Int :! RW, "out" :-> [a] :! RW]
-
-data Tree = Leaf Int
-          | Branch Tree Tree
-
-instance Show Tree where
-  show (Leaf i) = show i
-  show (Branch l r) = "(" ++ show l ++ " | " ++ show r ++ ")"
-
-leavesV :: Var "leaves"
-leavesV = Var :: (Var "leaves")
-
-sumV :: Var "sum"
-sumV = Var :: (Var "sum")
-
-flattenV :: Var "flatten"
-flattenV = Var :: (Var "flatten")
-
-update :: Var n -> (a -> a) -> State '[n :-> a :! 'RW] a
-update v f = do
-  x <- get v
-  let fx = f x
-  put v fx
-  return fx
-
-type ProcessEffects =
-  '[ "flatten" :-> Bool :! 'R
-   , "leaves"  :-> Int  :! 'RW
-   , "sum"     :-> Int  :! 'RW
-   ]
-
--- Nubable is not exported by Control.Effect.State
---process :: Tree -> State ProcessEffects (Either Tree [Int])
-{-
-process (Leaf i) = do
-  --_ <- update leavesV (+ 1)
-  _ <- update sumV (+ i)
-  flatten <- get flattenV
-  if flatten
-    then return $ Right [i]
-    else return $ Left $ Leaf i
-process (Branch tl tr) = do
-  eitherL <- process tl
-  eitherR <- process tr
-  case (eitherL, eitherR) of
-    (Left  l, Left  r) -> return $ Left  $ Branch l r
-    (Right l, Right r) -> return $ Right $ l ++ r
--}
-
 varC = Var :: Var "count"
 varS = Var :: Var "out"
 
