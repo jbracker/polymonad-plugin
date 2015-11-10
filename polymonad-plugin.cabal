@@ -12,6 +12,7 @@ stability:           experimental
 copyright:           Copyright (c) 2015, Jan Bracker
 build-type:          Simple
 cabal-version:       >=1.10
+extra-doc-files:     docs/*.png
 description:
 
     The @polymonad-plugin@ library adds support for polymonads to GHC

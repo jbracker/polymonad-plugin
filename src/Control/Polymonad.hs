@@ -34,26 +34,12 @@ fail = error
 -- -----------------------------------------------------------------------------
 
 -- | The polymonad type class. Instances implement a single bind-operation of
---   a polymonad.
+--   a polymonad. In most cases, this means several instances are required
+--   to form a proper polymonad. Like a standard monad, polymonads also
+--   require laws to hold. Please ensure that your instances obey the Polymonad
+--   laws. The definition below gives the polymonad laws in detail.
 --
---   Say the polymonad you want to implement consists of /__(M , Σ)__/, where
---   /__M__/ is the set of type constructor involved and /__Σ__/ is the set of
---   bind-operations. Then remember that the following laws need to hold:
---
---     [Functor] TODO
---     [Paired Morphism] For all @m@, @n@ in __M__:
---
---         > Polymonad m Identity n ==> Polymonad Identity m n
---         > Polymonad Identity m n ==> Polymonad m Identity n
---
---         and
---
---         > FORALL >>=1 : Polymonad m Identity m AND >>=2 : Polymonad Identity m n .
---         > (f v) >>=1 (\y -> y) = v >>=2 f
---
---     [Diamond] TODO
---     [Associativity] TODO
---     [Closure] TODO
+--   <<docs/definition-polymonad.png>>
 --
 class Polymonad m n p where
   (>>=) :: m a -> (a -> n b) -> p b
