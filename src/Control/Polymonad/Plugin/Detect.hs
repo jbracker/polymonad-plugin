@@ -349,8 +349,8 @@ findPolymonadInstancesInScope = do
 -- | Given a fully applied polymonad constraint it will pick the first instance
 --   that matches it. This is ok to do, because for polymonads it does
 --   not make a difference which bind-operation we pick if the type is equal.
-pickInstanceForAppliedConstraint :: Class -> WantedCt -> TcPluginM (Maybe (EvTerm, Ct))
-pickInstanceForAppliedConstraint pmCls ct =
+pickInstanceForAppliedConstraint :: [GivenCt] -> Class -> WantedCt -> TcPluginM (Maybe (EvTerm, Ct))
+pickInstanceForAppliedConstraint givenCts pmCls ct =
   case constraintClassTyArgs ct of
     -- We found the polymonad class constructor and the given constraint
     -- is a instance constraint.
@@ -369,8 +369,10 @@ pickInstanceForAppliedConstraint pmCls ct =
         -- Because we are talking about polymonad we can freely choose.
         (foundInst, foundInstArgs) : _ -> do
           -- Try to produce evidence for the instance we want to use.
-          evTerm <- produceEvidenceFor foundInst (fromJust <$> foundInstArgs)
-          return $ (\ev -> (ev, ct)) <$> evTerm
+          eEvTerm <- produceEvidenceFor givenCts foundInst (fromJust <$> foundInstArgs)
+          return $ case eEvTerm of
+            Left _err -> Nothing
+            Right evTerm -> Just (evTerm, ct)
         _ -> return Nothing
     _ -> return Nothing
 

@@ -30,7 +30,7 @@ import Control.Polymonad.Plugin.Instance
   , instanceTyArgs
   , matchInstanceTyVars )
 import Control.Polymonad.Plugin.Constraint
-  ( WantedCt
+  ( WantedCt, GivenCt
   , constraintClassTyArgs
   , isClassConstraint
   , isTyConAppliedClassConstraint )
@@ -56,8 +56,12 @@ isInstanceOf tys inst = do
     Left err -> throwPluginError err
     Right b -> return b
 
-produceEvidenceForPM :: ClsInst -> [Type] -> PmPluginM (Maybe EvTerm)
-produceEvidenceForPM inst args = runTcPlugin $ produceEvidenceFor inst args
+produceEvidenceForPM :: [GivenCt] -> ClsInst -> [Type] -> PmPluginM (Maybe EvTerm)
+produceEvidenceForPM givenCts inst args = do
+  eEvTerm <- runTcPlugin $ produceEvidenceFor givenCts inst args
+  return $ case eEvTerm of
+    Left _err -> Nothing
+    Right evTerm -> Just evTerm
 
 
 -- | Tries to solve ambiguous type variables in polymonad constraints using
@@ -119,6 +123,7 @@ detectOverlappingInstancesAndTrySolve ct =
   case constraintClassTyArgs ct of
     Just tyArgs -> do
       (_, pmInsts, pmCts) <- getCurrentPolymonad
+      givenCts <- getGivenConstraints
       -- Collect variables that are to be seen as constants.
       -- The first batch of these are the non ambiguous type variables in the constraint arguments...
       let dontBind =  filter (not . isAmbiguousTyVar) (S.toList $ S.unions $ fmap collectTyVars tyArgs)
@@ -134,6 +139,6 @@ detectOverlappingInstancesAndTrySolve ct =
             Nothing -> return Nothing
           Nothing -> return Nothing
       case catMaybes instMatches of
-        [instWithArgs] -> uncurry produceEvidenceForPM instWithArgs
+        [instWithArgs] -> uncurry (produceEvidenceForPM givenCts) instWithArgs
         _ -> return Nothing
     _ -> return Nothing

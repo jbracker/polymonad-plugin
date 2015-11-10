@@ -128,7 +128,7 @@ runPmPlugin givenCts allWantedCts pmM = do
           let (wantedApplied, wantedCts') = partition isFullyAppliedClassConstraint allWantedCts
           -- Now pick instances.
           mWantedEvidence <- forM wantedApplied $ \wAppCt -> do
-            instEv <- pickInstanceForAppliedConstraint pmCls wAppCt
+            instEv <- pickInstanceForAppliedConstraint givenCts pmCls wAppCt
             return (wAppCt, instEv)
           -- If some of these does not produce good evidence, because there are overlapping instances
           -- sort those out and hand them to the plugin as usual.
