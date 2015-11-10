@@ -20,6 +20,7 @@ module Control.Polymonad.Plugin.Utils (
   , removeDup
   , lookupBy
   , allM, anyM
+  , fromLeft, fromRight
   ) where
 
 import Data.Maybe ( listToMaybe, catMaybes )
@@ -215,3 +216,13 @@ quantM  comp def  p (x : xs) = do
   bx <- p x
   bxs <- quantM comp def p xs
   return $ bx `comp` bxs
+
+-- | Return the 'Left' value. If no 'Left' value is given, an error is raised.
+fromLeft :: Either a b -> a
+fromLeft (Left a) = a
+fromLeft (Right _) = error "fromLeft: Applied to 'Right'"
+
+-- | Return the 'Right' value. If no 'Right' value is given, an error is raised.
+fromRight :: Either a b -> b
+fromRight (Left _) = error "fromRight: Applied to 'Left'"
+fromRight (Right b) = b
