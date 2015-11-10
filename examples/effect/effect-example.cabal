@@ -28,3 +28,22 @@ executable effect-example-pm
   hs-source-dirs:      .
   default-language:    Haskell2010
   ghc-options:         -Wall -dynamic -dcore-lint
+
+executable effect-example2
+  build-depends:  base            == 4.8.1.0,
+                  effect-monad    == 0.6.1
+  main-is:             Main2.hs
+  hs-source-dirs:      .
+  default-language:    Haskell2010
+  ghc-options:         -Wall -dcore-lint
+                       -fno-warn-unused-binds -fno-warn-unused-matches
+                       -fno-warn-name-shadowing
+
+executable effect-example2-pm
+  build-depends:  base             == 4.8.1.0,
+                  effect-monad     == 0.6.1,
+                  polymonad-plugin == 0.1
+  main-is:             MainPolymonad2.hs
+  hs-source-dirs:      .
+  default-language:    Haskell2010
+  ghc-options:         -Wall -dynamic -dcore-lint
