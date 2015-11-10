@@ -27,7 +27,7 @@ import Control.Polymonad.Plugin.Environment
   , throwPluginError )
 import Control.Polymonad.Plugin.Instance ( instanceTyArgs )
 import Control.Polymonad.Plugin.Constraint
-  ( WantedCt, GivenCt
+  ( WantedCt
   , constraintClassTyArgs
   , isClassConstraint
   , isTyConAppliedClassConstraint )
@@ -39,7 +39,7 @@ import Control.Polymonad.Plugin.Utils
   ( collectTyVars
   , skolemVarsBindFun )
 
--- | Checks if the given arguments types to the free variables in the
+-- | Checks if the given argument types to the free variables in the
 --   class instance actually form a valid instantiation of that instance.
 --   The given arguments need to match up with the list of free type variables
 --   given for the class instance ('is_tvs'). See 'matchInstanceTyVars' for
@@ -48,15 +48,16 @@ import Control.Polymonad.Plugin.Utils
 --   Caveat: This currently only matches class constraints, but not type
 --   equality or type function constraints properly.
 isInstanceOf :: [Type] -> ClsInst -> PmPluginM Bool
-isInstanceOf tys inst = do
+isInstanceOf instArgs inst = do
   givenCts <- getGivenConstraints
-  res <- runTcPlugin $ isInstantiatedBy givenCts tys inst
+  res <- runTcPlugin $ isInstantiatedBy givenCts inst instArgs
   case res of
     Left err -> throwPluginError err
     Right b -> return b
 
-produceEvidenceForPM :: [GivenCt] -> ClsInst -> [Type] -> PmPluginM (Maybe EvTerm)
-produceEvidenceForPM givenCts inst args = do
+produceEvidenceForPM :: ClsInst -> [Type] -> PmPluginM (Maybe EvTerm)
+produceEvidenceForPM inst args = do
+  givenCts <- getGivenConstraints
   eEvTerm <- runTcPlugin $ produceEvidenceFor givenCts inst args
   return $ case eEvTerm of
     Left _err -> Nothing
@@ -122,7 +123,6 @@ detectOverlappingInstancesAndTrySolve ct =
   case constraintClassTyArgs ct of
     Just tyArgs -> do
       (_, pmInsts, pmCts) <- getCurrentPolymonad
-      givenCts <- getGivenConstraints
       -- Collect variables that are to be seen as constants.
       -- The first batch of these are the non ambiguous type variables in the constraint arguments...
       let dontBind =  filter (not . isAmbiguousTyVar) (S.toList $ S.unions $ fmap collectTyVars tyArgs)
@@ -131,13 +131,13 @@ detectOverlappingInstancesAndTrySolve ct =
       instMatches <- forM pmInsts $ \pmInst -> do
         let instArgs = instanceTyArgs pmInst
         case tcUnifyTys (skolemVarsBindFun dontBind) tyArgs instArgs of
-          Just subst -> case matchInstanceTyVars (substTys subst tyArgs) pmInst of
+          Just subst -> case matchInstanceTyVars pmInst (substTys subst tyArgs) of
             Just args -> do
               isInst <- args `isInstanceOf` pmInst
               return $ if isInst then Just (pmInst, args) else Nothing
             Nothing -> return Nothing
           Nothing -> return Nothing
       case catMaybes instMatches of
-        [instWithArgs] -> uncurry (produceEvidenceForPM givenCts) instWithArgs
+        [instWithArgs] -> uncurry produceEvidenceForPM instWithArgs
         _ -> return Nothing
     _ -> return Nothing

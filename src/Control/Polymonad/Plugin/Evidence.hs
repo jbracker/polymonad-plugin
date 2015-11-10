@@ -52,8 +52,8 @@ import Control.Polymonad.Plugin.Utils
 --   each free variable in the instance is returned. This list is in the same
 --   order as the list of free variables that can be retrieved from the instance.
 --   This function is meant for use in conjunction with 'isInstanceOf'.
-matchInstanceTyVars :: [Type] -> ClsInst -> Maybe [Type]
-matchInstanceTyVars instArgs inst = do
+matchInstanceTyVars :: ClsInst -> [Type] -> Maybe [Type]
+matchInstanceTyVars inst instArgs = do
   let (instVars, _cts, _cls, tyArgs) = instanceSig inst
   -- Old Version:
   -- let instVarSet = printObjTrace $ mkVarSet instVars
@@ -75,9 +75,9 @@ matchInstanceTyVars instArgs inst = do
 --
 --   For details on the accepted arguments and support of type extensions,
 --   see 'produceEvidenceFor'.
-isInstantiatedBy :: [GivenCt] -> [Type] -> ClsInst -> TcPluginM (Either String Bool)
-isInstantiatedBy givenCts tys inst = do
-  eEvTerm <- produceEvidenceFor givenCts inst tys
+isInstantiatedBy :: [GivenCt] -> ClsInst -> [Type] -> TcPluginM (Either String Bool)
+isInstantiatedBy givenCts inst instArgs = do
+  eEvTerm <- produceEvidenceFor givenCts inst instArgs
   return $ case eEvTerm of
     Left _err -> Right False
     Right _ev -> Right True
@@ -99,12 +99,12 @@ isInstantiatedBy givenCts tys inst = do
 --   This function should properly work with type synonyms and type functions.
 --   It only produces evidence for type equalities if they are trivial, i.e., @a ~ a@.
 produceEvidenceFor :: [GivenCt] -> ClsInst -> [Type] -> TcPluginM (Either O.SDoc EvTerm)
-produceEvidenceFor givenCts inst tys = do
+produceEvidenceFor givenCts inst instArgs = do
   -- Get the instance type variables and constraints (by that we know the
   -- number of type arguments and dictionart arguments for the EvDFunApp)
   let (tyVars, instCts, _cls, _tyArgs) = instanceSig inst -- ([TyVar], [Type], Class, [Type])
   -- How the instance variables for the current instance are bound.
-  let varSubst = mkTopTvSubst $ zip tyVars tys
+  let varSubst = mkTopTvSubst $ zip tyVars instArgs
   -- Now go over each constraint and find a suitable instance and evidence.
   -- Don't forget to substitute all variables for their actual values,
   ctEvTerms <- forM (substTys varSubst instCts) $ produceEvidenceForCt givenCts
@@ -116,7 +116,7 @@ produceEvidenceFor givenCts inst tys = do
       $$ O.ppr inst
       $$ O.text "Reason:"
       $$ O.vcat (fromLeft <$> filter isLeft ctEvTerms)
-    else Right $ EvDFunApp (is_dfun inst) tys (fromRight <$> ctEvTerms)
+    else Right $ EvDFunApp (is_dfun inst) instArgs (fromRight <$> ctEvTerms)
 
 produceEvidenceForCt :: [GivenCt] -> Type -> TcPluginM (Either O.SDoc EvTerm)
 produceEvidenceForCt givenCts ct = do

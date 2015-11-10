@@ -315,11 +315,11 @@ filterApplicableInstances givenCts pmInsts appliedTyCons =
     let assocs = fmap snd <$> associations [(instArg, appliedTyCons) | instArg <- instArgs]
     -- Look at each of those associations and check if it actually instantiates.
     mListInsts <- forM assocs $ \assoc ->
-      case matchInstanceTyVars assoc pmInst of
+      case matchInstanceTyVars pmInst assoc of
         -- Association matches instance arguments, proceed...
         Just instTvArgs -> do
           -- Check if the given association actually instanctiates.
-          eIsInst <- isInstantiatedBy givenCts instTvArgs pmInst
+          eIsInst <- isInstantiatedBy givenCts pmInst instTvArgs
           -- Return instance if association instantiates.
           case eIsInst of
             Left err -> do

@@ -171,7 +171,7 @@ determineJoinCandidates tyVarOrCons (pmInsts, pmCts) (t0, t1) = do
 hasMatch :: (Type, Type, Type) -> ([ClsInst], [GivenCt]) -> PmPluginM Bool
 hasMatch tys@(t0, t1, t2) (pmInsts, pmCts) = do
   instanceMatches <- forM pmInsts $ \pmInst -> do
-    case matchInstanceTyVars [t0, t1, t2] pmInst of
+    case matchInstanceTyVars pmInst [t0, t1, t2] of
       Just args ->
         args `isInstanceOf` pmInst
       Nothing ->
