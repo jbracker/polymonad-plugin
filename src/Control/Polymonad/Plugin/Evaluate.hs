@@ -1,4 +1,7 @@
 
+-- | Utility functions that evaluate types. By evaluation
+--   we mean application of type functions, expansion of type synonyms
+--   and limited solving of equality constraints.
 module Control.Polymonad.Plugin.Evaluate
   ( evaluateTypeEqualities
   , evaluateType
@@ -38,7 +41,7 @@ evaluateType t = do
 --
 --   There is no check for contradictory type equalities.
 --   This may run into an infinite loop of expansions if the equalities form
---   a loop.
+--   a loop. Does _not_ evaluate type functions or expand type synonyms.
 evaluateTypeEqualities :: ([Ct], [Type]) -> Type -> Type
 evaluateTypeEqualities (cts, ts) = evalTypeEqs
   where

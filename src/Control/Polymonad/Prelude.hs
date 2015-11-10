@@ -103,6 +103,8 @@ import qualified Prelude as P
 import Control.Polymonad
 import qualified Control.Polymonad.Functions as F
 
+-- | Standard implementation of if-then-else. Necessary because we are
+--   going to use @RebindableSyntax@ together with this prelude.
 ifThenElse :: P.Bool -> a -> a -> a
 ifThenElse P.True  t _ = t
 ifThenElse P.False _ f = f

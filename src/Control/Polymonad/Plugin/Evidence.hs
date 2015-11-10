@@ -51,7 +51,9 @@ import Control.Polymonad.Plugin.Utils
 --   If the given arguments match the class arguments, a list with a type for
 --   each free variable in the instance is returned. This list is in the same
 --   order as the list of free variables that can be retrieved from the instance.
---   This function is meant for use in conjunction with 'isInstanceOf'.
+--
+--   This function is meant for use in conjunction with 'isInstanceOf',
+--   'isInstantiatedBy' and 'produceEvidenceFor'.
 matchInstanceTyVars :: ClsInst -> [Type] -> Maybe [Type]
 matchInstanceTyVars inst instArgs = do
   let (instVars, _cts, _cls, tyArgs) = instanceSig inst
