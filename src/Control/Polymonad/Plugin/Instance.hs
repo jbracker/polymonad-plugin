@@ -13,29 +13,21 @@ module Control.Polymonad.Plugin.Instance
   , isInstantiatedBy
   ) where
 
-import Data.Maybe ( catMaybes, isJust )
-import Data.List ( find )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
-import Control.Monad ( forM, liftM2 )
-
 import InstEnv
   ( ClsInst(..), IsOrphan(..)
-  , instanceSig
-  , lookupUniqueInstEnv )
+  , instanceSig )
 import Type
   ( Type, TyVar
   , mkTyVarTy
-  , substTy, substTys
-  , mkTopTvSubst
-  , getClassPredTys_maybe
+  , substTy
   , eqTypes )
 import Class ( Class, classTyCon )
 import TyCon ( TyCon )
 import Unify ( tcUnifyTys )
-import TcPluginM ( TcPluginM, getInstEnvs )
-import TcRnTypes ( Ct )
+import TcPluginM ( TcPluginM )
 import TcType ( isAmbiguousTyVar )
 
 import Control.Polymonad.Plugin.Log
@@ -46,7 +38,9 @@ import Control.Polymonad.Plugin.Utils
   , collectTyVars
   , skolemVarsBindFun )
 import Control.Polymonad.Plugin.Constraint
-  ( constraintClassType )
+  ( GivenCt )
+import Control.Polymonad.Plugin.Evidence
+  ( produceEvidenceFor )
 
 -- | Check as best as possible if two class instances are equal.
 eqInstance :: ClsInst -> ClsInst -> Bool
@@ -136,47 +130,10 @@ instanceTcVars inst = collectTopTcVars $ instanceTyArgs inst
 --   that can be used to check of they fulfill a superclass, in case
 --   there are no instances that can fulfill them.
 --
---   Caveat: This currently only matches class constraints, but not type
---   equality or type function constraints properly.
-isInstantiatedBy :: [Ct] -> [Type] -> ClsInst -> TcPluginM (Either String Bool)
+--   For details on the accepted argument, see 'produceEvidenceFor'.
+isInstantiatedBy :: [GivenCt] -> [Type] -> ClsInst -> TcPluginM (Either String Bool)
 isInstantiatedBy givenCts tys inst = do
-  -- Get the instance type variables and constraints (by that we know
-  -- the numner of type arguments)
-  let (instVars, cts, _cls, _tyArgs) = instanceSig inst -- ([TyVar], [Type], Class, [Type])
-  -- Assert: We have a type for each variable in the instance.
-  if length tys /= length instVars then
-    return $ Left "isInstantiatedBy: Number of type arguments does not match number of variables in instance"
-  else do
-    -- How the instance variables for the current instance are bound.
-    let varSubst = mkTopTvSubst $ zip instVars tys
-    -- Split the constraints into their class and arguments.
-    -- FIXME: We ignore constraints where this is not possible.
-    -- Don't know if this is the right thing to do.
-    let instCts = catMaybes $ fmap getClassPredTys_maybe cts
-    -- Now go over each constraint and find a suitable instance.
-    results <- forM instCts $ \(ctCls, ctArgs) -> do
-      -- Substitute the variables to know what instance we are looking for.
-      let substArgs = substTys varSubst ctArgs
-      -- Get the current instance environment
-      instEnvs <- getInstEnvs
-      -- Look for suitable instance. Since we are not necessarily working
-      -- with polymonads anymore we need to find a unique one.
-      case lookupUniqueInstEnv instEnvs ctCls substArgs of
-        -- No instance found, but maybe a given constraint will do the deed...
-        Left _err -> do
-          -- Split the given constraints into their class and arguments.
-          -- FIXME: We ignore constraints where this is not possible.
-          let givenInstCts = catMaybes $ fmap constraintClassType givenCts
-          -- Define the predicate to check if a given constraint matches
-          -- the constraint we want to fulfill.
-          -- We are assuming thet there are no ambiguous type variables
-          -- in a given constraint
-          let eqInstCt (givenCls, givenArgs) = ctCls == givenCls && eqTypes substArgs givenArgs
-          -- If we find a given constraint that fulfills the constraint we are
-          -- searching for, return true, otherwise false.
-          return $ Right $ isJust $ find eqInstCt givenInstCts
-        -- We found one: Now we also need to check the found instance for
-        -- its preconditions.
-        Right (clsInst, instArgs) -> do
-          isInstantiatedBy givenCts instArgs clsInst
-    return $ foldr (liftM2 (&&)) (Right True) results
+  eEvTerm <- produceEvidenceFor givenCts inst tys
+  return $ case eEvTerm of
+    Left _err -> Right False
+    Right _ev -> Right True

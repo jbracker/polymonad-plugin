@@ -34,8 +34,12 @@ import Control.Polymonad.Plugin.Utils ( fromLeft, fromRight )
 
 -- | Apply the given instance dictionary to the given type arguments
 --   and try to produce evidence for the application.
+--
 --   The list of types has to match the number of open variables of the
---   given instance dictionary in length.
+--   given instance dictionary in length. They need to match up with
+--   the list of free type variables given for the class instance ('is_tvs').
+--   The list can be created using 'matchInstanceTyVars'.
+--
 --   The first argument is a list of given constraints that can be used
 --   to produce evidence for otherwise not fulfilled constraints. Be aware that
 --   only actually /given/ constraints (as in 'isGivenCt') are useful here,
