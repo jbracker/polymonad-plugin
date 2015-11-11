@@ -1,9 +1,7 @@
 
 {-# LANGUAGE RebindableSyntax #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE FlexibleContexts #-}
 
 import Prelude
 import Prelude as P
