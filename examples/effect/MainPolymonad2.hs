@@ -19,10 +19,9 @@
 
 import Control.Polymonad.Prelude
 
-import Control.Effect ( Effect, Plus, Unit )
 import qualified Control.Effect as E
-import Control.Effect.State
---import qualified Control.Effect.State as ES
+import Control.Effect ( Effect, Plus, Unit )
+import Control.Effect.Reader
 
 instance (Effect m, h ~ Plus m f g, E.Inv m f g) => Polymonad (m (f :: [*])) (m (g :: [*])) (m (h :: [*])) where
   (>>=) = (E.>>=)
@@ -39,18 +38,25 @@ instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m (h :: [*])) wh
 
 main :: IO ()
 main = do
-  putStrLn $ show $ runState
-    ( write "abc" )
-    ( Ext (Var :-> 0 :! Eff) (Ext (Var :-> [] :! Eff) Empty) )
+  let l = runReader (flatFilter tree) (Ext (vThres :-> 3) Empty)
+  print l
+  print (sum l)
 
-varC = Var :: Var "count"
-varS = Var :: Var "out"
+vThres :: Var "thres"
+vThres = Var
 
-incC :: State '["count" :-> Int :! RW] ()
-incC = do { x <- get varC; put varC (x + 1) }
+data Tree = Leaf Int
+          | Branch Tree Tree
+          deriving Show
 
-writeS :: [a] -> State '["out" :-> [a] :! RW] ()
-writeS y = do { x <- get varS; put varS (x ++ y) }
+tree :: Tree
+tree = Branch (Branch (Leaf 1) (Leaf 4)) (Leaf 5)
 
-write :: [a] -> State '["count" :-> Int :! RW, "out" :-> [a] :! RW] ()
-write x = do { writeS x; incC }
+flatFilter :: Tree -> Reader '["thres" :-> Int] [Int]
+flatFilter ( Leaf i ) = do
+  thres <- ask vThres
+  return (if i < thres then [] else [i])
+flatFilter ( Branch l r ) = do
+  ls <- flatFilter l
+  rs <- flatFilter r
+  return (ls ++ rs)
