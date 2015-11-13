@@ -44,6 +44,7 @@ import Control.Polymonad.Plugin.Utils
   ( fromLeft, fromRight
   , collectTyVars
   , skolemVarsBindFun )
+--import Control.Polymonad.Plugin.Log ( printObj, printMsg )
 
 -- | Trys to see if the given arguments match the class instance
 --   arguments by unification. This only works if the number of arguments
@@ -151,7 +152,7 @@ produceEvidenceForCt givenCts ct = do
           -- evidence construction.
           if eqType ta tb
             then
-              return $ Right $ EvCoercion $ TcRefl r normCt
+              return $ Right $ EvCoercion $ TcRefl r ta
             else
               return $ Left
                 $ O.text "Can't produce evidence for this type equality constraint:"

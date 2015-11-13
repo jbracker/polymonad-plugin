@@ -29,7 +29,7 @@ import FamInstEnv ( normaliseType )
 evaluateType :: Type -> TcPluginM (Coercion, Type)
 evaluateType t = do
   famInstEnvs <- getFamInstEnvs
-  return $ normaliseType famInstEnvs Nominal t
+  return $ normaliseType famInstEnvs Representational t --Nominal t
 
 -- | Try to apply the type equality constraints given in the pair of arguments
 --   to the given type. This will ignore non type equalities in the first
