@@ -56,7 +56,9 @@ flatFilter :: Tree -> Reader '["thres" :-> Int] [Int]
 flatFilter ( Leaf i ) = do
   thres <- ask vThres
   return (if i < thres then [] else [i])
+{-
 flatFilter ( Branch l r ) = do
   ls <- flatFilter l
   rs <- flatFilter r
   return (ls ++ rs)
+-}
