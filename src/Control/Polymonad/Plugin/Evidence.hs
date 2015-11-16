@@ -187,4 +187,4 @@ produceEvidenceForCt givenCts ct = do
   -- that resulted from evaluating the evidence.
   let coerEv :: EvTerm -> EvTerm
       coerEv ev = EvCast ev (TcCoercion ctCoercion)
-  return $ coerEv <$> mEvTerm
+  return mEvTerm -- $ coerEv <$> mEvTerm
