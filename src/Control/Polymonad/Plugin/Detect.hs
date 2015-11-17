@@ -27,7 +27,7 @@ import Data.Maybe
   ( isJust
   , catMaybes, listToMaybe
   , fromJust )
-import Data.List ( nubBy )
+import Data.List ( nubBy, nub )
 import Data.Tuple ( swap )
 import Data.Graph.Inductive.Graph
   ( Node, mkGraph )
@@ -42,7 +42,7 @@ import TcRnTypes
   , TcGblEnv(..)
   , TcTyThing(..) )
 import Type
-  ( Type, TyThing(..)
+  ( Type, TyThing(..), Kind, TyVar
   , splitAppTys, eqType
   , mkTyConTy
   , tyConAppTyCon_maybe )
@@ -81,11 +81,12 @@ import TcEvidence ( EvTerm(..) )
 
 import Control.Polymonad.Plugin.Log
   ( pmErrMsg
-  , printMsg
+  , printMsg, printObj
   , pprToStr )
 import Control.Polymonad.Plugin.Utils
   ( associations, lookupBy
-  , isAmbiguousType )
+  , isAmbiguousType
+  , getTyConWithArgKinds )
 import Control.Polymonad.Plugin.Constraint
   ( GivenCt, WantedCt
   , constraintClassTyArgs, constraintPolymonadTyArgs'
@@ -93,7 +94,7 @@ import Control.Polymonad.Plugin.Constraint
 import Control.Polymonad.Plugin.Instance
   ( eqInstance )
 import Control.Polymonad.Plugin.Evidence
-  ( produceEvidenceFor, matchInstanceTyVars, isInstantiatedBy )
+  ( produceEvidenceFor, matchInstanceTyVars, isInstantiatedBy, isPotentiallyInstantiatedPolymonad )
 
 -- -----------------------------------------------------------------------------
 -- Constant Names (Magic Numbers...)
@@ -211,7 +212,8 @@ findIdentityTyCon = do
 --   Each polymonad is paired with the list of wanted constraints that need to
 --   be solved with it.
 type SubsetSelectionFunction =
-  TyCon -> Class -> [ClsInst] -> ([GivenCt], [WantedCt]) -> TcPluginM [(([Type], [ClsInst], [GivenCt]), [WantedCt])]
+  TyCon -> Class -> [ClsInst] -> ([GivenCt], [WantedCt])
+        -> TcPluginM [(([(Either TyCon TyVar, [Kind])], [ClsInst], [GivenCt]), [WantedCt])]
 
 -- | Separates wanted constraints into different polymonads by looking
 --   at the connected components that are created by the implied bind-operations.
@@ -228,15 +230,21 @@ selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
   -- is in every one.
   -- FIXME: Specifically select and re-add 'Polymonad Identity Identity Identity'.
   let wCtComps = [ nubBy eqCt $ concat [ ctForNode compNode | compNode <- comp ] ++ fullyAppliedWantedCts | comp <- graphComps ]
-  forM wCtComps $ \wCtComp -> findPolymonadFor wCtComp >>= \pm -> return (pm, wCtComp)
+  printMsg "Found components:"
+  printObj wCtComps
+  pms <- forM wCtComps $ \wCtComp -> findPolymonadFor wCtComp >>= \pm -> return (pm, wCtComp)
+  printMsg "Found Polymonads:"
+  printObj pms
+  return pms
   where
-    findPolymonadFor :: [WantedCt] -> TcPluginM ([Type], [ClsInst], [GivenCt])
+    findPolymonadFor :: [WantedCt] -> TcPluginM ([(Either TyCon TyVar, [Kind])], [ClsInst], [GivenCt])
     findPolymonadFor wantedCts = do
       -- Collect all type constructors that are involved in the wanted constraints
       -- but remove that that are ambiguous.
-      let tyCons = nubBy eqType $ (mkTyConTy idTc :) $ filter (not . isAmbiguous)
+      let tyCons = nub $ fmap getTyConWithArgKinds
+                 $ nubBy eqType $ (mkTyConTy idTc :) $ filter (not . isAmbiguous)
                  $ concat $ catMaybes $ constraintClassTyArgs <$> wantedCts
-      -- filterApplicableInstances :: [GivenCt] -> [ClsInst] -> [Type] -> TcPluginM [ClsInst]
+      printObj tyCons
       -- Filter out the instances that are relevant to this polymonad.
       insts <- filterApplicableInstances gdCts pmInsts tyCons
       -- Return the polymonad.
@@ -305,31 +313,13 @@ selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
 --   The list of constraints contains the given and derived constraints that might be
 --   needed when checking if a instance is instantiated. These constraints
 --   should include non-polymonad constraints as well.
-filterApplicableInstances :: [GivenCt] -> [ClsInst] -> [Type] -> TcPluginM [ClsInst]
+filterApplicableInstances :: [GivenCt] -> [ClsInst] -> [(Either TyCon TyVar, [Kind])] -> TcPluginM [ClsInst]
 filterApplicableInstances givenCts pmInsts appliedTyCons =
   fmap (nubBy eqInstance . concat) $ forM pmInsts $ \pmInst -> do
-    -- Get the arguments of the instance we are looking at.
-    let (_instTvs, _instCtTys, _instCls, instArgs) = instanceSig pmInst
-    -- associations :: [(key , [value])] -> [[(key, value)]]
-    -- Now create all associations between arguments and type constructors that are available.
-    let assocs = fmap snd <$> associations [(instArg, appliedTyCons) | instArg <- instArgs]
-    -- Look at each of those associations and check if it actually instantiates.
-    mListInsts <- forM assocs $ \assoc ->
-      case matchInstanceTyVars pmInst assoc of
-        -- Association matches instance arguments, proceed...
-        Just instTvArgs -> do
-          -- Check if the given association actually instanctiates.
-          eIsInst <- isInstantiatedBy givenCts pmInst instTvArgs
-          -- Return instance if association instantiates.
-          case eIsInst of
-            Left err -> do
-              printMsg err
-              return Nothing
-            Right isInst -> return $ if isInst then Just pmInst else Nothing
-        -- Association does not even match instance arguments, so it will not instantiate.
-        Nothing -> return Nothing
-    -- Only keep those instances that actually are instantiated.
-    return $ catMaybes mListInsts
+    -- Check if the given association actually instanctiates.
+    isPotInst <- isPotentiallyInstantiatedPolymonad givenCts pmInst appliedTyCons
+    -- Return instance if association instantiates.
+    return $ if isPotInst then [pmInst] else []
 
 
 -- | Returns a list of all 'Control.Polymonad' instances that are currently in scope.

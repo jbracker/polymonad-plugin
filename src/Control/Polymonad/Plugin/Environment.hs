@@ -137,8 +137,7 @@ runPmPlugin givenCts allWantedCts pmM = do
           -- Now select the different polymonads...
           foundPms <- selectPolymonadByConnectedComponent idTyCon pmCls pmInsts (givenCts, wantedCts)
           -- ...and run the solver on each one of them.
-          results <- nestedSequence $ flip fmap foundPms $ \((pmTcs, pmRelevantInsts, gPmCts), wPmCts) -> do
-            let currPm = (fmap getTyConWithArgKinds pmTcs, pmRelevantInsts, gPmCts)
+          results <- nestedSequence $ flip fmap foundPms $ \(currPm@(pmTcs, pmRelevantInsts, gPmCts), wPmCts) ->
             runExceptT $ runReaderT pmM PmPluginEnv
               { pmEnvPolymonadModule = pmMdl
               , pmEnvPolymonadClass  = pmCls

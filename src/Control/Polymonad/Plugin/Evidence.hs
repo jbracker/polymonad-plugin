@@ -6,25 +6,29 @@
 module Control.Polymonad.Plugin.Evidence
   ( matchInstanceTyVars
   , isInstantiatedBy
+  , isPotentiallyInstantiatedPolymonad
   , produceEvidenceFor
   ) where
 
-import Data.Either ( isLeft )
+import Data.Either ( isLeft, isRight )
+import Data.Maybe ( catMaybes, isJust )
 import Data.List ( find )
 import qualified Data.Set as S
 
-import Control.Monad ( forM, when )
+import Control.Monad ( forM, mapM, when )
 import Control.Arrow ( first )
 
 import Type
-  ( Type
+  ( Type, TyVar, Kind
   , mkTopTvSubst, mkTyVarTy
   , substTy, substTys
   , eqType
   , getClassPredTys_maybe
   , getEqPredTys_maybe
   , splitTyConApp_maybe )
-import TyCon ( isTupleTyCon, isTypeFamilyTyCon )
+import TyCon
+  ( TyCon
+  , isTupleTyCon, isTypeFamilyTyCon )
 import InstEnv
   ( ClsInst(..)
   , instanceSig
@@ -40,13 +44,17 @@ import Outputable ( ($$) )
 import qualified Outputable as O
 
 import Control.Polymonad.Plugin.Evaluate ( evaluateType )
-import Control.Polymonad.Plugin.Constraint ( GivenCt )
+import Control.Polymonad.Plugin.Constraint
+  ( GivenCt
+  , constraintTyVars )
 import Control.Polymonad.Plugin.Utils
   ( fromLeft, fromRight
   , collectTyVars
-  , skolemVarsBindFun )
-import Control.Polymonad.Plugin.Log ( printObj, printMsg )
-import Control.Polymonad.Plugin.Debug ( containsAllOf, containsNoneOf )
+  , skolemVarsBindFun
+  , applyTyCon
+  , associations )
+--import Control.Polymonad.Plugin.Log ( printObj, printMsg )
+--import Control.Polymonad.Plugin.Debug ( containsAllOf, containsNoneOf )
 
 -- | Trys to see if the given arguments match the class instance
 --   arguments by unification. This only works if the number of arguments
@@ -86,6 +94,45 @@ isInstantiatedBy givenCts inst instArgs = do
   return $ case eEvTerm of
     Left _err -> Right False
     Right _ev -> Right True
+
+-- | Check if a given polymonad constraint can potentially be instantiated using the given
+--   type constructors. By potentially we mean: First, check if the
+--   polymonad instance can actually be applied to some combination of
+--   the type constructors. Then check if all resulting constraints that
+--   do not contain free variables actually can be instantiated.
+isPotentiallyInstantiatedPolymonad :: [GivenCt] -> ClsInst -> [(Either TyCon TyVar, [Kind])] -> TcPluginM Bool
+isPotentiallyInstantiatedPolymonad givenCts pmInst tyCons = do
+  -- Get the type constructors partially applied to some new variables to find potential matches
+  mAppliedTyCons <- mapM applyTyCon tyCons
+  case (catMaybes mAppliedTyCons, all isJust mAppliedTyCons) of
+    -- Only proceed if all type constructors are now indeed unary
+    (appliedTyCons, True) -> do
+      -- Create argument triplets
+      let tyConAssocs = fmap snd <$> associations [ (pos, appliedTyCons) | pos <- [0..2 :: Int]]
+      -- Now look at the instance and see if unification with any of our
+      -- triplets of arguments delivers a match.
+      fmap or $ forM tyConAssocs $ \tyConAssoc ->
+        case matchInstanceTyVars pmInst (fst <$> tyConAssoc) of
+          Just instArgMatches -> do
+            -- Create a substitution from our map.
+            let (instTyVars, instCts, _cls, _tyArgs) = instanceSig pmInst
+            let subst = mkTopTvSubst $ zip instTyVars instArgMatches
+            -- Substitute the matchings into the instance constraints.
+            let substInstCts = substTys subst instCts
+            -- Collect all instance constraints that do not contain variables.
+            let appliedInstCts = filter isFullyAppliedConstraint substInstCts
+            -- Check if we can produce evidence for them.
+            appliedInstCtEv <- mapM (produceEvidenceForCt givenCts) appliedInstCts
+            -- If so this instance is potentially instantiated.
+            return $ all isRight appliedInstCtEv
+          Nothing -> return False
+    _ -> return False
+  where
+    -- | The constraint is fully applied if it does not contain variables,
+    --   except for those contained in the given constraints.
+    isFullyAppliedConstraint :: Type -> Bool
+    isFullyAppliedConstraint t = collectTyVars t `S.isSubsetOf` S.unions (constraintTyVars <$> givenCts)
+
 
 -- | Apply the given instance dictionary to the given type arguments
 --   and try to produce evidence for the application.
