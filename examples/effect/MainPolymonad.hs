@@ -3,8 +3,8 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ConstraintKinds #-}
+--{-# LANGUAGE FlexibleContexts #-}
+--{-# LANGUAGE ConstraintKinds #-}
 
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -46,11 +46,11 @@ main = do
 varC = Var :: Var "count"
 varS = Var :: Var "out"
 
-incC :: State '["count" :-> Int :! RW] ()
-incC = do { x <- get varC; put varC (x + 1) }
+incC :: State '["count" :-> Int :! RW] Int
+incC = do { x <- get varC; put varC (x + 1); return (x + 1) }
 
 writeS :: [a] -> State '["out" :-> [a] :! RW] ()
 writeS y = do { x <- get varS; put varS (x ++ y) }
 
 write :: [a] -> State '["count" :-> Int :! RW, "out" :-> [a] :! RW] ()
-write x = do { writeS x; incC }
+write x = do { writeS x; _ <- incC; return () }

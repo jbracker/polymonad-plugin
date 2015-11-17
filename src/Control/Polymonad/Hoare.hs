@@ -52,4 +52,4 @@ instance HoareMonad m => Polymonad (m i j) Identity (m i j) where
 
 -- | Apply bind instance.
 instance HoareMonad m => Polymonad Identity (m i j) (m i j) where
-  (>>=) ma f = hoareBind (hoareRet $ runIdentity ma) f
+  (>>=) ma f = f (runIdentity ma)

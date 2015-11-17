@@ -25,8 +25,8 @@ main = do
 varC = Var :: Var "count"
 varS = Var :: Var "out"
 
-incC :: State '["count" :-> Int :! RW] ()
-incC = do { x <- get varC; put varC (x + 1) }
+incC :: State '["count" :-> Int :! RW] Int
+incC = do { x <- get varC; put varC (x + 1); return (x + 1) }
   where (>>=) :: (E.Inv State f g) => State f a -> (a -> State g b) -> State (E.Plus State f g) b
         (>>=) = (E.>>=)
         (>>) :: (E.Inv State f g) => State f a -> State g b -> State (E.Plus State f g) b
@@ -46,7 +46,7 @@ writeS y = do { x <- get varS; put varS (x ++ y) }
         fail = E.fail
 
 write :: [a] -> State '["count" :-> Int :! RW, "out" :-> [a] :! RW] ()
-write x = do { writeS x; incC }
+write x = do { writeS x; _ <- incC; return () }
   where (>>=) :: (E.Inv State f g) => State f a -> (a -> State g b) -> State (E.Plus State f g) b
         (>>=) = (E.>>=)
         (>>) :: (E.Inv State f g) => State f a -> State g b -> State (E.Plus State f g) b
