@@ -14,6 +14,7 @@ module Control.Polymonad.Plugin.Utils (
   , eqTyCon
   , isAmbiguousType
   , getTyConWithArgKinds
+  , applyTyCon
   , atIndex
   , associations
   , subsets
@@ -28,15 +29,17 @@ import Data.List ( find )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
+import Control.Monad ( forM )
 import Control.Arrow ( second )
 
 import Type
   ( Type, TyVar, TvSubst
   , getTyVar_maybe
   , tyConAppTyCon_maybe
-  , splitTyConApp_maybe
+  , splitTyConApp_maybe, splitFunTy_maybe, splitAppTy_maybe
+  , getEqPredTys_maybe
   , splitAppTys
-  , mkTyConTy
+  , mkTyConTy, mkTyVarTy, mkAppTys
   , mkTopTvSubst
   , eqType )
 import TyCon ( TyCon, tyConArity, tyConKind )
@@ -45,6 +48,7 @@ import TcType ( isAmbiguousTyVar )
 import Kind ( Kind, splitKindFunTys )
 import Unify ( BindFlag(..) )
 import InstEnv ( instanceBindFun )
+import TcPluginM ( TcPluginM, newFlexiTyVar )
 
 -- -----------------------------------------------------------------------------
 -- Constraint and type inspection
@@ -73,7 +77,7 @@ collectTopTcVars :: [Type] -> Set TyVar
 collectTopTcVars tys = S.fromList $ catMaybes $ fmap (getTyVar_maybe . fst . splitAppTys) tys
 
 -- | Try to collect all type variables in a given expression.
---   Only works for nested type constructor applications and type variables.
+--   Does not work for Pi or ForAll types.
 --   If the given type is not supported an empty set is returned.
 collectTyVars :: Type -> Set TyVar
 collectTyVars t =
@@ -81,7 +85,15 @@ collectTyVars t =
     Just tv -> S.singleton tv
     Nothing -> case splitTyConApp_maybe t of
       Just (_tc, args) -> S.unions $ fmap collectTyVars args
-      Nothing -> S.empty
+      Nothing -> case splitFunTy_maybe t of
+        Just (ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
+        Nothing -> case splitAppTy_maybe t of
+          Just (ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
+          Nothing -> case getTyVar_maybe t of
+            Just tv -> S.singleton tv
+            Nothing -> case getEqPredTys_maybe t of
+              Just (_r, ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
+              Nothing -> S.empty
 
 -- | Create a substitution that replaces the given type variables with their
 --   associated type constructors.
@@ -161,6 +173,21 @@ getTyConWithArgKinds t = case getTyVar_maybe tcTy of
     Just tc -> (Left tc, fst $ splitKindFunTys $ tyConKind tc)
     Nothing -> error "getTyConWithArity: Type does not contain a type constructor or variable."
   where (tcTy, _args) = splitAppTys t
+
+-- | Applies the given type constructor or type constructor variable to enough
+--   correctly kinded variables to make it a partially applied unary type
+--   constructor. The partially applied unary type constructor is returned
+--   together with the variables that were applied to it.
+--
+--   Will return 'Nothing' if there are to few kind arguments. It's supposed to be
+--   used in conjunction with the first part of 'getCurrentPolymonad'.
+applyTyCon :: (Either TyCon TyVar, [Kind]) -> TcPluginM (Maybe (Type, [TyVar]))
+applyTyCon (_    , []) = return Nothing
+applyTyCon (eTcTv, ks) = do
+  let ks' = init ks
+  tyVarArgs <- forM ks' newFlexiTyVar
+  let t = either mkTyConTy mkTyVarTy eTcTv
+  return $ Just (mkAppTys t $ fmap mkTyVarTy tyVarArgs, tyVarArgs)
 
 -- | Takes a list of keys and all of their possible values and returns a list
 --   of all possible associations between keys and values
