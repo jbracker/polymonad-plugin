@@ -1,7 +1,8 @@
 
 module Control.Polymonad.Plugin.Debug
-  ( containsOneOf
+  ( containsAnyOf
   , containsAllOf
+  , containsNoneOf
   , pprToStr
   ) where
 
@@ -15,8 +16,11 @@ import Outputable
 pprToStr :: Outputable o => o -> String
 pprToStr = showSDocUnsafe . ppr
 
-containsOneOf :: (Outputable o) => o -> [String] -> Bool
-containsOneOf obj = any (`isInfixOf` pprToStr obj)
+containsAnyOf :: (Outputable o) => o -> [String] -> Bool
+containsAnyOf obj = any (`isInfixOf` pprToStr obj)
 
 containsAllOf :: (Outputable o) => o -> [String] -> Bool
 containsAllOf obj = all (`isInfixOf` pprToStr obj)
+
+containsNoneOf :: (Outputable o) => o -> [String] -> Bool
+containsNoneOf obj = not . (obj `containsAnyOf`)
