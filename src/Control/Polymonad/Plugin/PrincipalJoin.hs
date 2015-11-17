@@ -35,7 +35,7 @@ import Control.Polymonad.Plugin.Core ( isInstanceOf )
 import Control.Polymonad.Plugin.Constraint
   ( GivenCt, constraintPolymonadTyArgs )
 import Control.Polymonad.Plugin.Utils
-  ( collectTyVars, skolemVarsBindFun )
+  ( collectTyVars, skolemVarsBindFun, applyTyCon )
 import Control.Polymonad.Plugin.Evaluate ( evaluateTypeEqualities )
 
 -- | Calculate the principal join of a set of unary type constructors.
@@ -94,21 +94,6 @@ principalJoinFor mAmbTv f _m = do
       printObj suitableJoinCands
       throwPluginError "principalJoinFor: Found more then one join. FIXME"
 
--- | Applies the given type constructor or type constructor variables to enought
---   correctly kinded variables to make it a partially applied unary type
---   constructor. The partially applied unary type constructor is returned
---   together with the variables that were applied to it.
---
---   Will throw an error if there are to few kind arguments. If supposed to be
---   used in conjunction with the first part of 'getCurrentPolymonad'.
-applyTyCon :: (Either TyCon TyVar, [Kind]) -> PmPluginM (Type, [TyVar])
-applyTyCon (_    , []) = throwPluginError "applyTyCon: Type constructor should have at least one argument"
-applyTyCon (eTcTv, ks) = do
-  let ks' = init ks
-  tyVarArgs <- forM ks' (runTcPlugin . newFlexiTyVar)
-  let t = either mkTyConTy mkTyVarTy eTcTv
-  return (mkAppTys t $ fmap mkTyVarTy tyVarArgs, tyVarArgs)
-
 -- | Check if the given combination of types matches the given constraints
 --   arguments.
 isPolymonadCtMatch :: (Type, Type, Type) -> Ct -> Bool
@@ -132,45 +117,48 @@ determineCommonJoinCandidates tyVarOrCons (pmInsts, pmCts) f = do
 determineJoinCandidates :: (Either TyCon TyVar, [Kind]) -> ([ClsInst], [GivenCt]) -> (Type, Type) -> PmPluginM [Type]
 determineJoinCandidates tyVarOrCons (pmInsts, pmCts) (t0, t1) = do
   -- We apply our current candidate to temporary variables
-  (joinCand, _joinCandVars) <- applyTyCon tyVarOrCons
-  -- Remember that we do not want to substitute our candidate if it is a type variable
-  let dontBindTvs = either (const []) (: []) $ fst tyVarOrCons
-  -- Now look at each instance and see of unification with out desired
-  -- triplet of arguments delivers a match. If so substitute the temporary
-  -- type variables and keep the substituted type constructor as possible condidate
-  instanceCands <- forM pmInsts $ \pmInst -> do
-    let (_instVars, superCts, _cls, instArgTys) = instanceSig pmInst
-    case tcUnifyTys (skolemVarsBindFun dontBindTvs) instArgTys [t0, t1, joinCand] of
-      Just subst -> do
-        -- Substitute the correct matchings in our candidate.
-        let substJoinCand = substTy subst joinCand
-        -- Now also evaluate type equalities to some extent.
-        -- This is necessary, because there are some type classes with type
-        -- equality constraints on them (see the effect monad example). We
-        -- need to evaluate these so we do not end up looking at our temporarly
-        -- generated variables.
-        let evalJoinCand = evaluateTypeEqualities ([], fmap (substTy subst) superCts) substJoinCand
-        return $ Just evalJoinCand
-      Nothing -> return Nothing
-  -- Repeat the same process for given constraints.
-  constraintCands <- forM pmCts $ \pmCt ->
-    case constraintPolymonadTyArgs pmCt of
-      Just (ct0, ct1, ct2) -> do
-        -- Here we have to make sure that type variable constructors from
-        -- the given constraints are not substituted
-        let ctVars = S.toList $ S.unions $ fmap collectTyVars [ct0, ct1, ct2]
-        case tcUnifyTys (skolemVarsBindFun $ dontBindTvs ++ ctVars) [ct0, ct1, ct2] [t0, t1, joinCand] of
-          Just subst -> return $ Just $ substTy subst joinCand
+  mJoinCand <- runTcPlugin $ applyTyCon tyVarOrCons
+  case mJoinCand of
+    Nothing -> throwPluginError "applyTyCon: Type constructor should have at least one argument"
+    Just (joinCand, _joinCandVars) -> do
+      -- Remember that we do not want to substitute our candidate if it is a type variable
+      let dontBindTvs = either (const []) (: []) $ fst tyVarOrCons
+      -- Now look at each instance and see of unification with out desired
+      -- triplet of arguments delivers a match. If so substitute the temporary
+      -- type variables and keep the substituted type constructor as possible condidate
+      instanceCands <- forM pmInsts $ \pmInst -> do
+        let (_instVars, superCts, _cls, instArgTys) = instanceSig pmInst
+        case tcUnifyTys (skolemVarsBindFun dontBindTvs) instArgTys [t0, t1, joinCand] of
+          Just subst -> do
+            -- Substitute the correct matchings in our candidate.
+            let substJoinCand = substTy subst joinCand
+            -- Now also evaluate type equalities to some extent.
+            -- This is necessary, because there are some type classes with type
+            -- equality constraints on them (see the effect monad example). We
+            -- need to evaluate these so we do not end up looking at our temporarly
+            -- generated variables.
+            let evalJoinCand = evaluateTypeEqualities ([], fmap (substTy subst) superCts) substJoinCand
+            return $ Just evalJoinCand
           Nothing -> return Nothing
-      Nothing -> return Nothing
-  -- Finally return all found candidates and remove and duplicates among them.
-  return $ nubBy eqType $ catMaybes $ instanceCands ++ constraintCands
+      -- Repeat the same process for given constraints.
+      constraintCands <- forM pmCts $ \pmCt ->
+        case constraintPolymonadTyArgs pmCt of
+          Just (ct0, ct1, ct2) -> do
+            -- Here we have to make sure that type variable constructors from
+            -- the given constraints are not substituted
+            let ctVars = S.toList $ S.unions $ fmap collectTyVars [ct0, ct1, ct2]
+            case tcUnifyTys (skolemVarsBindFun $ dontBindTvs ++ ctVars) [ct0, ct1, ct2] [t0, t1, joinCand] of
+              Just subst -> return $ Just $ substTy subst joinCand
+              Nothing -> return Nothing
+          Nothing -> return Nothing
+      -- Finally return all found candidates and remove and duplicates among them.
+      return $ nubBy eqType $ catMaybes $ instanceCands ++ constraintCands
 
 -- | Checks if there is a matching instance or given constraints that matches
 --   the given combination of arguments.
 hasMatch :: (Type, Type, Type) -> ([ClsInst], [GivenCt]) -> PmPluginM Bool
 hasMatch tys@(t0, t1, t2) (pmInsts, pmCts) = do
-  instanceMatches <- forM pmInsts $ \pmInst -> do
+  instanceMatches <- forM pmInsts $ \pmInst ->
     case matchInstanceTyVars pmInst [t0, t1, t2] of
       Just args ->
         args `isInstanceOf` pmInst
