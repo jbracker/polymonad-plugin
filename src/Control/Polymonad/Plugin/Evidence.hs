@@ -13,7 +13,8 @@ import Data.Either ( isLeft )
 import Data.List ( find )
 import qualified Data.Set as S
 
-import Control.Monad ( forM )
+import Control.Monad ( forM, when )
+import Control.Arrow ( first )
 
 import Type
   ( Type
@@ -23,7 +24,7 @@ import Type
   , getClassPredTys_maybe
   , getEqPredTys_maybe
   , splitTyConApp_maybe )
-import TyCon ( isTupleTyCon )
+import TyCon ( isTupleTyCon, isTypeFamilyTyCon )
 import InstEnv
   ( ClsInst(..)
   , instanceSig
@@ -44,7 +45,8 @@ import Control.Polymonad.Plugin.Utils
   ( fromLeft, fromRight
   , collectTyVars
   , skolemVarsBindFun )
---import Control.Polymonad.Plugin.Log ( printObj, printMsg )
+import Control.Polymonad.Plugin.Log ( printObj, printMsg )
+import Control.Polymonad.Plugin.Debug ( containsAllOf, containsNoneOf )
 
 -- | Trys to see if the given arguments match the class instance
 --   arguments by unification. This only works if the number of arguments
@@ -125,7 +127,10 @@ produceEvidenceForCt :: [GivenCt] -> Type -> TcPluginM (Either O.SDoc EvTerm)
 produceEvidenceForCt givenCts ct = do
   let checkedGivenCts = filter isGivenCt givenCts
   -- Evaluate their contained synonyms and families.
-  (ctCoercion, normCt) <- evaluateType ct
+  -- Only do this if we are actually facing a type family application.
+  (ctCoercion, normCt) <- if isTypeFunctionApplication ct
+    then first Just <$> evaluateType ct
+    else return (Nothing, ct)
   mEvTerm <- case getClassPredTys_maybe normCt of
     -- Do we have a class constraint?
     Just (ctCls, ctArgs) -> do
@@ -184,7 +189,15 @@ produceEvidenceForCt givenCts ct = do
                   $ O.text "Can't produce evidence for this constraint:"
                   $$ O.ppr normCt
   -- Finally we have to coerce the found evidence according to the coercion
-  -- that resulted from evaluating the evidence.
+  -- that resulted from evaluating the evidence (if there is one).
   let coerEv :: EvTerm -> EvTerm
-      coerEv ev = EvCast ev (TcCoercion ctCoercion)
-  return mEvTerm -- $ coerEv <$> mEvTerm
+      coerEv ev = case ctCoercion of
+        Just coer -> EvCast ev (TcCoercion coer)
+        Nothing -> ev
+  return $ coerEv <$> mEvTerm
+  where
+    -- | Check of the given type is the application of a type family data constructor.
+    isTypeFunctionApplication :: Type -> Bool
+    isTypeFunctionApplication t = case splitTyConApp_maybe t of
+      Just (tc, _args) -> isTypeFamilyTyCon tc
+      Nothing -> False
