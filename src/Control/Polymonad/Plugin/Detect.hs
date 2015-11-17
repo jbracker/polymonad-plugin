@@ -230,12 +230,7 @@ selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
   -- is in every one.
   -- FIXME: Specifically select and re-add 'Polymonad Identity Identity Identity'.
   let wCtComps = [ nubBy eqCt $ concat [ ctForNode compNode | compNode <- comp ] ++ fullyAppliedWantedCts | comp <- graphComps ]
-  printMsg "Found components:"
-  printObj wCtComps
-  pms <- forM wCtComps $ \wCtComp -> findPolymonadFor wCtComp >>= \pm -> return (pm, wCtComp)
-  printMsg "Found Polymonads:"
-  printObj pms
-  return pms
+  forM wCtComps $ \wCtComp -> findPolymonadFor wCtComp >>= \pm -> return (pm, wCtComp)
   where
     findPolymonadFor :: [WantedCt] -> TcPluginM ([(Either TyCon TyVar, [Kind])], [ClsInst], [GivenCt])
     findPolymonadFor wantedCts = do
@@ -244,7 +239,6 @@ selectPolymonadByConnectedComponent idTc pmCls pmInsts (gdCts, wCts) = do
       let tyCons = nub $ fmap getTyConWithArgKinds
                  $ nubBy eqType $ (mkTyConTy idTc :) $ filter (not . isAmbiguous)
                  $ concat $ catMaybes $ constraintClassTyArgs <$> wantedCts
-      printObj tyCons
       -- Filter out the instances that are relevant to this polymonad.
       insts <- filterApplicableInstances gdCts pmInsts tyCons
       -- Return the polymonad.
