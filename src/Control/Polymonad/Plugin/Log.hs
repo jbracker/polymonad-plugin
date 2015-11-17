@@ -20,21 +20,16 @@ import SrcLoc
   , srcSpanFileName_maybe
   , srcSpanStartLine, srcSpanEndLine
   , srcSpanStartCol, srcSpanEndCol )
-import Outputable
-  ( Outputable( ppr )
-  , showSDocUnsafe )
+import Outputable ( Outputable )
 import FastString ( unpackFS )
 import TcRnTypes
   ( Ct(..), CtFlavour(..)--, CtLoc(..)
   , ctFlavour, ctPred )
 import TcPluginM ( TcPluginM, tcPluginIO )
 
+import Control.Polymonad.Plugin.Debug ( pprToStr )
 import Control.Polymonad.Plugin.Utils ( removeDup )
 import Control.Polymonad.Plugin.Constraint ( constraintSourceLocation )
-
--- | Convert some generic outputable to a string (Unsafe).
-pprToStr :: Outputable o => o -> String
-pprToStr = showSDocUnsafe . ppr
 
 -- | @prefixMsg prefix msg@ prefixes a message with the given string.
 prefixMsg :: String -> String -> String
