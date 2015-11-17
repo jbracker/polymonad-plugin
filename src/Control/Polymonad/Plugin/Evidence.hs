@@ -24,11 +24,12 @@ import Type
   , substTy, substTys
   , eqType
   , getClassPredTys_maybe
-  , getEqPredTys_maybe
+  , getEqPredTys_maybe, getEqPredTys, getEqPredRole
   , splitTyConApp_maybe )
 import TyCon
   ( TyCon
   , isTupleTyCon, isTypeFamilyTyCon )
+import Coercion ( Coercion(..) )
 import InstEnv
   ( ClsInst(..)
   , instanceSig
@@ -53,8 +54,8 @@ import Control.Polymonad.Plugin.Utils
   , skolemVarsBindFun
   , applyTyCon
   , associations )
---import Control.Polymonad.Plugin.Log ( printObj, printMsg )
---import Control.Polymonad.Plugin.Debug ( containsAllOf, containsNoneOf )
+import Control.Polymonad.Plugin.Log ( printObj, printMsg )
+import Control.Polymonad.Plugin.Debug ( containsAllOf, containsNoneOf )
 
 -- | Trys to see if the given arguments match the class instance
 --   arguments by unification. This only works if the number of arguments
@@ -91,9 +92,14 @@ matchInstanceTyVars inst instArgs = do
 isInstantiatedBy :: [GivenCt] -> ClsInst -> [Type] -> TcPluginM (Either String Bool)
 isInstantiatedBy givenCts inst instArgs = do
   eEvTerm <- produceEvidenceFor givenCts inst instArgs
-  return $ case eEvTerm of
-    Left _err -> Right False
-    Right _ev -> Right True
+  case eEvTerm of
+    Left err -> do
+      printObj err
+      return $ Right False
+    Right _ev -> return $ Right True
+
+instance O.Outputable O.SDoc where
+  ppr = id
 
 -- | Check if a given polymonad constraint can potentially be instantiated using the given
 --   type constructors. By potentially we mean: First, check if the
@@ -175,17 +181,17 @@ produceEvidenceForCt givenCts ct = do
   let checkedGivenCts = filter isGivenCt givenCts
   -- Evaluate their contained synonyms and families.
   -- Only do this if we are actually facing a type family application.
-  (ctCoercion, normCt) <- if isTypeFunctionApplication ct
-    then first Just <$> evaluateType ct
-    else return (Nothing, ct)
+  (mCtCoercion, normCt) <- conditionalEval ct
   mEvTerm <- case getClassPredTys_maybe normCt of
     -- Do we have a class constraint?
     Just (ctCls, ctArgs) -> do
+      -- There may be unevaluates type synonyms/functions in the arguments.
+      --normCtArgs <- mapM conditionalEval ctArgs
       -- Global instance environment.
       instEnvs <- getInstEnvs
       -- Look for suitable instance. Since we are not necessarily working
       -- with polymonads anymore we need to find a unique one.
-      case lookupUniqueInstEnv instEnvs ctCls ctArgs of
+      case lookupUniqueInstEnv instEnvs ctCls ctArgs of -- (snd <$> normCtArgs)
         -- No instance found, too bad...
         Left err ->
           return $ Left
@@ -199,12 +205,17 @@ produceEvidenceForCt givenCts ct = do
     Nothing ->
       case getEqPredTys_maybe normCt of
         -- Do we have a type equality constraint?
-        Just (r, ta, tb) ->
+        Just (_, _, _) -> do
+          -- There might be a type function application inside of the types
+          -- of the equality; evaluate it...
+          (coer, normCt') <- evaluateType normCt
+          let (ta, tb) = getEqPredTys normCt'
+          let r = getEqPredRole normCt'
           -- We only do the simplest kind of equality constraint solving and
           -- evidence construction.
           if eqType ta tb
             then
-              return $ Right $ EvCoercion $ TcRefl r ta
+              return $ Right $ EvCast (EvCoercion $ TcRefl r ta) (TcCoercion coer)
             else
               return $ Left
                 $ O.text "Can't produce evidence for this type equality constraint:"
@@ -238,7 +249,7 @@ produceEvidenceForCt givenCts ct = do
   -- Finally we have to coerce the found evidence according to the coercion
   -- that resulted from evaluating the evidence (if there is one).
   let coerEv :: EvTerm -> EvTerm
-      coerEv ev = case ctCoercion of
+      coerEv ev = case mCtCoercion of
         Just coer -> EvCast ev (TcCoercion coer)
         Nothing -> ev
   return $ coerEv <$> mEvTerm
@@ -248,3 +259,8 @@ produceEvidenceForCt givenCts ct = do
     isTypeFunctionApplication t = case splitTyConApp_maybe t of
       Just (tc, _args) -> isTypeFamilyTyCon tc
       Nothing -> False
+
+    conditionalEval :: Type -> TcPluginM (Maybe Coercion, Type)
+    conditionalEval t = if isTypeFunctionApplication t
+      then first Just <$> evaluateType t
+      else return (Nothing, t)
