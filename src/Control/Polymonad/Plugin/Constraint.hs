@@ -24,6 +24,7 @@ module Control.Polymonad.Plugin.Constraint
   , constraintTopAmbiguousTyVars
   , constraintLocation
   , constraintSourceLocation
+  , constraintTyVars
   ) where
 
 import Data.Maybe ( isJust, catMaybes, fromMaybe )
@@ -198,3 +199,6 @@ constraintSourceLocation = RealSrcSpan . tcl_loc . ctl_env . constraintLocation
 #else
 constraintSourceLocation = tcl_loc . ctl_env . constraintLocation
 #endif
+
+constraintTyVars :: Ct -> Set TyVar
+constraintTyVars = collectTyVars . ctev_pred . cc_ev
