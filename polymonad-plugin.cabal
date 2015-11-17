@@ -30,6 +30,7 @@ library
                  , Control.Polymonad.Functions
                  , Control.Polymonad.Prelude
                  , Control.Polymonad.Plugin
+                 , Control.Polymonad.Plugin.Debug
                  , Control.Polymonad.Plugin.Log
                  , Control.Polymonad.Plugin.Utils
                  , Control.Polymonad.Plugin.Evidence
