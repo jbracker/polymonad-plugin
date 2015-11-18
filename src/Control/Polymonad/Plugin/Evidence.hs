@@ -23,26 +23,28 @@ import Type
   , mkTopTvSubst, mkTyVarTy
   , substTy, substTys
   , eqType
-  , getClassPredTys_maybe
-  , getEqPredTys_maybe
+  , getClassPredTys_maybe, getClassPredTys
+  , getEqPredTys_maybe, getEqPredTys, getEqPredRole
   , getTyVar_maybe
   , splitTyConApp_maybe, splitFunTy_maybe, splitAppTy_maybe )
 import TyCon
   ( TyCon
-  , isTupleTyCon, isTypeFamilyTyCon )
+  , isTupleTyCon, isTypeFamilyTyCon, isTypeSynonymTyCon )
+import Class ( Class )
 import Coercion ( Coercion(..) )
 import InstEnv
   ( ClsInst(..)
   , instanceSig
   , lookupUniqueInstEnv )
 import Unify ( tcUnifyTys )
+import CoAxiom ( Role )
 import TcRnTypes ( isGivenCt, ctPred, ctEvidence, ctEvTerm )
 import TcType ( isAmbiguousTyVar )
 import TcEvidence ( EvTerm(..), TcCoercion(..) )
 import TcPluginM
   ( TcPluginM
   , getInstEnvs )
-import Outputable ( ($$) )
+import Outputable ( ($$), SDoc )
 import qualified Outputable as O
 
 import Control.Polymonad.Plugin.Evaluate ( evaluateType )
@@ -152,7 +154,7 @@ isPotentiallyInstantiatedPolymonad givenCts pmInst tyCons = do
 --
 --   This function should properly work with type synonyms and type functions.
 --   It only produces evidence for type equalities if they are trivial, i.e., @a ~ a@.
-produceEvidenceFor :: [GivenCt] -> ClsInst -> [Type] -> TcPluginM (Either O.SDoc EvTerm)
+produceEvidenceFor :: [GivenCt] -> ClsInst -> [Type] -> TcPluginM (Either SDoc EvTerm)
 produceEvidenceFor givenCts inst instArgs = do
   -- Get the instance type variables and constraints (by that we know the
   -- number of type arguments and dictionart arguments for the EvDFunApp)
@@ -172,106 +174,123 @@ produceEvidenceFor givenCts inst instArgs = do
       $$ O.vcat (fromLeft <$> filter isLeft ctEvTerms)
     else Right $ EvDFunApp (is_dfun inst) instArgs (fromRight <$> ctEvTerms)
 
-produceEvidenceForCt :: [GivenCt] -> Type -> TcPluginM (Either O.SDoc EvTerm)
-produceEvidenceForCt givenCts ct = do
-  let checkedGivenCts = filter isGivenCt givenCts
-  -- Evaluate their contained synonyms and families.
-  -- Only do this if we are actually facing a type family application.
-  (mCtCoercion, normCt) <- conditionalEval ct
-  -- A coercion function to apply the coercion when required.
-  let coerEv :: EvTerm -> EvTerm
-      coerEv ev = case mCtCoercion of
-        Just coer -> EvCast ev (TcCoercion coer)
-        Nothing -> ev
-  let coerEvSym :: EvTerm -> EvTerm
-      coerEvSym ev = case mCtCoercion of
-        Just coer -> EvCast ev (TcSymCo $ TcCoercion coer)
-        Nothing -> ev
-  -- Try to produce actual evidence.
-  case getClassPredTys_maybe normCt of
-    -- Do we have a class constraint?
-    Just (ctCls, ctArgs) -> do
-      -- There may be unevaluates type synonyms/functions in the arguments.
-      --normCtArgs <- mapM conditionalEval ctArgs
-      -- Global instance environment.
+produceEvidenceForCt :: [GivenCt] -> Type -> TcPluginM (Either SDoc EvTerm)
+produceEvidenceForCt givenCts ct =
+  case splitTyConApp_maybe ct of
+    -- Do we have a tuple of constraints?
+    Just (tc, tcArgs) | isTupleTyCon tc -> do
+      -- Produce evidence for each element of the tuple
+      tupleEvs <- mapM (produceEvidenceForCt checkedGivenCts) tcArgs
+      return $ if any isLeft tupleEvs
+        then Left
+          $ O.text "Can't find evidence for this tuple constraint:"
+          $$ O.ppr ct
+          $$ O.text "Reason:"
+          $$ O.vcat (fromLeft <$> filter isLeft tupleEvs)
+        -- And put together evidence for the complete tuple.
+        else Right $ EvTupleMk $ fmap fromRight tupleEvs
+    -- Do we have a type family application?
+    Just (tc, _tcArgs) | isTyFunCon tc -> do
+      -- Evaluate it...
+      (coer, evalCt) <- evaluateType ct
+      -- Produce evidence for the evaluated term
+      eEvEvalCt <- produceEvidenceForCt checkedGivenCts evalCt
+      -- Add the appropriate cast to the produced evidence
+      return $ (\ev -> EvCast ev (TcCoercion coer)) <$> eEvEvalCt
+    -- Do we have a type equality constraint?
+    _ -> case getEqPredTys_maybe ct of
+      -- If there is a synonym or type function in the equality...
+      Just _ | containsTyFunApp ct -> do
+          -- Evaluate it...
+          (coer, evalCt) <- evaluateType ct
+          -- Produce evidence for the evaluated term and
+          -- add the appropriate cast to the produced evidence
+          let (ta, tb) = getEqPredTys evalCt
+          let r = getEqPredRole evalCt
+          return $ (\ev -> EvCast ev (TcSymCo $ TcCoercion coer)) <$> produceTypeEqEv r ta tb
+      -- If there isn't we can just proceed...
+      Just (r, ta, tb) -> return $ produceTypeEqEv r ta tb
+      -- Do we have a class constraint?
+      _ -> case getClassPredTys_maybe ct of
+        Just _ | containsTyFunApp ct -> do
+          -- Evaluate it...
+          (coer, evalCt) <- evaluateType ct
+          -- Produce evidence for the evaluated term and
+          -- add the appropriate cast to the produced evidence
+          let (cls, args) = getClassPredTys evalCt
+          fmap (\ev -> EvCast ev (TcCoercion coer)) <$> produceClassCtEv cls args
+        Just (ctCls, ctArgs) -> produceClassCtEv ctCls ctArgs
+        -- In any other case, lets try if one of the given constraints can help...
+        _ | containsTyFunApp ct -> do
+          -- Evaluate it...
+          (coer, evalCt) <- evaluateType ct
+          -- and produce the appropriate cast
+          return $ (\ev -> EvCast ev (TcCoercion coer)) <$> produceGivenCtEv evalCt
+        -- In any other case, lets try if one of the given constraints can help...
+        _ -> return $ produceGivenCtEv ct
+  where
+    -- Ensure there are only given constraints there.
+    checkedGivenCts = filter isGivenCt givenCts
+
+    -- We only do the simplest kind of equality constraint solving and
+    -- evidence construction.
+    produceTypeEqEv :: Role -> Type -> Type -> Either SDoc EvTerm
+    produceTypeEqEv r ta tb = if eqType ta tb
+      then Right $ EvCoercion $ TcRefl r ta
+      else Left
+        $ O.text "Can't produce evidence for this type equality constraint:"
+        $$ O.ppr ct
+
+    -- Produce evidence of a class constraint.
+    produceClassCtEv :: Class -> [Type] -> TcPluginM (Either SDoc EvTerm)
+    produceClassCtEv cls args = do
+      -- Get global instance environment
       instEnvs <- getInstEnvs
       -- Look for suitable instance. Since we are not necessarily working
       -- with polymonads anymore we need to find a unique one.
-      case lookupUniqueInstEnv instEnvs ctCls ctArgs of -- (snd <$> normCtArgs)
+      case lookupUniqueInstEnv instEnvs cls args of -- (snd <$> normCtArgs)
         -- No instance found, too bad...
         Left err ->
           return $ Left
             $ O.text "Can't produce evidence for this class constraint:"
-            $$ O.ppr normCt
+            $$ O.ppr ct
             $$ O.text "Lookup error:"
             $$ err
         -- We found one: Now we can produce evidence for the found instance.
-        Right (clsInst, instArgs) -> fmap coerEv <$> produceEvidenceFor checkedGivenCts clsInst instArgs
-    -- We do not have a class constraint...
-    Nothing ->
-      case getEqPredTys_maybe normCt of
-        -- Do we have a type equality constraint?
-        Just (r, ta, tb) ->
-          -- We only do the simplest kind of equality constraint solving and
-          -- evidence construction.
-          if eqType ta tb
-            then
-              -- Special case: Apply an additional symmetry
-              return $ Right $ coerEvSym $ EvCoercion $ TcRefl r ta
-            else
-              return $ Left
-                $ O.text "Can't produce evidence for this type equality constraint:"
-                $$ O.ppr normCt
-        -- We do not have a type equality constraint either...
-        Nothing ->
-          case splitTyConApp_maybe normCt of
-            -- Do we have a tuple of constraints? (Probably resulting from evaluation)
-            Just (tc, tcArgs) | isTupleTyCon tc -> do
-              -- Produce evidence for each element of the tuple
-              tupleEvs <- forM tcArgs $ produceEvidenceForCt checkedGivenCts
-              return $ if any isLeft tupleEvs
-                then Left
-                  $ O.text "Can't find evidence for this tuple constraint:"
-                  $$ O.ppr normCt
-                  $$ O.text "Reason:"
-                  $$ O.vcat (fromLeft <$> filter isLeft tupleEvs)
-                -- And put together evidence for the complete tuple.
-                else Right $ coerEv $ EvTupleMk $ fmap fromRight tupleEvs
-            -- We don't have a tuple constraint...
-            _ -> case find (eqType normCt . ctPred) checkedGivenCts of
-              -- Check if there is some given constraint that provides evidence
-              -- for our constraint.
-              Just foundGivenCt ->
-                return $ Right $ coerEv $ ctEvTerm (ctEvidence foundGivenCt)
-              -- Nothing delivered a result, give up...
-              Nothing ->
-                return $ Left
-                  $ O.text "Can't produce evidence for this constraint:"
-                  $$ O.ppr normCt
-  where
+        Right (clsInst, instArgs) -> produceEvidenceFor checkedGivenCts clsInst instArgs
+
+    -- Try to find a given constraint that matches and use its evidence.
+    produceGivenCtEv :: Type -> Either SDoc EvTerm
+    produceGivenCtEv cnstrnt = case find (eqType cnstrnt . ctPred) checkedGivenCts of
+      -- Check if there is some given constraint that provides evidence
+      -- for our constraint.
+      Just foundGivenCt -> Right $ ctEvTerm (ctEvidence foundGivenCt)
+      -- Nothing delivered a result, give up...
+      Nothing -> Left
+        $ O.text "Can't produce evidence for this constraint:"
+        $$ O.ppr cnstrnt
+
+    -- Is this type constructor something that requires evaluation?
+    isTyFunCon :: TyCon -> Bool
+    isTyFunCon tc = isTypeFamilyTyCon tc || isTypeSynonymTyCon tc
+
     -- | Check of the given type is the application of a type family data constructor.
-    isTypeFunctionApplication :: Type -> Bool
-    isTypeFunctionApplication t = case splitTyConApp_maybe t of
-      Just (tc, _args) -> isTypeFamilyTyCon tc
+    isTyFunApp :: Type -> Bool
+    isTyFunApp t = case splitTyConApp_maybe t of
+      Just (tc, _args) -> isTyFunCon tc
       Nothing -> False
 
     -- | Find out if there is a type function application somewhere inside the type.
-    containsTypeFunctionApplication :: Type -> Bool
-    containsTypeFunctionApplication t = isTypeFunctionApplication t ||
+    containsTyFunApp :: Type -> Bool
+    containsTyFunApp t = isTyFunApp t ||
       case getTyVar_maybe t of
         Just _tv -> False
         Nothing -> case splitTyConApp_maybe t of
-          Just (tc, _args) | isTupleTyCon tc -> False
-          Just (_tc, args) -> any containsTypeFunctionApplication args
+          Just (_tc, args) -> any containsTyFunApp args
           Nothing -> case splitFunTy_maybe t of
-            Just (ta, tb) -> containsTypeFunctionApplication ta || containsTypeFunctionApplication tb
+            Just (ta, tb) -> containsTyFunApp ta || containsTyFunApp tb
             Nothing -> case splitAppTy_maybe t of
-              Just (ta, tb) -> containsTypeFunctionApplication ta || containsTypeFunctionApplication tb
+              Just (ta, tb) -> containsTyFunApp ta || containsTyFunApp tb
               Nothing -> case getEqPredTys_maybe t of
-                Just (_r, ta, tb) -> containsTypeFunctionApplication ta || containsTypeFunctionApplication tb
+                Just (_r, ta, tb) -> containsTyFunApp ta || containsTyFunApp tb
                 Nothing -> False
-
-    conditionalEval :: Type -> TcPluginM (Maybe Coercion, Type)
-    conditionalEval t = if containsTypeFunctionApplication t
-      then first Just <$> evaluateType t
-      else return (Nothing, t)
