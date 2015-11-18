@@ -178,7 +178,17 @@ produceEvidenceForCt givenCts ct = do
   -- Evaluate their contained synonyms and families.
   -- Only do this if we are actually facing a type family application.
   (mCtCoercion, normCt) <- conditionalEval ct
-  mEvTerm <- case getClassPredTys_maybe normCt of
+  -- A coercion function to apply the coercion when required.
+  let coerEv :: EvTerm -> EvTerm
+      coerEv ev = case mCtCoercion of
+        Just coer -> EvCast ev (TcCoercion coer)
+        Nothing -> ev
+  let coerEvSym :: EvTerm -> EvTerm
+      coerEvSym ev = case mCtCoercion of
+        Just coer -> EvCast ev (TcSymCo $ TcCoercion coer)
+        Nothing -> ev
+  -- Try to produce actual evidence.
+  case getClassPredTys_maybe normCt of
     -- Do we have a class constraint?
     Just (ctCls, ctArgs) -> do
       -- There may be unevaluates type synonyms/functions in the arguments.
@@ -196,7 +206,7 @@ produceEvidenceForCt givenCts ct = do
             $$ O.text "Lookup error:"
             $$ err
         -- We found one: Now we can produce evidence for the found instance.
-        Right (clsInst, instArgs) -> produceEvidenceFor checkedGivenCts clsInst instArgs
+        Right (clsInst, instArgs) -> fmap coerEv <$> produceEvidenceFor checkedGivenCts clsInst instArgs
     -- We do not have a class constraint...
     Nothing ->
       case getEqPredTys_maybe normCt of
@@ -206,7 +216,8 @@ produceEvidenceForCt givenCts ct = do
           -- evidence construction.
           if eqType ta tb
             then
-              return $ Right $ EvCoercion $ TcRefl r ta
+              -- Special case: Apply an additional symmetry
+              return $ Right $ coerEvSym $ EvCoercion $ TcRefl r ta
             else
               return $ Left
                 $ O.text "Can't produce evidence for this type equality constraint:"
@@ -225,25 +236,18 @@ produceEvidenceForCt givenCts ct = do
                   $$ O.text "Reason:"
                   $$ O.vcat (fromLeft <$> filter isLeft tupleEvs)
                 -- And put together evidence for the complete tuple.
-                else Right $ EvTupleMk $ fmap fromRight tupleEvs
+                else Right $ coerEv $ EvTupleMk $ fmap fromRight tupleEvs
             -- We don't have a tuple constraint...
             _ -> case find (eqType normCt . ctPred) checkedGivenCts of
               -- Check if there is some given constraint that provides evidence
               -- for our constraint.
               Just foundGivenCt ->
-                return $ Right $ ctEvTerm (ctEvidence foundGivenCt)
+                return $ Right $ coerEv $ ctEvTerm (ctEvidence foundGivenCt)
               -- Nothing delivered a result, give up...
               Nothing ->
                 return $ Left
                   $ O.text "Can't produce evidence for this constraint:"
                   $$ O.ppr normCt
-  -- Finally we have to coerce the found evidence according to the coercion
-  -- that resulted from evaluating the evidence (if there is one).
-  let coerEv :: EvTerm -> EvTerm
-      coerEv ev = case mCtCoercion of
-        Just coer -> EvCast ev (TcSymCo $ TcCoercion coer)
-        Nothing -> ev
-  return $ coerEv <$> mEvTerm
   where
     -- | Check of the given type is the application of a type family data constructor.
     isTypeFunctionApplication :: Type -> Bool
