@@ -161,8 +161,6 @@ isAmbiguousType ty = maybe False isAmbiguousTyVar $ getTyVar_maybe ty
 --
 -- >>> getTyConWithArgKinds (p s)
 -- (Right p, [*, *]) -- Assuming the kind of s is *. case getEqPredTys_maybe t of
-                Just (_r, ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
-                Nothing -
 --
 -- >>> getTyConWithArgKinds Identity
 -- (Left Identity, [*])
@@ -253,6 +251,3 @@ fromLeft (Right _) = error "fromLeft: Applied to 'Right'"
 fromRight :: Either a b -> b
 fromRight (Left _) = error "fromRight: Applied to 'Left'"
 fromRight (Right b) = b
- case getEqPredTys_maybe t of
-                Just (_r, ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
-                Nothing -
