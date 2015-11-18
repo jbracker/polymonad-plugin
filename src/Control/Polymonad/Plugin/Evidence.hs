@@ -25,7 +25,8 @@ import Type
   , eqType
   , getClassPredTys_maybe
   , getEqPredTys_maybe, getEqPredTys, getEqPredRole
-  , splitTyConApp_maybe )
+  , getTyVar_maybe
+  , splitTyConApp_maybe, splitFunTy_maybe, splitAppTy_maybe )
 import TyCon
   ( TyCon
   , isTupleTyCon, isTypeFamilyTyCon )
@@ -205,17 +206,12 @@ produceEvidenceForCt givenCts ct = do
     Nothing ->
       case getEqPredTys_maybe normCt of
         -- Do we have a type equality constraint?
-        Just (_, _, _) -> do
-          -- There might be a type function application inside of the types
-          -- of the equality; evaluate it...
-          (coer, normCt') <- evaluateType normCt
-          let (ta, tb) = getEqPredTys normCt'
-          let r = getEqPredRole normCt'
+        Just (r, ta, tb) ->
           -- We only do the simplest kind of equality constraint solving and
           -- evidence construction.
           if eqType ta tb
             then
-              return $ Right $ EvCast (EvCoercion $ TcRefl r ta) (TcCoercion coer)
+              return $ Right $ EvCoercion $ TcRefl r ta
             else
               return $ Left
                 $ O.text "Can't produce evidence for this type equality constraint:"
@@ -250,7 +246,7 @@ produceEvidenceForCt givenCts ct = do
   -- that resulted from evaluating the evidence (if there is one).
   let coerEv :: EvTerm -> EvTerm
       coerEv ev = case mCtCoercion of
-        Just coer -> EvCast ev (TcCoercion coer)
+        Just coer -> EvCast ev (TcSymCo $ TcCoercion coer)
         Nothing -> ev
   return $ coerEv <$> mEvTerm
   where
@@ -260,7 +256,23 @@ produceEvidenceForCt givenCts ct = do
       Just (tc, _args) -> isTypeFamilyTyCon tc
       Nothing -> False
 
+    -- | Find out if there is a type function application somewhere inside the type.
+    containsTypeFunctionApplication :: Type -> Bool
+    containsTypeFunctionApplication t = isTypeFunctionApplication t ||
+      case getTyVar_maybe t of
+        Just _tv -> False
+        Nothing -> case splitTyConApp_maybe t of
+          Just (tc, _args) | isTupleTyCon tc -> False
+          Just (_tc, args) -> any containsTypeFunctionApplication args
+          Nothing -> case splitFunTy_maybe t of
+            Just (ta, tb) -> containsTypeFunctionApplication ta || containsTypeFunctionApplication tb
+            Nothing -> case splitAppTy_maybe t of
+              Just (ta, tb) -> containsTypeFunctionApplication ta || containsTypeFunctionApplication tb
+              Nothing -> case getEqPredTys_maybe t of
+                Just (_r, ta, tb) -> containsTypeFunctionApplication ta || containsTypeFunctionApplication tb
+                Nothing -> False
+
     conditionalEval :: Type -> TcPluginM (Maybe Coercion, Type)
-    conditionalEval t = if isTypeFunctionApplication t
+    conditionalEval t = if containsTypeFunctionApplication t
       then first Just <$> evaluateType t
       else return (Nothing, t)
