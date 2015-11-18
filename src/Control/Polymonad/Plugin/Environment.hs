@@ -48,7 +48,6 @@ import Outputable ( Outputable )
 import SrcLoc ( srcSpanFileName_maybe )
 import FastString ( unpackFS )
 
-import Control.Polymonad.Plugin.Utils ( getTyConWithArgKinds )
 import Control.Polymonad.Plugin.Log
   ( pmErrMsg, pmDebugMsg, pmObjMsg
   , pprToStr
@@ -137,7 +136,7 @@ runPmPlugin givenCts allWantedCts pmM = do
           -- Now select the different polymonads...
           foundPms <- selectPolymonadByConnectedComponent idTyCon pmCls pmInsts (givenCts, wantedCts)
           -- ...and run the solver on each one of them.
-          results <- nestedSequence $ flip fmap foundPms $ \(currPm@(pmTcs, pmRelevantInsts, gPmCts), wPmCts) ->
+          results <- nestedSequence $ flip fmap foundPms $ \(currPm@(_pmTcs, pmRelevantInsts, gPmCts), wPmCts) ->
             runExceptT $ runReaderT pmM PmPluginEnv
               { pmEnvPolymonadModule = pmMdl
               , pmEnvPolymonadClass  = pmCls

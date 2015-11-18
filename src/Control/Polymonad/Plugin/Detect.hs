@@ -73,7 +73,6 @@ import Class
 import InstEnv
   ( ClsInst(..)
   , instEnvElts
-  , instanceSig
   , classInstances
   , lookupInstEnv
   , ie_global )
@@ -81,10 +80,10 @@ import TcEvidence ( EvTerm(..) )
 
 import Control.Polymonad.Plugin.Log
   ( pmErrMsg
-  , printMsg, printObj
+  --, printMsg, printObj
   , pprToStr )
 import Control.Polymonad.Plugin.Utils
-  ( associations, lookupBy
+  ( lookupBy
   , isAmbiguousType
   , getTyConWithArgKinds )
 import Control.Polymonad.Plugin.Constraint
@@ -94,7 +93,7 @@ import Control.Polymonad.Plugin.Constraint
 import Control.Polymonad.Plugin.Instance
   ( eqInstance )
 import Control.Polymonad.Plugin.Evidence
-  ( produceEvidenceFor, matchInstanceTyVars, isInstantiatedBy, isPotentiallyInstantiatedPolymonad )
+  ( produceEvidenceFor, isPotentiallyInstantiatedPolymonad )
 
 -- -----------------------------------------------------------------------------
 -- Constant Names (Magic Numbers...)

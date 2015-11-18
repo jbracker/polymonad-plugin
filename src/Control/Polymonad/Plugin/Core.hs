@@ -23,7 +23,7 @@ import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runTcPlugin
   , getGivenConstraints
   , getPolymonadClass, getCurrentPolymonad
-  , printObj, printMsg
+  --, printObj, printMsg
   , throwPluginError )
 import Control.Polymonad.Plugin.Instance ( instanceTyArgs )
 import Control.Polymonad.Plugin.Constraint
@@ -51,8 +51,6 @@ isInstanceOf :: [Type] -> ClsInst -> PmPluginM Bool
 isInstanceOf instArgs inst = do
   givenCts <- getGivenConstraints
   res <- runTcPlugin $ isInstantiatedBy givenCts inst instArgs
-  printMsg "isInstanceOf"
-  printObj res
   case res of
     Left err -> throwPluginError err
     Right b -> return b
@@ -124,35 +122,21 @@ detectOverlappingInstancesAndTrySolve :: WantedCt -> PmPluginM (Maybe EvTerm)
 detectOverlappingInstancesAndTrySolve ct =
   case constraintClassTyArgs ct of
     Just tyArgs -> do
-      printMsg "Check for overlap on:"
-      printObj ct
       (_, pmInsts, pmCts) <- getCurrentPolymonad
-      printMsg "Polymonad instances to consider:"
-      printObj pmInsts
       -- Collect variables that are to be seen as constants.
       -- The first batch of these are the non ambiguous type variables in the constraint arguments...
       let dontBind =  filter (not . isAmbiguousTyVar) (S.toList $ S.unions $ fmap collectTyVars tyArgs)
                    -- and the second batch are the type variables in given constraints.
                    ++ S.toList (S.unions $ concat $ fmap (maybe [] (fmap collectTyVars) . constraintClassTyArgs) pmCts)
       instMatches <- forM pmInsts $ \pmInst -> do
-        printMsg "Check instance:"
-        printObj pmInst
         let instArgs = instanceTyArgs pmInst
-        printObj tyArgs
-        printObj instArgs
-        printObj $ tcUnifyTys (skolemVarsBindFun dontBind) tyArgs instArgs
         case tcUnifyTys (skolemVarsBindFun dontBind) tyArgs instArgs of
           Just subst -> case matchInstanceTyVars pmInst (substTys subst tyArgs) of
             Just args -> do
-              printMsg "Match args"
-              printObj args
               isInst <- args `isInstanceOf` pmInst
-              printObj isInst
               return $ if isInst then Just (pmInst, args) else Nothing
             Nothing -> return Nothing
           Nothing -> return Nothing
-      printMsg "Matching instances:"
-      printObj instMatches
       case catMaybes instMatches of
         [instWithArgs] -> uncurry produceEvidenceForPM instWithArgs
         _ -> return Nothing

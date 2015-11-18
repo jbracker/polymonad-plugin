@@ -13,14 +13,12 @@ import Control.Arrow ( (***) )
 import Kind ( Kind )
 import Type
   ( Type, TyVar
-  , mkTyConTy, mkTyVarTy, mkAppTys
   , eqType
   , mkTopTvSubst
   , substTy )
 import TyCon ( TyCon )
 import InstEnv ( ClsInst(..), instanceSig )
 import TcRnTypes ( Ct )
-import TcPluginM ( newFlexiTyVar )
 import Unify ( tcUnifyTy, tcUnifyTys )
 
 import Control.Polymonad.Plugin.Environment

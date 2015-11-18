@@ -15,7 +15,7 @@ import Data.Maybe ( catMaybes, isJust )
 import Data.List ( find )
 import qualified Data.Set as S
 
-import Control.Monad ( forM, mapM, when )
+import Control.Monad ( forM )
 import Control.Arrow ( first )
 
 import Type
@@ -24,7 +24,7 @@ import Type
   , substTy, substTys
   , eqType
   , getClassPredTys_maybe
-  , getEqPredTys_maybe, getEqPredTys, getEqPredRole
+  , getEqPredTys_maybe
   , getTyVar_maybe
   , splitTyConApp_maybe, splitFunTy_maybe, splitAppTy_maybe )
 import TyCon
@@ -55,8 +55,8 @@ import Control.Polymonad.Plugin.Utils
   , skolemVarsBindFun
   , applyTyCon
   , associations )
-import Control.Polymonad.Plugin.Log ( printObj, printMsg )
-import Control.Polymonad.Plugin.Debug ( containsAllOf, containsNoneOf )
+--import Control.Polymonad.Plugin.Log ( printObj, printMsg )
+--import Control.Polymonad.Plugin.Debug ( containsAllOf, containsNoneOf )
 
 -- | Trys to see if the given arguments match the class instance
 --   arguments by unification. This only works if the number of arguments
@@ -94,13 +94,8 @@ isInstantiatedBy :: [GivenCt] -> ClsInst -> [Type] -> TcPluginM (Either String B
 isInstantiatedBy givenCts inst instArgs = do
   eEvTerm <- produceEvidenceFor givenCts inst instArgs
   case eEvTerm of
-    Left err -> do
-      printObj err
-      return $ Right False
+    Left _err -> return $ Right False
     Right _ev -> return $ Right True
-
-instance O.Outputable O.SDoc where
-  ppr = id
 
 -- | Check if a given polymonad constraint can potentially be instantiated using the given
 --   type constructors. By potentially we mean: First, check if the
