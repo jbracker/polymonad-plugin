@@ -89,11 +89,9 @@ collectTyVars t =
         Just (ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
         Nothing -> case splitAppTy_maybe t of
           Just (ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
-          Nothing -> case getTyVar_maybe t of
-            Just tv -> S.singleton tv
-            Nothing -> case getEqPredTys_maybe t of
-              Just (_r, ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
-              Nothing -> S.empty
+          Nothing -> case getEqPredTys_maybe t of
+            Just (_r, ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
+            Nothing -> S.empty
 
 -- | Create a substitution that replaces the given type variables with their
 --   associated type constructors.
@@ -162,7 +160,9 @@ isAmbiguousType ty = maybe False isAmbiguousTyVar $ getTyVar_maybe ty
 -- (Right m, [*])
 --
 -- >>> getTyConWithArgKinds (p s)
--- (Right p, [*, *]) -- Assuming the kind of s is *.
+-- (Right p, [*, *]) -- Assuming the kind of s is *. case getEqPredTys_maybe t of
+                Just (_r, ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
+                Nothing -
 --
 -- >>> getTyConWithArgKinds Identity
 -- (Left Identity, [*])
@@ -253,3 +253,6 @@ fromLeft (Right _) = error "fromLeft: Applied to 'Right'"
 fromRight :: Either a b -> b
 fromRight (Left _) = error "fromRight: Applied to 'Left'"
 fromRight (Right b) = b
+ case getEqPredTys_maybe t of
+                Just (_r, ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
+                Nothing -
