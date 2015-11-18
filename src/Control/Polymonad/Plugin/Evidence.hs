@@ -11,7 +11,7 @@ module Control.Polymonad.Plugin.Evidence
   ) where
 
 import Data.Either ( isLeft, isRight )
-import Data.Maybe ( catMaybes, isJust )
+import Data.Maybe ( catMaybes, isJust, fromMaybe )
 import Data.List ( find )
 import qualified Data.Set as S
 
@@ -30,14 +30,14 @@ import Type
 import TyCon
   ( TyCon
   , isTupleTyCon, isTypeFamilyTyCon, isTypeSynonymTyCon )
-import Class ( Class )
+import Class ( Class, classTyCon )
 import Coercion ( Coercion(..) )
 import InstEnv
   ( ClsInst(..)
   , instanceSig
   , lookupUniqueInstEnv )
 import Unify ( tcUnifyTys )
-import CoAxiom ( Role )
+import CoAxiom ( Role(..) )
 import TcRnTypes ( isGivenCt, ctPred, ctEvidence, ctEvTerm )
 import TcType ( isAmbiguousTyVar )
 import TcEvidence ( EvTerm(..), TcCoercion(..) )
@@ -192,17 +192,17 @@ produceEvidenceForCt givenCts ct =
     -- Do we have a type family application?
     Just (tc, _tcArgs) | isTyFunCon tc -> do
       -- Evaluate it...
-      (coer, evalCt) <- evaluateType ct
+      (coer, evalCt) <- evaluateType Representational ct
       -- Produce evidence for the evaluated term
       eEvEvalCt <- produceEvidenceForCt checkedGivenCts evalCt
       -- Add the appropriate cast to the produced evidence
-      return $ (\ev -> EvCast ev (TcCoercion coer)) <$> eEvEvalCt
+      return $ (\ev -> EvCast ev (TcSymCo $ TcCoercion coer)) <$> eEvEvalCt
     -- Do we have a type equality constraint?
     _ -> case getEqPredTys_maybe ct of
       -- If there is a synonym or type function in the equality...
       Just _ | containsTyFunApp ct -> do
           -- Evaluate it...
-          (coer, evalCt) <- evaluateType ct
+          (coer, evalCt) <- evaluateType Representational ct
           -- Produce evidence for the evaluated term and
           -- add the appropriate cast to the produced evidence
           let (ta, tb) = getEqPredTys evalCt
@@ -214,16 +214,16 @@ produceEvidenceForCt givenCts ct =
       _ -> case getClassPredTys_maybe ct of
         Just _ | containsTyFunApp ct -> do
           -- Evaluate it...
-          (coer, evalCt) <- evaluateType ct
+          (coer, evalCt) <- evaluateType Representational ct
           -- Produce evidence for the evaluated term and
           -- add the appropriate cast to the produced evidence
           let (cls, args) = getClassPredTys evalCt
-          fmap (\ev -> EvCast ev (TcCoercion coer)) <$> produceClassCtEv cls args
+          fmap (\ev -> EvCast ev (TcSymCo $ TcCoercion coer)) <$> produceClassCtEv cls args
         Just (ctCls, ctArgs) -> produceClassCtEv ctCls ctArgs
         -- In any other case, lets try if one of the given constraints can help...
         _ | containsTyFunApp ct -> do
           -- Evaluate it...
-          (coer, evalCt) <- evaluateType ct
+          (coer, evalCt) <- evaluateType Representational ct
           -- and produce the appropriate cast
           return $ (\ev -> EvCast ev (TcCoercion coer)) <$> produceGivenCtEv evalCt
         -- In any other case, lets try if one of the given constraints can help...

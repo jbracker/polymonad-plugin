@@ -26,10 +26,10 @@ import FamInstEnv ( normaliseType )
 
 -- | Try to evaluate the given type as far as possible by evaluating contained
 --   type families and expanding type synonyms.
-evaluateType :: Type -> TcPluginM (Coercion, Type)
-evaluateType t = do
+evaluateType :: Role -> Type -> TcPluginM (Coercion, Type)
+evaluateType r t = do
   famInstEnvs <- getFamInstEnvs
-  return $ normaliseType famInstEnvs Representational t --Nominal t
+  return $ normaliseType famInstEnvs r t
 
 -- | Try to apply the type equality constraints given in the pair of arguments
 --   to the given type. This will ignore non type equalities in the first
