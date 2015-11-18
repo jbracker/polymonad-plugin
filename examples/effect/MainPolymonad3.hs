@@ -21,7 +21,7 @@ import Control.Polymonad.Prelude
 
 import qualified Control.Effect as E
 import Control.Effect ( Effect, Plus, Unit )
-import Control.Effect.Reader
+import Control.Effect.CounterNat
 
 instance (Effect m, h ~ Plus m f g, E.Inv m f g) => Polymonad (m (f :: [*])) (m (g :: [*])) (m (h :: [*])) where
   (>>=) = (E.>>=)
@@ -37,4 +37,14 @@ instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m (h :: [*])) wh
   a >>= f = (E.return . runIdentity . f . runIdentity) a
 
 main :: IO ()
-main = return ()
+main = do
+  print $ forget (test 1 2 3 4)
+
+specialOp :: Int -> Int -> Counter 1 Int
+specialOp n m = tick (n + m)
+
+test :: Int -> Int -> Int -> Int -> Counter 3 Int
+test a b c d = do
+  ab <- specialOp a b
+  abc <- specialOp ab c
+  specialOp abc d
