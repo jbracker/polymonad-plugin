@@ -40,18 +40,17 @@ instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m (h :: [*])) wh
 main :: IO ()
 main = do
   putStrLn $ show $ runState
-    (return () :: State '[] ()) --( write "abc" )
-    Empty --( Ext (Var :-> 0 :! Eff) (Ext (Var :-> [] :! Eff) Empty) )
+    ( write "abc" )
+    ( Ext (Var :-> 0 :! Eff) (Ext (Var :-> [] :! Eff) Empty) )
 
 varC = Var :: Var "count"
 varS = Var :: Var "out"
 
 incC :: State '["count" :-> Int :! RW] Int
 incC = do { x <- get varC; put varC (x + 1); return (x + 1) }
-{-
+
 writeS :: [a] -> State '["out" :-> [a] :! RW] ()
 writeS y = do { x <- get varS; put varS (x ++ y) }
 
 write :: [a] -> State '["count" :-> Int :! RW, "out" :-> [a] :! RW] ()
 write x = do { writeS x; _ <- incC; return () }
--}
