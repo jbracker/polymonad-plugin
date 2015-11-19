@@ -37,9 +37,6 @@ instance HoareMonad Session where
 type Ping = Eps :+: (String :!: String :?: Var Z)
 type Pong = Eps :&: (String :?: String :!: Var Z)
 
-ping :: Int -> Session (Cap (Ping, ()) Ping) () ()
-pong :: Session (Cap (Pong, ()) Pong) () ()
-
 main :: IO ()
 main = do
   rv <- newRendezvous
@@ -47,7 +44,7 @@ main = do
               $ enter >> ping 3
   request rv $ enter >> pong
 
-
+ping :: Int -> Session (Cap (Ping, ()) Ping) () ()
 ping 0 = do
     sel1; close
 ping n = do
@@ -56,44 +53,11 @@ ping n = do
     io $ putStrLn rsp
     zero; ping (n - 1)
 
+pong :: Session (Cap (Pong, ()) Pong) () ()
 pong = offer close $ do
     rsp <- recv
     io $ putStrLn rsp
     send "Pong"
     zero
     pong
-{-
-pong = offer close
-  $ recv
-  >>= \rsp ->
-  io (putStrLn rsp)
-  >>
-  send "Pong"
-  >>
-  zero
-  >>
-  pong
--}
 
-{-
-main = do
-  rv <- newRendezvous
-  _ <- forkIO $ accept rv
-              $ enter >> ping 3
-  request rv $ enter >> pong
-
-ping 0 = do
-    sel1; close
-ping n = do
-    sel2; send "Ping"
-    rsp <- recv
-    io $ putStrLn rsp
-    zero; ping (n - 1)
-
-pong = offer close $ do
-    rsp <- recv
-    io $ putStrLn rsp
-    send "Pong"
-    zero; pong
-
--}
