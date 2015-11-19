@@ -58,6 +58,5 @@ pong = offer close $ do
     rsp <- recv
     io $ putStrLn rsp
     send "Pong"
-    zero
-    pong
+    zero; pong
 
