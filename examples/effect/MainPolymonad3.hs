@@ -40,13 +40,13 @@ instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m (h :: Nat)) wh
 
 main :: IO ()
 main = do
-  print $ forget (test 1 2 3 4)
+  print $ forget (limitedOp 1 2 3 4)
 
 specialOp :: Int -> Int -> Counter 1 Int
 specialOp n m = tick (n + m)
 
-test :: Int -> Int -> Int -> Int -> Counter 3 Int
-test a b c d = do
+limitedOp :: Int -> Int -> Int -> Int -> Counter 3 Int
+limitedOp a b c d = do
   ab <- specialOp a b
   abc <- specialOp ab c
   specialOp abc d
