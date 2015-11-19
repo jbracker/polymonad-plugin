@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE PolyKinds #-}
 
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -23,19 +24,17 @@ import qualified Control.Effect as E
 import Control.Effect ( Effect, Plus, Unit )
 import Control.Effect.CounterNat
 
-import GHC.TypeLits ( Nat )
-
-instance (Effect m, h ~ Plus m f g, E.Inv m f g) => Polymonad (m (f :: Nat)) (m (g :: Nat)) (m (h :: Nat)) where
+instance (Effect m, h ~ Plus m f g, E.Inv m f g) => Polymonad (m (f :: k)) (m (g :: k)) (m (h :: k)) where
   (>>=) = (E.>>=)
 
-instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m (h :: Nat)) where
+instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m (h :: k)) where
   a >>= f = (E.return . runIdentity . f . runIdentity) a
 
 instance ( Effect m, E.Inv m f (Unit m), f ~ Plus m f (Unit m))
-        => Polymonad (m (f :: Nat)) Identity (m (f :: Nat)) where
+        => Polymonad (m (f :: k)) Identity (m (f :: k)) where
   ma >>= f = ma E.>>= (E.return . runIdentity . f)
 
-instance (Effect m) => Polymonad Identity (m (g :: Nat)) (m (g :: Nat)) where
+instance (Effect m) => Polymonad Identity (m (g :: k)) (m (g :: k)) where
   a >>= f = f (runIdentity a)
 
 main :: IO ()
