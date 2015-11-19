@@ -21,10 +21,10 @@
 import Control.Polymonad.Prelude
 
 import qualified Control.Effect as E
-import Control.Effect ( Effect, Plus, Unit )
+import Control.Effect ( Effect, Plus, Unit, Inv )
 import Control.Effect.CounterNat
 
-instance (Effect m, h ~ Plus m f g, E.Inv m f g) => Polymonad (m (f :: k)) (m (g :: k)) (m (h :: k)) where
+instance (Effect m, h ~ Plus m f g, Inv m f g) => Polymonad (m (f :: k)) (m (g :: k)) (m (h :: k)) where
   (>>=) = (E.>>=)
 
 instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m (h :: k)) where
