@@ -3,6 +3,7 @@
 
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
 
 import Prelude
 import Prelude as P
@@ -10,7 +11,7 @@ import Prelude as P
 import Control.Effect as E
 import Control.Effect.CounterNat
 
-import GHC.TypeLits ( Nat )
+import GHC.TypeLits ( type (+) )
 
 ifThenElse :: Bool -> a -> a -> a
 ifThenElse True  t e = t
@@ -30,8 +31,8 @@ limitedOp a b c d = do
   ab <- specialOp a b
   abc <- specialOp ab c
   specialOp abc d
-  where (>>=) :: (E.Effect e, E.Inv e f g) => e (f :: Nat) a -> (a -> e (g :: Nat) b) -> e (E.Plus e f g) b
+  where (>>=) :: Counter n a -> (a -> Counter m b) -> Counter (n + m) b
         (>>=) = (E.>>=)
         fail = E.fail
-        return :: (Effect e) => a -> e (Unit e) a
+        return :: a -> Counter 0 a
         return = E.return
