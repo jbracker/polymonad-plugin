@@ -13,6 +13,7 @@ import TcRnTypes
   ( Ct(..)
   , TcPlugin(..), TcPluginResult(..) )
 import TcPluginM ( TcPluginM, tcPluginIO )
+import TcEvidence ( EvTerm )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
@@ -36,6 +37,8 @@ import Control.Polymonad.Plugin.Simplification
 import Control.Polymonad.Plugin.Core
   ( trySolveAmbiguousForAppliedTyConConstraint
   , detectOverlappingInstancesAndTrySolve )
+import qualified Control.Polymonad.Plugin.Log as L
+import qualified Control.Polymonad.Plugin.Debug as D
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -89,7 +92,9 @@ polymonadSolve s given derived wanted = do
     Left errMsg -> do
       tcPluginIO $ putStrLn errMsg
       return noResult
-    Right slv -> return $ mergeResults slv
+    Right slv -> do
+      --L.printObj $ any D.hasEvTermPattern $ getEvidence $ mergeResults slv
+      return $ mergeResults slv
 
 polymonadSolve' :: PolymonadState -> PmPluginM TcPluginResult
 polymonadSolve' _s = do
@@ -204,3 +209,10 @@ mergeResults (TcPluginOk evidence derived : rest) = case mergeResults rest of
   TcPluginOk restEv restDe -> TcPluginOk (evidence ++ restEv) (derived ++ restDe)
   TcPluginContradiction cts -> TcPluginContradiction cts
 mergeResults (TcPluginContradiction cts : _) = TcPluginContradiction cts
+
+getEvidence :: TcPluginResult -> [EvTerm]
+getEvidence (TcPluginOk evs _dc) = fmap fst evs
+getEvidence _ = []
+
+
+
