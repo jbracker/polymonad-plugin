@@ -22,3 +22,6 @@ session-example: install
 	
 effect-example: install
 	cabal install ./examples/effect
+
+core-error-example: install
+	cabal install ./examples/core-error
