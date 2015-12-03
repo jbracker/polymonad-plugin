@@ -75,10 +75,7 @@ instance (Effect m, h ~ Unit m) => Polymonad Identity Identity (m (h :: [*])) wh
   a >>= f = (E.return . runIdentity . f . runIdentity) a
 
 main :: IO ()
-main = do
-  let l = runReader (flatFilter tree) (Ext (vThres :-> 3) Empty)
-  print l
-  --print (sum l)
+main = print $ runReader (flatFilter tree) (Ext (vThres :-> 3) Empty)
 
 vThres :: Var "thres"
 vThres = Var
