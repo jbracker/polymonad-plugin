@@ -161,7 +161,7 @@ runPmPlugin givenCts allWantedCts pmM = do
       $ pmErrMsg ("Could not find " ++ polymonadModuleName
         ++ " module:\n")
       ++ errPm
-    _ -> return $ Left
+    _e -> return $ Left
       $ pmErrMsg ("Could not find " ++ polymonadClassName ++ " class:")
 
 nestedSequence :: [TcPluginM (Either String a)] -> TcPluginM (Either String [a])

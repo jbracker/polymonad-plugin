@@ -77,10 +77,11 @@ import InstEnv
   , lookupInstEnv
   , ie_global )
 import TcEvidence ( EvTerm(..) )
+import PrelNames ( mAIN_NAME )
 
 import Control.Polymonad.Plugin.Log
   ( pmErrMsg
-  --, printMsg, printObj
+  , printMsg, printObj
   , pprToStr )
 import Control.Polymonad.Plugin.Utils
   ( lookupBy
@@ -138,7 +139,7 @@ findPolymonadPreludeModule = getModule Nothing polymonadPreudeModuleName
 
 -- | Check if the given module is the polymonad module.
 isPolymonadModule :: Module -> Bool
-isPolymonadModule mdl = mdlName `elem` [pmMdlName, pmPrelName]
+isPolymonadModule mdl = mdlName `elem` [pmMdlName, pmPrelName, mAIN_NAME]
   where mdlName = moduleName mdl
         pmMdlName = mkModuleName polymonadModuleName
         pmPrelName = mkModuleName polymonadPreudeModuleName
@@ -162,8 +163,10 @@ isPolymonadClass cls =
 findPolymonadClass :: TcPluginM (Maybe Class)
 findPolymonadClass = do
   let isPmCls = isPolymonadClass . is_cls
+  envs <- fst <$> getEnvs
   -- This is needed while compiling the package itself...
-  foundInstsLcl <- filter isPmCls . instEnvElts . tcg_inst_env . fst <$> getEnvs
+  let foundInstsLcl =  (filter isPmCls . instEnvElts . tcg_inst_env $ envs)
+                    ++ (filter isPmCls . tcg_insts $ envs)
   -- This is needed while compiling an external package depending on it...
   foundInstsGbl <- filter isPmCls . instEnvElts . ie_global <$> getInstEnvs
   return $ case foundInstsLcl ++ foundInstsGbl of
