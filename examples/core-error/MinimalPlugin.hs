@@ -97,7 +97,6 @@ polymonadStop _s = return ()
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve _s _g _d [] = return $ TcPluginOk [] []
 polymonadSolve s given derived wanted = do
-  L.printObj wanted
   mPmCls <- findPolymonadClass
   mIdTyCon <- findIdentityTyCon
   case (mPmCls, mIdTyCon) of
@@ -113,8 +112,13 @@ polymonadSolve s given derived wanted = do
           tcPluginIO $ putStrLn errMsg
           return noResult
         Right slv -> do
-          --L.printObj $ any D.hasEvTermPattern $ getEvidence $ mergeResults slv
-          return $ mergeResults slv
+          let mergedRes = mergeResults slv
+          case mergedRes of
+            TcPluginOk solved derive -> do
+              L.printObj wanted
+              L.printObj derive
+              L.printObj $ fmap snd solved
+          return $ mergedRes
     r -> do
       L.printMsg "ERROR: Could not find polymonad class or id tycon."
       L.printObj r
@@ -122,40 +126,10 @@ polymonadSolve s given derived wanted = do
 
 polymonadSolve' :: PolymonadState -> PmPluginM TcPluginResult
 polymonadSolve' _s = do
-  printDebug "Given constraints:"
-  printConstraints True =<< getGivenPolymonadConstraints
-  printDebug "Wanted constraints:"
-  printConstraints True =<< getWantedPolymonadConstraints
-  --printDebug "Selected Polymonad:"
-  --printConstraints True =<< getCurrentPolymonad
-
-  -- Derive Constraints --------------------------------------------------------
-  -- Deriving constraints is ignored for now, because for some reason GHCs
-  -- constraint solver throws some of the derived constraints away and says
-  -- there are overlapping instances for them (which does not make sense?).
-  -- This only makes definitions easier, since the programmer does not have
-  -- to list all of the constraints necessary, but is not essential for the
-  -- plugin.
-  {-
-  derivedPmCts <- derivePolymonadConstraints
-  if not $ null derivedPmCts
-    then do
-      printMsg "Derived new polymonad constraints:"
-      printObj derivedPmCts
-      return $ TcPluginOk [] derivedPmCts
-    else do
-  -}
-
   -- Simplification ------------------------------------------------------------
   printDebug "Try simplification of constraints..."
   allWanted <- getWantedPolymonadConstraints
-  --printObj allWanted
-  -- Try to solve ambiguous indices in polymonad constraints that contain
-  -- concrete type constructors, but still miss a solution for some of their
-  -- indices. This should be valid as long as the possible solutions are unique,
-  -- because we just narrow down the specific type constructor we actually want.
-  -- FIXME: This should be done within the solver in addition to determining
-  -- the concrete type constructor.
+  
   let (tyConAppCts, wanted) = if enableUnificationIndexSolving
         then partition isTyConAppliedClassConstraint allWanted
         else ([], allWanted)
@@ -167,35 +141,20 @@ polymonadSolve' _s = do
         -- If there is no unfication to solve
         _ -> return []
     else return []
-
-  -- If there are several instances that overlap for a already solved constraint
-  -- and the constraint is free of ambiguous variables, we can check if only
-  -- one of those instances actually instantiated the constraint. That
-  -- means, for each of those overlapping instances we check if the super
-  -- class constraints hold and if that is only the case for one of them,
-  -- we provice evidence to pick that instance.
+  
   solvedOverlaps <- if null solvedAmbIndices
     then fmap catMaybes $ forM tyConAppCts $ \tyConAppCt -> do
       mEv <- detectOverlappingInstancesAndTrySolve tyConAppCt
       return $ (\ev -> (ev, tyConAppCt)) <$> mEv
     else return []
-
-  -- We can now try to simplify constraints using the S-Up and S-Down rules.
+  
   let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
   eqUpDownCtData <- simplifyAllUpDown wanted ambTvs
   let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
-
-  -- Calculate type variables that still require solving and then
-  -- try to solve them using the S-Join rule.
+  
   let ambTvs' = ambTvs S.\\ S.fromList (fmap fst eqUpDownCtData)
   eqJoinCts <- simplifiedTvsToConstraints <$> simplifyAllJoin wanted ambTvs'
-
-  -- Lets see if we made progress through simplification or if we need to
-  -- move on to actually trying to solve things.
-  -- Note: It seems that non-empty evidence and empty derived constraints
-  -- leads the constraint solver to stop asking for further help, though there
-  -- still is ambiguity. Therefore we ignore the wanted evidence in this test
-  -- and always deliver it.
+  
   if null eqUpDownCts && null eqJoinCts && null solvedAmbIndices then do
     printDebug "Simplification could not solve all constraints. Solving..."
     let ctGraph = mkGraphView wanted
@@ -206,18 +165,12 @@ polymonadSolve' _s = do
       unless (null derivedSolution) $ do
         printDebug "Derived solutions:"
         printConstraints True derivedSolution
-      --return $ TcPluginOk [] derivedSolution
       return $ TcPluginOk solvedOverlaps derivedSolution
     else do
       printDebug "Constraint graph is ambiguous, unable to solve polymonad constraints..."
-      --return noResult
       return $ TcPluginOk solvedOverlaps []
   else do
     printDebug "Simplification made progress. Not solving."
-    --printObj solvedAmbIndices
-    --printObj solvedOverlaps
-    --printObj eqUpDownCts
-    --printObj eqJoinCts
     return $ TcPluginOk solvedOverlaps (eqUpDownCts ++ eqJoinCts ++ solvedAmbIndices)
 
 -- -----------------------------------------------------------------------------
@@ -257,7 +210,6 @@ findPolymonadClass :: TcPluginM (Maybe Class)
 findPolymonadClass = do
   let isPmCls = isPolymonadClass . is_cls
   envs <- fst <$> getEnvs
-  L.printObj $ tcg_insts $ envs
   let foundInstsLcl =  (filter isPmCls . instEnvElts . tcg_inst_env $ envs)
                     ++ (filter isPmCls . tcg_insts $ envs)
   foundInstsGbl <- filter isPmCls . instEnvElts . ie_global <$> getInstEnvs
@@ -276,22 +228,6 @@ findIdentityTyCon = do
 tcTyThingToTyCon :: TcTyThing -> Maybe TyCon
 tcTyThingToTyCon (AGlobal (ATyCon tc)) = Just tc
 tcTyThingToTyCon _ = Nothing
-
-
-{-
-findPolymonadClass :: TcPluginM (Maybe Class)
-findPolymonadClass = do
-  let isPmCls = isPolymonadClass . is_cls
-  envs <- fst <$> getEnvs
-  -- This is needed while compiling the package itself...
-  let foundInstsLcl =  (filter isPmCls . instEnvElts . tcg_inst_env $ envs)
-                    ++ (filter isPmCls . tcg_insts $ envs)
-  -- This is needed while compiling an external package depending on it...
-  foundInstsGbl <- filter isPmCls . instEnvElts . ie_global <$> getInstEnvs
-  return $ case foundInstsLcl ++ foundInstsGbl of
-    (inst : _) -> Just $ is_cls inst
-    [] -> Nothing
--}
 
 
 
