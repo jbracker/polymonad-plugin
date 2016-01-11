@@ -1,7 +1,8 @@
 module MinimalPlugin ( plugin ) where
 
-import Data.List ( partition )
-import Data.Maybe ( catMaybes, listToMaybe, maybeToList )
+import Data.Set ( Set )
+import Data.List ( partition, find )
+import Data.Maybe ( isJust, catMaybes, listToMaybe, maybeToList, fromMaybe )
 import qualified Data.Set as S
 
 import Control.Monad ( unless, forM, liftM )
@@ -10,17 +11,20 @@ import Type
  ( TyThing(..), TyVar, Type
   , eqType
   , isTyVarTy
-  , getTyVar, getClassPredTys_maybe
+  , getTyVar, getTyVar_maybe
+  , getClassPredTys_maybe, getEqPredTys_maybe
+  , splitTyConApp_maybe, splitAppTy_maybe, splitFunTy_maybe
   , mkTyConTy, mkTyVarTy
   , substTys)
 import Plugins ( Plugin(tcPlugin), defaultPlugin )
 import InstEnv
   ( ClsInst(..)
+  , instanceBindFun, instanceSig
   , instEnvElts, ie_global )
 import Class
   ( Class(..)
   , className, classArity )
-import Unify ( tcUnifyTys )
+import Unify ( BindFlag(..), tcUnifyTys )
 import TyCon ( TyCon )
 import RdrName ( GlobalRdrElt(..), lookupGlobalRdrEnv )
 import OccName ( occNameString, mkTcOcc )
@@ -41,33 +45,16 @@ import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getCurrentPolymonad
   , getGivenConstraints
-  , getWantedPolymonadConstraints --, getGivenPolymonadConstraints
+  , getWantedPolymonadConstraints
   , printDebug, printMsg
   --, printObj
   --, printConstraints
   , runTcPlugin)
-import Control.Polymonad.Plugin.Constraint
-  ( WantedCt, DerivedCt, GivenCt
-  , constraintTopAmbiguousTyVars
-  , isTyConAppliedClassConstraint )
-import Control.Polymonad.Plugin.Instance
-  ( instanceTyArgs )
---import Control.Polymonad.Plugin.GraphView
---  ( mkGraphView )
---import Control.Polymonad.Plugin.Solve
---  ( solve )
---import Control.Polymonad.Plugin.Ambiguity
---  ( isAllUnambiguous )
 import Control.Polymonad.Plugin.Simplification
-  ( simplifyAllUpDown --, simplifyAllJoin
+  ( simplifyAllUpDown
   , simplifiedTvsToConstraints )
---import Control.Polymonad.Plugin.Core
---  ( trySolveAmbiguousForAppliedTyConConstraint )
 import Control.Polymonad.Plugin.Evidence
   ( isInstantiatedBy, produceEvidenceFor, matchInstanceTyVars )
-import Control.Polymonad.Plugin.Utils
-  ( collectTyVars, skolemVarsBindFun )
---import qualified Control.Polymonad.Plugin.Core as C
 import qualified Control.Polymonad.Plugin.Log as L
 import qualified Control.Polymonad.Plugin.Debug as D
 
@@ -82,6 +69,9 @@ plugin = defaultPlugin { tcPlugin = \_clOpts -> Just polymonadPlugin }
 -- -----------------------------------------------------------------------------
 -- Actual Plugin Code
 -- -----------------------------------------------------------------------------
+type GivenCt = Ct
+type DerivedCt = Ct
+type WantedCt = Ct
 
 type PolymonadState = ()
 
@@ -167,7 +157,7 @@ detectOverlappingInstancesAndTrySolve (pmInsts, pmCts) givenCts ct =
                    -- and the second batch are the type variables in given constraints.
                    ++ S.toList (S.unions $ concat $ fmap (maybe [] (fmap collectTyVars) . fmap snd . constraintClassType) pmCts)
       instMatches <- forM pmInsts $ \pmInst -> do
-        let instArgs = instanceTyArgs pmInst
+        let (_, _, _, instArgs) = instanceSig pmInst
         case tcUnifyTys (skolemVarsBindFun dontBind) tyArgs instArgs of
           Just subst -> case matchInstanceTyVars pmInst (substTys subst tyArgs) of
             Just args -> do
@@ -279,3 +269,57 @@ constraintPolymonadTyArgs :: Ct -> Maybe (Type, Type, Type)
 constraintPolymonadTyArgs ct = case fmap snd $ constraintClassType ct of
     Just [t0, t1, t2] -> Just (t0, t1, t2)
     _ -> Nothing
+
+-- | Collects the top-level ambiguous type variables in the constraints
+--   arguments. Only returns non-empty sets if the constraint is a class
+--   constraint and actually has arguments.
+constraintTopAmbiguousTyVars :: Ct -> Set TyVar
+constraintTopAmbiguousTyVars ct = ambTvs
+  where tyArgs = fromMaybe [] (fmap snd $ constraintClassType ct)
+        tvArgs = catMaybes $ getTyVar_maybe <$> tyArgs
+        ambTvs = S.fromList $ filter isAmbiguousTyVar tvArgs
+
+-- | Check if the given constraint is a class constraint and all arguments
+--   consist of non-variable type constructor (partially) applied to their
+--   arguments.
+--
+--   /Examples/:
+--
+-- >>> isTyConAppliedClassConstraint (Polymonad m Identity Maybe)
+-- False -- because of 'm'
+--
+-- >>> isTyConAppliedClassConstraint (Polymonad (Session a b) (Session () ()) Maybe)
+-- True -- because 'a' and 'b' are not the top level type-constructor
+--
+-- >>> isTyConAppliedClassConstraint (Polymonad Maybe (m () ()) (m () ()))
+-- False -- because of 'm'
+isTyConAppliedClassConstraint :: Ct -> Bool
+isTyConAppliedClassConstraint ct = case fmap snd $ constraintClassType ct of
+  Just tyArgs -> all isJust $ splitTyConApp_maybe <$> tyArgs
+  Nothing -> False
+
+-- | Try to collect all type variables in a given expression.
+--   Does not work for Pi or ForAll types.
+--   If the given type is not supported an empty set is returned.
+collectTyVars :: Type -> Set TyVar
+collectTyVars t =
+  case getTyVar_maybe t of
+    Just tv -> S.singleton tv
+    Nothing -> case splitTyConApp_maybe t of
+      Just (_tc, args) -> S.unions $ fmap collectTyVars args
+      Nothing -> case splitFunTy_maybe t of
+        Just (ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
+        Nothing -> case splitAppTy_maybe t of
+          Just (ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
+          Nothing -> case getEqPredTys_maybe t of
+            Just (_r, ta, tb) -> collectTyVars ta `S.union` collectTyVars tb
+            Nothing -> S.empty
+
+-- | Override the standard bind flag of a given list of variables to 'Skolem'.
+--   The standard bind flad is determined using 'instanceBindFun'.
+--   This can be used to keep 'tcUnifyTys' from unifying the given variables
+--   and to view them as constants.
+skolemVarsBindFun :: [TyVar] -> TyVar -> BindFlag
+skolemVarsBindFun tvs var = case find (var ==) tvs of
+  Just _ -> Skolem
+  Nothing -> instanceBindFun var
