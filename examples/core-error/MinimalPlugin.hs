@@ -255,28 +255,6 @@ simplifyUp (psl, p, psr) rho = do
       then Nothing
       else return (rho, (p, m))
 
--- | @simplifyDown (psl, p, psr) rho@ tries to simplify the type variable @rho@
---   in the wanted constraint @p@ using the S-Down rule. The context of
---   the wanted polymonad constraints is given by @psl@ and @psr@.
---   The result is a new equality constraint between @rho@ and the type it
---   should be bound to, to simplify @psl ++ [p] ++ psr@. If the simplification cannot
---   be applied 'Nothing' is returned.
---
---   See figure 7 of the the "Polymonad Programming" paper for more information.
-simplifyDown :: ([Ct], Ct, [Ct]) -> TyVar -> PmPluginM (Maybe (TyVar, (Ct, Type)))
-simplifyDown (psl, p, psr) rho = do
-  idTyCon <- getIdentityTyCon
-  return $ do
-    (t0, t1, t2) <- constraintPolymonadTyArgs p
-    guard $  ( eqTyVar' rho t0 && eqTyCon idTyCon t1 )
-          || ( eqTyVar' rho t1 && eqTyCon idTyCon t0 )
-    guard $ null $ flowsFrom (psl ++ psr) rho
-    guard $ not . null $ flowsTo (psl ++ psr) rho
-    -- It does not help to say some type variables equals itself.
-    if eqType (mkTyVarTy rho) t2
-      then Nothing
-      else return (rho, (p, t2))
-
 -- | Tries to find a simplification for the given type variable using the
 --   given simplification rule on the given set of constraints.
 trySimplifyUntil :: [Ct] -> TyVar
@@ -296,11 +274,7 @@ trySimplifyUntil (ct:cts) rho simp = trySimplifyUntil' ([], ct, cts)
 --   the 'simplifyUp' and 'simplifyDown' rule (in that order).
 simplifyAllUpDown :: [Ct] -> Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
 simplifyAllUpDown ps tvs = do
-  let tvList = S.toList tvs
-  upSimps <- catMaybes <$> mapM (\rho -> trySimplifyUntil ps rho simplifyUp) tvList
-  let tvList' = S.toList $ tvs S.\\ S.fromList (fst <$> upSimps)
-  downSimps <- catMaybes <$> mapM (\rho -> trySimplifyUntil ps rho simplifyDown) tvList'
-  return $ upSimps ++ downSimps
+  catMaybes <$> mapM (\rho -> trySimplifyUntil ps rho simplifyUp) (S.toList tvs)
 
 -- | @flowsTo p rho@ implementats the function from Figure 7 in the paper.
 --   Returns the pairs of types that form a bind operator in @p@ together
