@@ -121,7 +121,7 @@ polymonadSolve' _s = do
       return $ (\ev -> (ev, tyConAppCt)) <$> mEv
 
   let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
-  eqUpDownCtData <- simplifyAllUpDown wanted ambTvs
+  eqUpDownCtData <- simplifyAllUp wanted ambTvs
   let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
   
   return $ TcPluginOk solvedOverlaps eqUpDownCts
@@ -272,8 +272,8 @@ trySimplifyUntil (ct:cts) rho simp = trySimplifyUntil' ([], ct, cts)
 -- | Try to simplify as many type variables as possible in the given set of
 --   constraints using
 --   the 'simplifyUp' and 'simplifyDown' rule (in that order).
-simplifyAllUpDown :: [Ct] -> Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
-simplifyAllUpDown ps tvs = do
+simplifyAllUp :: [Ct] -> Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
+simplifyAllUp ps tvs = do
   catMaybes <$> mapM (\rho -> trySimplifyUntil ps rho simplifyUp) (S.toList tvs)
 
 -- | @flowsTo p rho@ implementats the function from Figure 7 in the paper.
