@@ -99,32 +99,24 @@ polymonadStop _s = return ()
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve _s _g _d [] = return $ TcPluginOk [] []
 polymonadSolve s given derived wanted = do
-  mPmCls <- findPolymonadClass
-  mIdTyCon <- findIdentityTyCon
-  case (mPmCls, mIdTyCon) of
-    (Just _pmCls, Just _idTyCon) -> do
-      res <- runPmPlugin (given ++ derived) wanted $
-        if not $ null wanted
-          then do
-            printMsg "Invoke polymonad plugin..."
-            polymonadSolve' s
-          else return noResult
-      case res of
-        Left errMsg -> do
-          tcPluginIO $ putStrLn errMsg
-          return noResult
-        Right slv -> do
-          let mergedRes = mergeResults slv
-          case mergedRes of
-            TcPluginOk solved derive -> do
-              L.printObj wanted
-              L.printObj derive
-              L.printObj $ fmap snd solved
-          return $ mergedRes
-    r -> do
-      L.printMsg "ERROR: Could not find polymonad class or id tycon."
-      L.printObj r
+  res <- runPmPlugin (given ++ derived) wanted $
+    if not $ null wanted
+      then do
+        printMsg "Invoke polymonad plugin..."
+        polymonadSolve' s
+      else return noResult
+  case res of
+    Left errMsg -> do
+      tcPluginIO $ putStrLn errMsg
       return noResult
+    Right slv -> do
+      let mergedRes = mergeResults slv
+      case mergedRes of
+        TcPluginOk solved derive -> do
+          L.printObj wanted
+          L.printObj derive
+          L.printObj $ fmap snd solved
+      return $ mergedRes
 
 polymonadSolve' :: PolymonadState -> PmPluginM TcPluginResult
 polymonadSolve' _s = do
