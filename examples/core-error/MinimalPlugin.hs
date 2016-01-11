@@ -39,11 +39,13 @@ import TcEvidence ( EvTerm )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
+  , getCurrentPolymonad
+  , getGivenConstraints
   , getWantedPolymonadConstraints --, getGivenPolymonadConstraints
   , printDebug, printMsg
   --, printObj
   --, printConstraints
-  )
+  , runTcPlugin)
 import Control.Polymonad.Plugin.Constraint
   ( WantedCt, DerivedCt, GivenCt
   , constraintTopAmbiguousTyVars
@@ -65,7 +67,7 @@ import Control.Polymonad.Plugin.Evidence
   ( isInstantiatedBy, produceEvidenceFor, matchInstanceTyVars )
 import Control.Polymonad.Plugin.Utils
   ( collectTyVars, skolemVarsBindFun )
-import qualified Control.Polymonad.Plugin.Core as C
+--import qualified Control.Polymonad.Plugin.Core as C
 import qualified Control.Polymonad.Plugin.Log as L
 import qualified Control.Polymonad.Plugin.Debug as D
 
@@ -126,7 +128,7 @@ polymonadSolve' _s = do
   let (tyConAppCts, wanted) = partition isTyConAppliedClassConstraint allWanted
 
   solvedOverlaps <- fmap catMaybes $ forM tyConAppCts $ \tyConAppCt -> do
-      mEv <- C.detectOverlappingInstancesAndTrySolve tyConAppCt
+      mEv <- detectOverlappingInstancesAndTrySolve' tyConAppCt
       return $ (\ev -> (ev, tyConAppCt)) <$> mEv
 
   let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
@@ -153,6 +155,8 @@ evidentConstraints (pmInsts, pmCts) givenCts wCt | isTyConAppliedClassConstraint
   return $ (\ev -> (ev, wCt)) <$> maybeToList mEv
 evidentConstraints _ _ _ = return []
 
+-- ===========================================================================================================================
+
 detectOverlappingInstancesAndTrySolve :: ([ClsInst], [GivenCt]) -> [GivenCt] -> WantedCt -> TcPluginM (Maybe EvTerm)
 detectOverlappingInstancesAndTrySolve (pmInsts, pmCts) givenCts ct =
   case fmap snd $ constraintClassType ct of
@@ -175,6 +179,14 @@ detectOverlappingInstancesAndTrySolve (pmInsts, pmCts) givenCts ct =
         [instWithArgs] -> uncurry (produceEvidenceForPM givenCts) instWithArgs
         _ -> return Nothing
     _ -> return Nothing
+    
+detectOverlappingInstancesAndTrySolve' :: WantedCt -> PmPluginM (Maybe EvTerm)
+detectOverlappingInstancesAndTrySolve' ct = do
+  (_, pmInsts, pmCts) <- getCurrentPolymonad
+  givenCts <- getGivenConstraints
+  runTcPlugin $ detectOverlappingInstancesAndTrySolve (pmInsts, pmCts) givenCts ct
+
+-- ================================================================================================
 
 isInstanceOf :: [GivenCt] -> [Type] -> ClsInst -> TcPluginM Bool
 isInstanceOf givenCts instArgs inst = do
