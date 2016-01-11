@@ -1,4 +1,3 @@
- 
 module MinimalPlugin ( plugin ) where
 
 import Data.List ( partition )
@@ -7,8 +6,8 @@ import qualified Data.Set as S
 
 import Control.Monad ( unless, forM, liftM )
 
-import Type 
-  ( TyThing(..), TyVar, Type
+import Type
+ ( TyThing(..), TyVar, Type
   , eqType
   , isTyVarTy
   , getTyVar, getClassPredTys_maybe
@@ -32,8 +31,8 @@ import TcRnTypes
   , TcPlugin(..), TcPluginResult(..)
   , mkNonCanonical )
 import TcType ( mkTcEqPred, isAmbiguousTyVar )
-import TcPluginM 
-  ( TcPluginM
+import TcPluginM
+ ( TcPluginM
   , tcPluginIO, tcLookup
   , getEnvs, getInstEnvs )
 import TcEvidence ( EvTerm )
@@ -144,33 +143,17 @@ polymonadSolve' _s = do
   -- Simplification ------------------------------------------------------------
   printDebug "Try simplification of constraints..."
   allWanted <- getWantedPolymonadConstraints
-  
-  let (tyConAppCts, wanted) = if enableUnificationIndexSolving
-        then partition isTyConAppliedClassConstraint allWanted
-        else ([], allWanted)
-  solvedAmbIndices <- if enableUnificationIndexSolving
-    then fmap concat $ forM tyConAppCts $ \tyConAppCt -> do
-      mRes <- trySolveAmbiguousForAppliedTyConConstraint tyConAppCt
-      case mRes of
-        Just res@(_:_) -> return $ uncurry (mkDerivedTypeEqCt tyConAppCt) <$> res
-        -- If there is no unfication to solve
-        _ -> return []
-    else return []
-  
-  solvedOverlaps <- if null solvedAmbIndices
-    then fmap catMaybes $ forM tyConAppCts $ \tyConAppCt -> do
+  let (tyConAppCts, wanted) = partition isTyConAppliedClassConstraint allWanted
+
+  solvedOverlaps <- fmap catMaybes $ forM tyConAppCts $ \tyConAppCt -> do
       mEv <- C.detectOverlappingInstancesAndTrySolve tyConAppCt
       return $ (\ev -> (ev, tyConAppCt)) <$> mEv
-    else return []
-  
+
   let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
   eqUpDownCtData <- simplifyAllUpDown wanted ambTvs
   let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
   
-  let ambTvs' = ambTvs S.\\ S.fromList (fmap fst eqUpDownCtData)
-  eqJoinCts <- simplifiedTvsToConstraints <$> simplifyAllJoin wanted ambTvs'
-  
-  if null eqUpDownCts && null eqJoinCts && null solvedAmbIndices then do
+  if null eqUpDownCts then do
     printDebug "Simplification could not solve all constraints. Solving..."
     let ctGraph = mkGraphView wanted
     if isAllUnambiguous ctGraph then do
@@ -186,7 +169,7 @@ polymonadSolve' _s = do
       return $ TcPluginOk solvedOverlaps []
   else do
     printDebug "Simplification made progress. Not solving."
-    return $ TcPluginOk solvedOverlaps (eqUpDownCts ++ eqJoinCts ++ solvedAmbIndices)
+    return $ TcPluginOk solvedOverlaps eqUpDownCts
 
 stupidSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 stupidSolve _s _g _d [] = return $ TcPluginOk [] []
@@ -208,9 +191,9 @@ stupidSolve _s given derived wanted = do
 deriveConstraints :: TyCon -> WantedCt -> TcPluginM [DerivedCt]
 deriveConstraints idTyCon wCt = case constraintPolymonadTyArgs wCt of
   Just (m, n, p) -> return $ case () of
-    () | eqType m idTy && eqType n idTy && isTyVarTy p 
+    () | eqType m idTy && eqType n idTy && isTyVarTy p
        -> [mkDerivedTypeEqCt wCt (getTyVar "IMPOSSIBLE_1" p) idTy]
-    () | not (isTyVarTy m) && eqType n idTy && isTyVarTy p 
+    () | not (isTyVarTy m) && eqType n idTy && isTyVarTy p
        -> [mkDerivedTypeEqCt wCt (getTyVar "IMPOSSIBLE_2" p) m]
     () -> []
   Nothing -> return []
@@ -271,7 +254,7 @@ identityTyConName :: String
 identityTyConName = "Identity"
 
 isPolymonadClass :: Class -> Bool
-isPolymonadClass cls 
+isPolymonadClass cls
   =  (occNameString $ getOccName $ className cls) == polymonadClassName
   && classArity cls == 3
 
@@ -337,6 +320,3 @@ constraintPolymonadTyArgs :: Ct -> Maybe (Type, Type, Type)
 constraintPolymonadTyArgs ct = case fmap snd $ constraintClassType ct of
     Just [t0, t1, t2] -> Just (t0, t1, t2)
     _ -> Nothing
-
-
-  
