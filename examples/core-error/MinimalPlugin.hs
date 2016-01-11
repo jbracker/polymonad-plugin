@@ -5,7 +5,8 @@ import Data.List ( partition, find )
 import Data.Maybe ( isJust, catMaybes, listToMaybe, maybeToList, fromMaybe )
 import qualified Data.Set as S
 
-import Control.Monad ( unless, forM, liftM )
+import Control.Applicative ( Alternative(..) )
+import Control.Monad ( unless, guard, forM, liftM )
 
 import Type
  ( TyThing(..), TyVar, Type
@@ -44,14 +45,13 @@ import TcEvidence ( EvTerm )
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
   , getCurrentPolymonad
+  , getIdentityTyCon
   , getGivenConstraints
   , getWantedPolymonadConstraints
   , printDebug, printMsg
   --, printObj
   --, printConstraints
   , runTcPlugin)
-import Control.Polymonad.Plugin.Simplification
-  ( simplifyAllUpDown )
 import Control.Polymonad.Plugin.Evidence
   ( isInstantiatedBy, produceEvidenceFor, matchInstanceTyVars )
 import qualified Control.Polymonad.Plugin.Log as L
@@ -230,6 +230,97 @@ tcTyThingToTyCon (AGlobal (ATyCon tc)) = Just tc
 tcTyThingToTyCon _ = Nothing
 
 -- -----------------------------------------------------------------------------
+-- Simplification
+-- -----------------------------------------------------------------------------
+
+-- | @simplifyUp (psl, p, psr) rho@ tries to simplify the type variable @rho@
+--   in the wanted constraint @p@ using the S-Up rule. The context of the
+--   wanted polymonad constraints is given by @psl@ and @psr@.
+--   The result is a new equality constraint between @rho@ and the type it
+--   should be bound to, to simplify @psl ++ [p] ++ psr@. If the simplification cannot
+--   be applied 'Nothing' is returned.
+--
+--   See figure 7 of the the "Polymonad Programming" paper for more information.
+simplifyUp :: ([Ct], Ct, [Ct]) -> TyVar -> PmPluginM (Maybe (TyVar, (Ct, Type)))
+simplifyUp (psl, p, psr) rho = do
+  idTyCon <- getIdentityTyCon
+  return $ do
+    (t0, t1, t2) <- constraintPolymonadTyArgs p
+    guard $ eqTyVar' rho t2 && (eqTyCon idTyCon t0 || eqTyCon idTyCon t1)
+    guard $ not . null $ flowsFrom (psl ++ psr) rho
+    guard $ null $ flowsTo (psl ++ psr) rho
+    let m = if eqTyCon idTyCon t0 then t1 else t0
+    -- It does not help to say some type variables equals itself.
+    if eqType (mkTyVarTy rho) m
+      then Nothing
+      else return (rho, (p, m))
+
+-- | @simplifyDown (psl, p, psr) rho@ tries to simplify the type variable @rho@
+--   in the wanted constraint @p@ using the S-Down rule. The context of
+--   the wanted polymonad constraints is given by @psl@ and @psr@.
+--   The result is a new equality constraint between @rho@ and the type it
+--   should be bound to, to simplify @psl ++ [p] ++ psr@. If the simplification cannot
+--   be applied 'Nothing' is returned.
+--
+--   See figure 7 of the the "Polymonad Programming" paper for more information.
+simplifyDown :: ([Ct], Ct, [Ct]) -> TyVar -> PmPluginM (Maybe (TyVar, (Ct, Type)))
+simplifyDown (psl, p, psr) rho = do
+  idTyCon <- getIdentityTyCon
+  return $ do
+    (t0, t1, t2) <- constraintPolymonadTyArgs p
+    guard $  ( eqTyVar' rho t0 && eqTyCon idTyCon t1 )
+          || ( eqTyVar' rho t1 && eqTyCon idTyCon t0 )
+    guard $ null $ flowsFrom (psl ++ psr) rho
+    guard $ not . null $ flowsTo (psl ++ psr) rho
+    -- It does not help to say some type variables equals itself.
+    if eqType (mkTyVarTy rho) t2
+      then Nothing
+      else return (rho, (p, t2))
+
+-- | Tries to find a simplification for the given type variable using the
+--   given simplification rule on the given set of constraints.
+trySimplifyUntil :: [Ct] -> TyVar
+                 -> (([Ct], Ct, [Ct]) -> TyVar -> PmPluginM (Maybe (TyVar, (Ct, Type))))
+                 -> PmPluginM (Maybe (TyVar, (Ct, Type)))
+trySimplifyUntil [] _rho _simp = return empty
+trySimplifyUntil (ct:cts) rho simp = trySimplifyUntil' ([], ct, cts)
+  where
+    trySimplifyUntil' z@(_psl, _p, []) = simp z rho
+    trySimplifyUntil' z@(psl, p, p' : psr') = do
+      r <- simp z rho
+      rs <- trySimplifyUntil' (p : psl, p', psr')
+      return $ r <|> rs
+
+-- | Try to simplify as many type variables as possible in the given set of
+--   constraints using
+--   the 'simplifyUp' and 'simplifyDown' rule (in that order).
+simplifyAllUpDown :: [Ct] -> Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
+simplifyAllUpDown ps tvs = do
+  let tvList = S.toList tvs
+  upSimps <- catMaybes <$> mapM (\rho -> trySimplifyUntil ps rho simplifyUp) tvList
+  let tvList' = S.toList $ tvs S.\\ S.fromList (fst <$> upSimps)
+  downSimps <- catMaybes <$> mapM (\rho -> trySimplifyUntil ps rho simplifyDown) tvList'
+  return $ upSimps ++ downSimps
+
+-- | @flowsTo p rho@ implementats the function from Figure 7 in the paper.
+--   Returns the pairs of types that form a bind operator in @p@ together
+--   with @rho@ as result.
+flowsTo :: [Ct] -> TyVar -> [(Type, Type)]
+flowsTo p rho = do
+  (_ct, t0, t1, t2) <- constraintPolymonadTyArgs' p
+  guard $ eqTyVar' rho t2
+  return (t0, t1)
+
+-- | @flowsFrom p rho@ implements the function from Figure 7 in the paper.
+--   Returns the result types of those bind operators in @p@ that take
+--   @rho@ as one of their parameters.
+flowsFrom :: [Ct] -> TyVar -> [Type]
+flowsFrom p rho = do
+  (_ct, t0, t1, t2) <- constraintPolymonadTyArgs' p
+  guard $ eqTyVar' rho t0 || eqTyVar' rho t1
+  return t2
+
+-- -----------------------------------------------------------------------------
 -- Utility Functions
 -- -----------------------------------------------------------------------------
 
@@ -268,6 +359,15 @@ constraintPolymonadTyArgs :: Ct -> Maybe (Type, Type, Type)
 constraintPolymonadTyArgs ct = case fmap snd $ constraintClassType ct of
     Just [t0, t1, t2] -> Just (t0, t1, t2)
     _ -> Nothing
+
+-- | Extracts the type arguments of the given constraints.
+--   Only keeps those constraints that are type class constraints
+--   and have exactly three arguments.
+constraintPolymonadTyArgs' :: [Ct] -> [(Ct, Type, Type, Type)]
+constraintPolymonadTyArgs' cts
+  = fmap (\(ct, Just (p0, p1, p2)) -> (ct, p0, p1, p2))
+  $ filter (\(_, ts) -> isJust ts)
+  $ fmap (\ct -> (ct, constraintPolymonadTyArgs ct)) cts
 
 -- | Collects the top-level ambiguous type variables in the constraints
 --   arguments. Only returns non-empty sets if the constraint is a class
@@ -328,3 +428,15 @@ skolemVarsBindFun tvs var = case find (var ==) tvs of
 --   constraints that led to the simplification.
 simplifiedTvsToConstraints :: [(TyVar, (Ct, Type))] -> [Ct]
 simplifiedTvsToConstraints tvs = (\(tv, (ct, t)) -> mkDerivedTypeEqCt ct tv t) <$> tvs
+
+-- | Check if the given type constrains a type variable and it is equal to
+--   the given type variable.
+eqTyVar' :: TyVar -> Type -> Bool
+eqTyVar' tv ty = case getTyVar_maybe ty of
+  Just tv' -> tv == tv'
+  Nothing  -> False
+
+-- | Checks if the given type constructors equals the given type.
+-- TODO: Test!
+eqTyCon :: TyCon -> Type -> Bool
+eqTyCon tc = eqType (mkTyConTy tc)
