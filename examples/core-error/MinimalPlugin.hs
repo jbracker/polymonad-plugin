@@ -77,19 +77,6 @@ plugin :: Plugin
 plugin = defaultPlugin { tcPlugin = \_clOpts -> Just polymonadPlugin }
 
 -- -----------------------------------------------------------------------------
--- Static Flags
--- -----------------------------------------------------------------------------
-
--- | Enable solving of ambiguous indices in concrete type constructors
---   through unification with available instances. This only applies
---   if all type constructor of a constraint are not variable and there
---   is only one matching instance.
---
---   See 'trySolveAmbiguousForAppliedTyConConstraint' for what is done.
-enableUnificationIndexSolving :: Bool
-enableUnificationIndexSolving = True
-
--- -----------------------------------------------------------------------------
 -- Actual Plugin Code
 -- -----------------------------------------------------------------------------
 
@@ -170,23 +157,6 @@ polymonadSolve' _s = do
   else do
     printDebug "Simplification made progress. Not solving."
     return $ TcPluginOk solvedOverlaps eqUpDownCts
-
-stupidSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
-stupidSolve _s _g _d [] = return $ TcPluginOk [] []
-stupidSolve _s given derived wanted = do
-  mPmCls <- findPolymonadClass
-  mIdTyCon <- findIdentityTyCon
-  case (mPmCls, mIdTyCon) of
-    (Just pmCls, Just idTyCon) -> do
-      let pmInsts = undefined
-      let pmCts = undefined
-      derivedCts <- concat <$> mapM (deriveConstraints idTyCon) wanted
-      evidentCts <- concat <$> mapM (evidentConstraints (pmInsts, pmCts) given) wanted
-      return $ TcPluginOk evidentCts derivedCts
-    r -> do
-      L.printMsg "ERROR: Could not find polymonad class or id tycon."
-      L.printObj r
-      return noResult
 
 deriveConstraints :: TyCon -> WantedCt -> TcPluginM [DerivedCt]
 deriveConstraints idTyCon wCt = case constraintPolymonadTyArgs wCt of
