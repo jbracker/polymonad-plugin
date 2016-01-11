@@ -51,8 +51,7 @@ import Control.Polymonad.Plugin.Environment
   --, printConstraints
   , runTcPlugin)
 import Control.Polymonad.Plugin.Simplification
-  ( simplifyAllUpDown
-  , simplifiedTvsToConstraints )
+  ( simplifyAllUpDown )
 import Control.Polymonad.Plugin.Evidence
   ( isInstantiatedBy, produceEvidenceFor, matchInstanceTyVars )
 import qualified Control.Polymonad.Plugin.Log as L
@@ -323,3 +322,9 @@ skolemVarsBindFun :: [TyVar] -> TyVar -> BindFlag
 skolemVarsBindFun tvs var = case find (var ==) tvs of
   Just _ -> Skolem
   Nothing -> instanceBindFun var
+
+-- | Converts the associations of type variables to their simplifications to
+--   derived type equality constraints that are located at the position of the
+--   constraints that led to the simplification.
+simplifiedTvsToConstraints :: [(TyVar, (Ct, Type))] -> [Ct]
+simplifiedTvsToConstraints tvs = (\(tv, (ct, t)) -> mkDerivedTypeEqCt ct tv t) <$> tvs
