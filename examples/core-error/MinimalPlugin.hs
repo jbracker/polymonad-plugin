@@ -49,12 +49,12 @@ import Control.Polymonad.Plugin.Constraint
   , isTyConAppliedClassConstraint )
 import Control.Polymonad.Plugin.Instance
   ( instanceTyArgs )
-import Control.Polymonad.Plugin.GraphView
-  ( mkGraphView )
-import Control.Polymonad.Plugin.Solve
-  ( solve )
-import Control.Polymonad.Plugin.Ambiguity
-  ( isAllUnambiguous )
+--import Control.Polymonad.Plugin.GraphView
+--  ( mkGraphView )
+--import Control.Polymonad.Plugin.Solve
+--  ( solve )
+--import Control.Polymonad.Plugin.Ambiguity
+--  ( isAllUnambiguous )
 import Control.Polymonad.Plugin.Simplification
   ( simplifyAllUpDown, simplifyAllJoin
   , simplifiedTvsToConstraints )
@@ -142,11 +142,11 @@ polymonadSolve' _s = do
   
   if null eqUpDownCts then do
     printDebug "Simplification could not solve all constraints. Solving..."
-    let ctGraph = mkGraphView wanted
-    if isAllUnambiguous ctGraph then do
+    -- let ctGraph = mkGraphView wanted
+    if True {- isAllUnambiguous ctGraph -} then do
       printDebug "Constraint graph is unambiguous proceed with solving..."
       wantedCts <- getWantedPolymonadConstraints
-      derivedSolution <- solve wantedCts
+      derivedSolution <- return [] -- solve wantedCts
       unless (null derivedSolution) $ do
         printDebug "Derived solutions:"
         printConstraints True derivedSolution
