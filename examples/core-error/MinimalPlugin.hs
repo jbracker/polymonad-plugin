@@ -39,10 +39,11 @@ import TcEvidence ( EvTerm )
 
 import Control.Polymonad.Plugin.Environment
   ( PmPluginM, runPmPlugin
-  , getWantedPolymonadConstraints, getGivenPolymonadConstraints
+  , getWantedPolymonadConstraints --, getGivenPolymonadConstraints
   , printDebug, printMsg
   --, printObj
-  , printConstraints )
+  --, printConstraints
+  )
 import Control.Polymonad.Plugin.Constraint
   ( WantedCt, DerivedCt, GivenCt
   , constraintTopAmbiguousTyVars
@@ -56,10 +57,10 @@ import Control.Polymonad.Plugin.Instance
 --import Control.Polymonad.Plugin.Ambiguity
 --  ( isAllUnambiguous )
 import Control.Polymonad.Plugin.Simplification
-  ( simplifyAllUpDown, simplifyAllJoin
+  ( simplifyAllUpDown --, simplifyAllJoin
   , simplifiedTvsToConstraints )
-import Control.Polymonad.Plugin.Core
-  ( trySolveAmbiguousForAppliedTyConConstraint )
+--import Control.Polymonad.Plugin.Core
+--  ( trySolveAmbiguousForAppliedTyConConstraint )
 import Control.Polymonad.Plugin.Evidence
   ( isInstantiatedBy, produceEvidenceFor, matchInstanceTyVars )
 import Control.Polymonad.Plugin.Utils
@@ -101,7 +102,7 @@ polymonadSolve s given derived wanted = do
   mPmCls <- findPolymonadClass
   mIdTyCon <- findIdentityTyCon
   case (mPmCls, mIdTyCon) of
-    (Just pmCls, Just idTyCon) -> do
+    (Just _pmCls, Just _idTyCon) -> do
       res <- runPmPlugin (given ++ derived) wanted $
         if not $ null wanted
           then do
@@ -140,23 +141,7 @@ polymonadSolve' _s = do
   eqUpDownCtData <- simplifyAllUpDown wanted ambTvs
   let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
   
-  if null eqUpDownCts then do
-    printDebug "Simplification could not solve all constraints. Solving..."
-    -- let ctGraph = mkGraphView wanted
-    if True {- isAllUnambiguous ctGraph -} then do
-      printDebug "Constraint graph is unambiguous proceed with solving..."
-      wantedCts <- getWantedPolymonadConstraints
-      derivedSolution <- return [] -- solve wantedCts
-      unless (null derivedSolution) $ do
-        printDebug "Derived solutions:"
-        printConstraints True derivedSolution
-      return $ TcPluginOk solvedOverlaps derivedSolution
-    else do
-      printDebug "Constraint graph is ambiguous, unable to solve polymonad constraints..."
-      return $ TcPluginOk solvedOverlaps []
-  else do
-    printDebug "Simplification made progress. Not solving."
-    return $ TcPluginOk solvedOverlaps eqUpDownCts
+  return $ TcPluginOk solvedOverlaps eqUpDownCts
 
 deriveConstraints :: TyCon -> WantedCt -> TcPluginM [DerivedCt]
 deriveConstraints idTyCon wCt = case constraintPolymonadTyArgs wCt of
