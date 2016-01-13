@@ -58,11 +58,6 @@ import Outputable
   , ($$), showSDocUnsafe )
 import qualified Outputable as O
 
--- -----------------------------------------------------------------------------
--- The Plugin
--- -----------------------------------------------------------------------------
-
--- | The polymonad type checker plugin for GHC.
 plugin :: Plugin
 plugin = defaultPlugin { tcPlugin = \_clOpts -> Just polymonadPlugin }
 
@@ -73,22 +68,14 @@ type GivenCt = Ct
 type DerivedCt = Ct
 type WantedCt = Ct
 
-type PolymonadState = ()
-
 polymonadPlugin :: TcPlugin
 polymonadPlugin = TcPlugin
-  { tcPluginInit  = polymonadInit
+  { tcPluginInit  = return ()
   , tcPluginSolve = polymonadSolve
-  , tcPluginStop  = polymonadStop
+  , tcPluginStop  = \_s -> return ()
   }
 
-polymonadInit :: TcPluginM PolymonadState
-polymonadInit = return ()
-
-polymonadStop :: PolymonadState -> TcPluginM ()
-polymonadStop _s = return ()
-
-polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
+polymonadSolve :: () -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve _s _g _d [] = return $ TcPluginOk [] []
 polymonadSolve _s given derived wanted = do
   let givenCts = given ++ derived
@@ -101,35 +88,27 @@ polymonadSolve _s given derived wanted = do
       let pmGivenCts = filter (isClassConstraint pmCls) givenCts
       let pmWantedCts = filter (isClassConstraint pmCls) wanted
       printMsg "Invoke polymonad plugin..."
-      res <- polymonadSolve' idTyCon (pmInsts, pmGivenCts) givenCts pmWantedCts
-      case res of
-        TcPluginOk solved derive -> do
-          printObj wanted
-          printObj derive
-          printObj $ fmap snd solved
-        _ -> return ()
-      return $ res
+      
+      let (pmAppliedWantedCts, pmUnappliedWantedCts) = partition isFullyAppliedClassConstraint pmWantedCts
+  
+      -- Assign ambiguous variables
+      let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> pmUnappliedWantedCts
+      assignements <- assignAmbiguousTyVars idTyCon pmUnappliedWantedCts ambTvs
+      let assignemtnCts = assignementsToConstraints assignements
+      
+      -- Solve overlapping instances
+      solvedOverlaps <- fmap catMaybes $ forM pmAppliedWantedCts $ \wCt -> do
+          mEv <- pickInstance (pmInsts, pmGivenCts) givenCts wCt
+          return $ (\ev -> (ev, wCt)) <$> mEv
+      
+      printObj wanted
+      printObj assignemtnCts
+      printObj $ fmap snd solvedOverlaps
+      
+      return $ TcPluginOk solvedOverlaps assignemtnCts
     _ -> do
       printMsg "Missing Polymonad class and Id tycon."
       return noResult
-  
-  
-
-polymonadSolve' :: TyCon -> ([ClsInst], [GivenCt]) -> [GivenCt] -> [WantedCt] -> TcPluginM TcPluginResult
-polymonadSolve' idTyCon (pmInsts, pmGivenCts) givenCts pmWantedCts' = do
-  let (pmAppliedWantedCts, pmWantedCts) = partition isFullyAppliedClassConstraint pmWantedCts'
-  
-  -- Assign ambiguous variables
-  let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> pmWantedCts
-  assignements <- assignAmbiguousTyVars idTyCon pmWantedCts ambTvs
-  let assignemtnCts = assignementsToConstraints assignements
-  
-  -- Solve overlapping instances
-  solvedOverlaps <- fmap catMaybes $ forM pmAppliedWantedCts $ \wCt -> do
-      mEv <- pickInstance (pmInsts, pmGivenCts) givenCts wCt
-      return $ (\ev -> (ev, wCt)) <$> mEv
-  
-  return $ TcPluginOk solvedOverlaps assignemtnCts
 
 -- ===========================================================================================================================
 
@@ -566,13 +545,14 @@ fromRight :: Either a b -> b
 fromRight (Left _) = error "fromRight: Applied to 'Left'"
 fromRight (Right b) = b
 
+-- -----------------------------------------------------------------------------
+-- Printing plugin output
+-- -----------------------------------------------------------------------------
 prefixMsg :: String -> String -> String
 prefixMsg prefix = unlines . fmap (prefix ++) . lines
 
--- | Print a message using the polymonad plugin formatting.
 printMsg :: String -> TcPluginM ()
-printMsg = tcPluginIO . putStr . ("[PM] " ++)
+printMsg = tcPluginIO . putStr . prefixMsg "[PM] "
 
--- | Print an object using the polymonad plugin formatting.
 printObj :: Outputable o => o -> TcPluginM ()
-printObj = tcPluginIO . putStr . ("[PM]> " ++) . showSDocUnsafe . ppr
+printObj = tcPluginIO . putStr . prefixMsg "[PM]> " . showSDocUnsafe . ppr
