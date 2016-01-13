@@ -3,19 +3,18 @@ module MinimalPlugin ( plugin ) where
 import Data.List ( partition, find )
 import Data.Maybe 
   ( isJust, catMaybes
-  , listToMaybe, maybeToList
-  , fromMaybe, fromJust )
-import Data.Either ( isLeft, isRight )
+  , listToMaybe
+  , fromMaybe )
+import Data.Either ( isLeft )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
-import Control.Monad ( unless, guard, forM, liftM )
+import Control.Monad ( guard, forM, liftM )
 
 import Type
   ( TyThing(..), TyVar, Type
   , eqType
-  , isTyVarTy
-  , getTyVar, getTyVar_maybe
+  , getTyVar_maybe
   , getClassPredTys_maybe, getClassPredTys
   , getEqPredTys_maybe, getEqPredTys, getEqPredRole
   , splitTyConApp_maybe, splitAppTy_maybe, splitFunTy_maybe
@@ -431,17 +430,6 @@ evaluateType r t = do
 
 noResult :: TcPluginResult
 noResult = TcPluginOk [] []
-
-mergeResults :: [TcPluginResult] -> TcPluginResult
-mergeResults [] = noResult
-mergeResults (TcPluginOk evidence derived : rest) = case mergeResults rest of
-  TcPluginOk restEv restDe -> TcPluginOk (evidence ++ restEv) (derived ++ restDe)
-  TcPluginContradiction cts -> TcPluginContradiction cts
-mergeResults (TcPluginContradiction cts : _) = TcPluginContradiction cts
-
-getEvidence :: TcPluginResult -> [EvTerm]
-getEvidence (TcPluginOk evs _dc) = fmap fst evs
-getEvidence _ = []
 
 -- | Create a derived type equality constraint. The constraint
 --   will be located at the location of the given constraints
