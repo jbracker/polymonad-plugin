@@ -37,6 +37,7 @@ import RdrName ( GlobalRdrElt(..), lookupGlobalRdrEnv )
 import OccName ( occNameString, mkTcOcc )
 import Name ( getOccName )
 import CoAxiom ( Role(..) )
+import FamInstEnv ( normaliseType )
 import TcRnTypes
   ( Ct(..), CtEvidence(..)
   , TcGblEnv(..), TcTyThing(..)
@@ -48,7 +49,8 @@ import TcType ( mkTcEqPred, isAmbiguousTyVar )
 import TcPluginM
   ( TcPluginM
   , tcPluginIO, tcLookup
-  , getEnvs, getInstEnvs )
+  , getEnvs, getInstEnvs
+  , getFamInstEnvs )
 import TcEvidence ( EvTerm(..), TcCoercion(..) )
 import Outputable ( ($$), SDoc )
 import qualified Outputable as O
@@ -63,7 +65,6 @@ import Control.Polymonad.Plugin.Environment
   , printObj
   --, printConstraints
   , runTcPlugin)
-import Control.Polymonad.Plugin.Evaluate ( evaluateType )
 import qualified Control.Polymonad.Plugin.Log as L
 import qualified Control.Polymonad.Plugin.Debug as D
 
@@ -447,7 +448,14 @@ produceEvidenceForCt givenCts ct =
               Nothing -> case getEqPredTys_maybe t of
                 Just (_r, ta, tb) -> containsTyFunApp ta || containsTyFunApp tb
                 Nothing -> False
-    
+
+-- | Try to evaluate the given type as far as possible by evaluating contained
+--   type families and expanding type synonyms.
+evaluateType :: Role -> Type -> TcPluginM (Coercion, Type)
+evaluateType r t = do
+  famInstEnvs <- getFamInstEnvs
+  return $ normaliseType famInstEnvs r t
+
 -- -----------------------------------------------------------------------------
 -- Utility Functions
 -- -----------------------------------------------------------------------------
