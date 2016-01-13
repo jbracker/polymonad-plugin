@@ -114,18 +114,18 @@ polymonadSolve s given derived wanted = do
 
 polymonadSolve' :: PolymonadState -> PmPluginM TcPluginResult
 polymonadSolve' _s = do
-  -- Simplification ------------------------------------------------------------
-  printDebug "Try simplification of constraints..."
   allWanted <- getWantedPolymonadConstraints
   let (tyConAppCts, wanted) = partition isTyConAppliedClassConstraint allWanted
-
+  
+  -- Assign ambiguous variables
+  let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
+  eqUpDownCtData <- assignAmbiguousTyVars wanted ambTvs -- simplifyAllUp wanted ambTvs -- 
+  let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
+  
+  -- Solve overlapping instances
   solvedOverlaps <- fmap catMaybes $ forM tyConAppCts $ \tyConAppCt -> do
       mEv <- detectOverlappingInstancesAndTrySolve' tyConAppCt
       return $ (\ev -> (ev, tyConAppCt)) <$> mEv
-
-  let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
-  eqUpDownCtData <- simplify wanted ambTvs -- simplifyAllUp wanted ambTvs -- 
-  let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
   
   return $ TcPluginOk solvedOverlaps eqUpDownCts
 
@@ -233,24 +233,24 @@ tcTyThingToTyCon (AGlobal (ATyCon tc)) = Just tc
 tcTyThingToTyCon _ = Nothing
 
 -- -----------------------------------------------------------------------------
--- Simplification
+-- Assign Ambiguous Type Variables
 -- -----------------------------------------------------------------------------
 
-matchSimplify :: [WantedCt] -> Set TyVar -> (Set TyVar -> (Type, Type, Type) -> Maybe (TyVar, Type)) -> Maybe (TyVar, (Ct, Type))
-matchSimplify wantedCts tvs matchRule =
+matchAssign :: [WantedCt] -> Set TyVar -> (Set TyVar -> (Type, Type, Type) -> Maybe (TyVar, Type)) -> Maybe (TyVar, (Ct, Type))
+matchAssign wantedCts tvs matchRule =
   case find (\(ct, m1, m2, m3) -> isJust $ matchRule tvs (m1, m2, m3)) (constraintPolymonadTyArgs' wantedCts) of
     Just (ct, m1, m2, m3) -> (\(tv, t) -> (tv, (ct, t))) <$> matchRule tvs (m1, m2, m3)
     Nothing -> Nothing
 
 -- | An uncomplicated version of the simplification process.
-simplify :: [WantedCt] -> Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
-simplify wantedCts tyVars = do
+assignAmbiguousTyVars :: [WantedCt] -> Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
+assignAmbiguousTyVars wantedCts tyVars = do
   idTyCon <- mkTyConTy <$> getIdentityTyCon
-  let idIdSimpl = matchSimplify wantedCts tyVars $ \tvs (m1, m2, m3) -> 
+  let idIdSimpl = matchAssign wantedCts tyVars $ \tvs (m1, m2, m3) -> 
         if m1 `eqType` idTyCon && m2 `eqType` idTyCon
            then (\tv -> (tv, idTyCon)) <$> (m3 `tyVarAndInSet` tvs)
            else Nothing
-  let funcSimpl = matchSimplify wantedCts tyVars $ \tvs (m1, m2, m3) -> 
+  let funcSimpl = matchAssign wantedCts tyVars $ \tvs (m1, m2, m3) -> 
         if S.null (collectTyVars m1) && m2 `eqType` idTyCon
            then (\tv -> (tv, m1)) <$> (m3 `tyVarAndInSet` tvs) 
            else Nothing
