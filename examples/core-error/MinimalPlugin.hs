@@ -53,11 +53,10 @@ import TcPluginM
   , getFamInstEnvs )
 import TcEvidence ( EvTerm(..), TcCoercion(..) )
 import Coercion ( Coercion )
-import Outputable ( ($$), SDoc )
+import Outputable 
+  ( Outputable(..), SDoc
+  , ($$), showSDocUnsafe )
 import qualified Outputable as O
-
-import Control.Polymonad.Plugin.Log ( printObj, printMsg )
-import qualified Control.Polymonad.Plugin.Debug as D
 
 -- -----------------------------------------------------------------------------
 -- The Plugin
@@ -566,3 +565,14 @@ fromLeft (Right _) = error "fromLeft: Applied to 'Right'"
 fromRight :: Either a b -> b
 fromRight (Left _) = error "fromRight: Applied to 'Left'"
 fromRight (Right b) = b
+
+prefixMsg :: String -> String -> String
+prefixMsg prefix = unlines . fmap (prefix ++) . lines
+
+-- | Print a message using the polymonad plugin formatting.
+printMsg :: String -> TcPluginM ()
+printMsg = tcPluginIO . putStr . ("[PM] " ++)
+
+-- | Print an object using the polymonad plugin formatting.
+printObj :: Outputable o => o -> TcPluginM ()
+printObj = tcPluginIO . putStr . ("[PM]> " ++) . showSDocUnsafe . ppr
