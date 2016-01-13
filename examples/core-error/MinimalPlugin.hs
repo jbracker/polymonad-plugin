@@ -129,24 +129,6 @@ polymonadSolve' _s = do
   
   return $ TcPluginOk solvedOverlaps eqUpDownCts
 
-deriveConstraints :: TyCon -> WantedCt -> TcPluginM [DerivedCt]
-deriveConstraints idTyCon wCt = case constraintPolymonadTyArgs wCt of
-  Just (m, n, p) -> return $ case () of
-    () | eqType m idTy && eqType n idTy && isTyVarTy p
-       -> [mkDerivedTypeEqCt wCt (getTyVar "IMPOSSIBLE_1" p) idTy]
-    () | not (isTyVarTy m) && eqType n idTy && isTyVarTy p
-       -> [mkDerivedTypeEqCt wCt (getTyVar "IMPOSSIBLE_2" p) m]
-    () -> []
-  Nothing -> return []
-  where
-    idTy = mkTyConTy idTyCon
-
-evidentConstraints :: ([ClsInst], [GivenCt]) -> [GivenCt] -> WantedCt -> TcPluginM [(EvTerm, WantedCt)]
-evidentConstraints (pmInsts, pmCts) givenCts wCt | isTyConAppliedClassConstraint wCt = do
-  mEv <- detectOverlappingInstancesAndTrySolve (pmInsts, pmCts) givenCts wCt
-  return $ (\ev -> (ev, wCt)) <$> maybeToList mEv
-evidentConstraints _ _ _ = return []
-
 -- ===========================================================================================================================
 
 detectOverlappingInstancesAndTrySolve :: ([ClsInst], [GivenCt]) -> [GivenCt] -> WantedCt -> TcPluginM (Maybe EvTerm)
