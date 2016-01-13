@@ -56,17 +56,7 @@ import Coercion ( Coercion )
 import Outputable ( ($$), SDoc )
 import qualified Outputable as O
 
-import Control.Polymonad.Plugin.Environment
-  ( PmPluginM, runPmPlugin
-  , getCurrentPolymonad
-  , getIdentityTyCon
-  , getGivenConstraints
-  , getWantedPolymonadConstraints
-  , printDebug, printMsg
-  , printObj
-  --, printConstraints
-  , runTcPlugin)
-import qualified Control.Polymonad.Plugin.Log as L
+import Control.Polymonad.Plugin.Log ( printObj, printMsg )
 import qualified Control.Polymonad.Plugin.Debug as D
 
 -- -----------------------------------------------------------------------------
@@ -101,55 +91,51 @@ polymonadStop _s = return ()
 
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve _s _g _d [] = return $ TcPluginOk [] []
-polymonadSolve s given derived wanted = do
+polymonadSolve _s given derived wanted = do
+  let givenCts = given ++ derived
   instEnvs <- TcPluginM.getInstEnvs
   mIdTyCon <- findIdentityTyCon
   mPmCls <- findPolymonadClass
   case (mIdTyCon, mPmCls) of
     (Just idTyCon, Just pmCls) -> do
       let pmInsts = classInstances instEnvs pmCls
-      let pmGivenCts = filter (isClassConstraint pmCls) (given ++ derived)
+      let pmGivenCts = filter (isClassConstraint pmCls) givenCts
       let pmWantedCts = filter (isClassConstraint pmCls) wanted
-      return ()
-    _ -> return ()
-  
-  L.printMsg "Invoke polymonad plugin..."
-  res <- runPmPlugin (given ++ derived) wanted $ polymonadSolve' s
-  case res of
-    Left errMsg -> do
-      tcPluginIO $ putStrLn errMsg
-      return noResult
-    Right slv -> do
-      let mergedRes = mergeResults slv
-      case mergedRes of
+      printMsg "Invoke polymonad plugin..."
+      res <- polymonadSolve' idTyCon (pmInsts, pmGivenCts) givenCts pmWantedCts
+      case res of
         TcPluginOk solved derive -> do
-          L.printObj wanted
-          L.printObj derive
-          L.printObj $ fmap snd solved
+          printObj wanted
+          printObj derive
+          printObj $ fmap snd solved
         _ -> return ()
-      return $ mergedRes
+      return $ res
+    _ -> do
+      printMsg "Missing Polymonad class and Id tycon."
+      return noResult
+  
+  
 
-polymonadSolve' :: PolymonadState -> PmPluginM TcPluginResult
-polymonadSolve' _s = do
-  allWanted <- getWantedPolymonadConstraints
-  let (tyConAppCts, wanted) = partition isTyConAppliedClassConstraint allWanted
+polymonadSolve' :: TyCon -> ([ClsInst], [GivenCt]) -> [GivenCt] -> [WantedCt] -> TcPluginM TcPluginResult
+polymonadSolve' idTyCon (pmInsts, pmGivenCts) givenCts pmWantedCts' = do
+  let (pmAppliedWantedCts, pmWantedCts) = partition isFullyAppliedClassConstraint pmWantedCts'
   
   -- Assign ambiguous variables
-  let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> wanted
-  eqUpDownCtData <- assignAmbiguousTyVars wanted ambTvs -- simplifyAllUp wanted ambTvs -- 
-  let eqUpDownCts = simplifiedTvsToConstraints eqUpDownCtData
+  let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> pmWantedCts
+  assignements <- assignAmbiguousTyVars idTyCon pmWantedCts ambTvs
+  let assignemtnCts = assignementsToConstraints assignements
   
   -- Solve overlapping instances
-  solvedOverlaps <- fmap catMaybes $ forM tyConAppCts $ \tyConAppCt -> do
-      mEv <- detectOverlappingInstancesAndTrySolve' tyConAppCt
-      return $ (\ev -> (ev, tyConAppCt)) <$> mEv
+  solvedOverlaps <- fmap catMaybes $ forM pmAppliedWantedCts $ \wCt -> do
+      mEv <- pickInstance (pmInsts, pmGivenCts) givenCts wCt
+      return $ (\ev -> (ev, wCt)) <$> mEv
   
-  return $ TcPluginOk solvedOverlaps eqUpDownCts
+  return $ TcPluginOk solvedOverlaps assignemtnCts
 
 -- ===========================================================================================================================
 
-detectOverlappingInstancesAndTrySolve :: ([ClsInst], [GivenCt]) -> [GivenCt] -> WantedCt -> TcPluginM (Maybe EvTerm)
-detectOverlappingInstancesAndTrySolve (pmInsts, pmCts) givenCts ct = do
+pickInstance :: ([ClsInst], [GivenCt]) -> [GivenCt] -> WantedCt -> TcPluginM (Maybe EvTerm)
+pickInstance (pmInsts, pmCts) givenCts ct = do
   let ctTyArgs = constraintClassArgs ct
   -- Only select an instance if all arguments of the constraint don't contain variables
   if all S.null (collectTyVars <$> ctTyArgs)
@@ -161,15 +147,11 @@ detectOverlappingInstancesAndTrySolve (pmInsts, pmCts) givenCts ct = do
             return $ if isInst then Just (pmInst, args) else Nothing
           Nothing -> return Nothing
       case catMaybes instMatches of
-        [instWithArgs] -> uncurry (produceEvidenceForPM givenCts) instWithArgs
+        -- Since all polymonad constructors are fully applied (ground),
+        -- we can safely pick.
+        (instWithArgs : _) -> uncurry (produceEvidenceForPM givenCts) instWithArgs
         _ -> return Nothing
     else return Nothing
-    
-detectOverlappingInstancesAndTrySolve' :: WantedCt -> PmPluginM (Maybe EvTerm)
-detectOverlappingInstancesAndTrySolve' ct = do
-  (_, pmInsts, pmCts) <- getCurrentPolymonad
-  givenCts <- getGivenConstraints
-  runTcPlugin $ detectOverlappingInstancesAndTrySolve (pmInsts, pmCts) givenCts ct
 
 -- ================================================================================================
 
@@ -230,21 +212,21 @@ tcTyThingToTyCon _ = Nothing
 -- -----------------------------------------------------------------------------
 
 matchAssign :: [WantedCt] -> Set TyVar -> (Set TyVar -> (Type, Type, Type) -> Maybe (TyVar, Type)) -> Maybe (TyVar, (Ct, Type))
-matchAssign wantedCts tvs matchRule =
-  case find (\(ct, m1, m2, m3) -> isJust $ matchRule tvs (m1, m2, m3)) (constraintPolymonadTyArgs' wantedCts) of
+matchAssign pmWantedCts tvs matchRule =
+  case find (\(ct, m1, m2, m3) -> isJust $ matchRule tvs (m1, m2, m3)) (constraintPolymonadTyArgs' pmWantedCts) of
     Just (ct, m1, m2, m3) -> (\(tv, t) -> (tv, (ct, t))) <$> matchRule tvs (m1, m2, m3)
     Nothing -> Nothing
 
 -- | An uncomplicated version of the simplification process.
-assignAmbiguousTyVars :: [WantedCt] -> Set TyVar -> PmPluginM [(TyVar, (Ct, Type))]
-assignAmbiguousTyVars wantedCts tyVars = do
-  idTyCon <- mkTyConTy <$> getIdentityTyCon
-  let idIdSimpl = matchAssign wantedCts tyVars $ \tvs (m1, m2, m3) -> 
-        if m1 `eqType` idTyCon && m2 `eqType` idTyCon
-           then (\tv -> (tv, idTyCon)) <$> (m3 `tyVarAndInSet` tvs)
+assignAmbiguousTyVars :: TyCon -> [WantedCt] -> Set TyVar -> TcPluginM [(TyVar, (Ct, Type))]
+assignAmbiguousTyVars idTyCon pmWantedCts tyVars = do
+  let idTyConT = mkTyConTy idTyCon
+  let idIdSimpl = matchAssign pmWantedCts tyVars $ \tvs (m1, m2, m3) -> 
+        if m1 `eqType` idTyConT && m2 `eqType` idTyConT
+           then (\tv -> (tv, idTyConT)) <$> (m3 `tyVarAndInSet` tvs)
            else Nothing
-  let funcSimpl = matchAssign wantedCts tyVars $ \tvs (m1, m2, m3) -> 
-        if S.null (collectTyVars m1) && m2 `eqType` idTyCon
+  let funcSimpl = matchAssign pmWantedCts tyVars $ \tvs (m1, m2, m3) -> 
+        if S.null (collectTyVars m1) && m2 `eqType` idTyConT
            then (\tv -> (tv, m1)) <$> (m3 `tyVarAndInSet` tvs) 
            else Nothing
   return $ case (idIdSimpl, funcSimpl) of
@@ -538,24 +520,10 @@ constraintTopAmbiguousTyVars ct = ambTvs
         tvArgs = catMaybes $ getTyVar_maybe <$> tyArgs
         ambTvs = S.fromList $ filter isAmbiguousTyVar tvArgs
 
--- | Check if the given constraint is a class constraint and all arguments
---   consist of non-variable type constructor (partially) applied to their
---   arguments.
---
---   /Examples/:
---
--- >>> isTyConAppliedClassConstraint (Polymonad m Identity Maybe)
--- False -- because of 'm'
---
--- >>> isTyConAppliedClassConstraint (Polymonad (Session a b) (Session () ()) Maybe)
--- True -- because 'a' and 'b' are not the top level type-constructor
---
--- >>> isTyConAppliedClassConstraint (Polymonad Maybe (m () ()) (m () ()))
--- False -- because of 'm'
-isTyConAppliedClassConstraint :: Ct -> Bool
-isTyConAppliedClassConstraint ct = case fmap snd $ constraintClassType ct of
-  Just tyArgs -> all isJust $ splitTyConApp_maybe <$> tyArgs
-  Nothing -> False
+-- | Check if the given constraint is a class constraint and that its arguments
+--   do not contain type variables.
+isFullyAppliedClassConstraint :: Ct -> Bool
+isFullyAppliedClassConstraint ct = all (S.null . collectTyVars) $ constraintClassArgs ct
 
 -- | Try to collect all type variables in a given expression.
 --   Does not work for Pi or ForAll types.
@@ -586,8 +554,8 @@ skolemVarsBindFun tvs var = case find (var ==) tvs of
 -- | Converts the associations of type variables to their simplifications to
 --   derived type equality constraints that are located at the position of the
 --   constraints that led to the simplification.
-simplifiedTvsToConstraints :: [(TyVar, (Ct, Type))] -> [Ct]
-simplifiedTvsToConstraints tvs = (\(tv, (ct, t)) -> mkDerivedTypeEqCt ct tv t) <$> tvs
+assignementsToConstraints :: [(TyVar, (Ct, Type))] -> [Ct]
+assignementsToConstraints tvs = (\(tv, (ct, t)) -> mkDerivedTypeEqCt ct tv t) <$> tvs
 
 -- | Return the 'Left' value. If no 'Left' value is given, an error is raised.
 fromLeft :: Either a b -> a
