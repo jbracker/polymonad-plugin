@@ -26,7 +26,8 @@ import InstEnv
   ( ClsInst(..)
   , instanceBindFun, instanceSig
   , instEnvElts, ie_global
-  , lookupUniqueInstEnv)
+  , lookupUniqueInstEnv
+  , classInstances)
 import Class
   ( Class(..)
   , className, classArity )
@@ -101,12 +102,19 @@ polymonadStop _s = return ()
 polymonadSolve :: PolymonadState -> [Ct] -> [Ct] -> [Ct] -> TcPluginM TcPluginResult
 polymonadSolve _s _g _d [] = return $ TcPluginOk [] []
 polymonadSolve s given derived wanted = do
-  res <- runPmPlugin (given ++ derived) wanted $
-    if not $ null wanted
-      then do
-        printMsg "Invoke polymonad plugin..."
-        polymonadSolve' s
-      else return noResult
+  instEnvs <- TcPluginM.getInstEnvs
+  mIdTyCon <- findIdentityTyCon
+  mPmCls <- findPolymonadClass
+  case (mIdTyCon, mPmCls) of
+    (Just idTyCon, Just pmCls) -> do
+      let pmInsts = classInstances instEnvs pmCls
+      let pmGivenCts = filter (isClassConstraint pmCls) (given ++ derived)
+      let pmWantedCts = filter (isClassConstraint pmCls) wanted
+      return ()
+    _ -> return ()
+  
+  L.printMsg "Invoke polymonad plugin..."
+  res <- runPmPlugin (given ++ derived) wanted $ polymonadSolve' s
   case res of
     Left errMsg -> do
       tcPluginIO $ putStrLn errMsg
@@ -483,6 +491,16 @@ mkDerivedTypeEqCt ct tv ty = mkNonCanonical CtDerived
     { ctev_pred = mkTcEqPred (mkTyVarTy tv) ty
     , ctev_loc = ctev_loc $ cc_ev ct }
 
+-- | Check if the given constraint is a class constraint of the given class.
+isClassConstraint :: Class -> Ct -> Bool
+isClassConstraint wantedClass ct =
+  case ct of
+    CDictCan { cc_class = cls } -> cls == wantedClass
+    CNonCanonical { cc_ev = ev } -> case getClassPredTys_maybe (ctev_pred ev) of
+      Just (cls, _args) -> cls == wantedClass
+      _ -> False
+    _ -> False
+    
 constraintClassType :: Ct -> Maybe (Class, [Type])
 constraintClassType ct = case ct of
   CDictCan {} -> Just (cc_class ct, cc_tyargs ct)
