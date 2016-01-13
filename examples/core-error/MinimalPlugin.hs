@@ -132,27 +132,21 @@ polymonadSolve' _s = do
 -- ===========================================================================================================================
 
 detectOverlappingInstancesAndTrySolve :: ([ClsInst], [GivenCt]) -> [GivenCt] -> WantedCt -> TcPluginM (Maybe EvTerm)
-detectOverlappingInstancesAndTrySolve (pmInsts, pmCts) givenCts ct =
-  case fmap snd $ constraintClassType ct of
-    Just tyArgs -> do
-      -- Collect variables that are to be seen as constants.
-      -- The first batch of these are the non ambiguous type variables in the constraint arguments...
-      let dontBind =  filter (not . isAmbiguousTyVar) (S.toList $ S.unions $ fmap collectTyVars tyArgs)
-                   -- and the second batch are the type variables in given constraints.
-                   ++ S.toList (S.unions $ concat $ fmap (maybe [] (fmap collectTyVars) . fmap snd . constraintClassType) pmCts)
+detectOverlappingInstancesAndTrySolve (pmInsts, pmCts) givenCts ct = do
+  let ctTyArgs = constraintClassArgs ct
+  -- Only select an instance if all arguments of the constraint don't contain variables
+  if all S.null (collectTyVars <$> ctTyArgs)
+    then do
       instMatches <- forM pmInsts $ \pmInst -> do
-        let (_, _, _, instArgs) = instanceSig pmInst
-        case tcUnifyTys (skolemVarsBindFun dontBind) tyArgs instArgs of
-          Just subst -> case matchInstanceTyVars pmInst (substTys subst tyArgs) of
-            Just args -> do
-              isInst <- isInstanceOf givenCts args pmInst
-              return $ if isInst then Just (pmInst, args) else Nothing
-            Nothing -> return Nothing
+        case matchInstanceTyVars pmInst ctTyArgs of
+          Just args -> do
+            isInst <- isInstanceOf givenCts args pmInst
+            return $ if isInst then Just (pmInst, args) else Nothing
           Nothing -> return Nothing
       case catMaybes instMatches of
         [instWithArgs] -> uncurry (produceEvidenceForPM givenCts) instWithArgs
         _ -> return Nothing
-    _ -> return Nothing
+    else return Nothing
     
 detectOverlappingInstancesAndTrySolve' :: WantedCt -> PmPluginM (Maybe EvTerm)
 detectOverlappingInstancesAndTrySolve' ct = do
@@ -278,6 +272,11 @@ constraintClassType ct = case ct of
   CDictCan {} -> Just (cc_class ct, cc_tyargs ct)
   CNonCanonical evdnc -> getClassPredTys_maybe $ ctev_pred evdnc
   _ -> Nothing
+
+constraintClassArgs :: Ct -> [Type]
+constraintClassArgs ct = case constraintClassType ct of
+  Just (_cls, args) -> args
+  Nothing -> []
 
 -- | Extracts the type arguments of the given constraint.
 --   Only works if the given constraints is a type class constraint
