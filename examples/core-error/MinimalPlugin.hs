@@ -9,7 +9,6 @@ import Data.Either ( isLeft, isRight )
 import Data.Set ( Set )
 import qualified Data.Set as S
 
-import Control.Applicative ( Alternative(..) )
 import Control.Monad ( unless, guard, forM, liftM )
 
 import Type
@@ -119,6 +118,7 @@ polymonadSolve s given derived wanted = do
           L.printObj wanted
           L.printObj derive
           L.printObj $ fmap snd solved
+        _ -> return ()
       return $ mergedRes
 
 polymonadSolve' :: PolymonadState -> PmPluginM TcPluginResult
@@ -570,19 +570,6 @@ skolemVarsBindFun tvs var = case find (var ==) tvs of
 --   constraints that led to the simplification.
 simplifiedTvsToConstraints :: [(TyVar, (Ct, Type))] -> [Ct]
 simplifiedTvsToConstraints tvs = (\(tv, (ct, t)) -> mkDerivedTypeEqCt ct tv t) <$> tvs
-
--- | Check if the given type constrains a type variable and it is equal to
---   the given type variable.
-eqTyVar' :: TyVar -> Type -> Bool
-eqTyVar' tv ty = case getTyVar_maybe ty of
-  Just tv' -> tv == tv'
-  Nothing  -> False
-
--- | Checks if the given type constructors equals the given type.
--- TODO: Test!
-eqTyCon :: TyCon -> Type -> Bool
-eqTyCon tc = eqType (mkTyConTy tc)
-
 
 -- | Return the 'Left' value. If no 'Left' value is given, an error is raised.
 fromLeft :: Either a b -> a
