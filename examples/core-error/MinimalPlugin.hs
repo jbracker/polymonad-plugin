@@ -52,6 +52,7 @@ import TcPluginM
   , getEnvs, getInstEnvs
   , getFamInstEnvs )
 import TcEvidence ( EvTerm(..), TcCoercion(..) )
+import Coercion ( Coercion )
 import Outputable ( ($$), SDoc )
 import qualified Outputable as O
 
