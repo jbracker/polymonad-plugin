@@ -111,33 +111,31 @@ polymonadSolve _s given derived wanted = do
 
 -- ===========================================================================================================================
 
+-- Pick an instance 
 pickInstance :: ([ClsInst], [GivenCt]) -> [GivenCt] -> WantedCt -> TcPluginM (Maybe EvTerm)
 pickInstance (pmInsts, pmCts) givenCts ct = do
   let ctTyArgs = constraintClassArgs ct
   -- Only select an instance if all arguments of the constraint don't contain variables
   if all S.null (collectTyVars <$> ctTyArgs)
     then do
+      -- Pick out all instances that we can actually provide evidence for.
       instMatches <- forM pmInsts $ \pmInst -> do
         case matchInstanceTyVars pmInst ctTyArgs of
-          Just args -> do
-            isInst <- isInstanceOf givenCts args pmInst
-            return $ if isInst then Just (pmInst, args) else Nothing
+          Just args -> eitherToMaybe <$> produceEvidenceFor givenCts pmInst args
           Nothing -> return Nothing
-      case catMaybes instMatches of
-        -- Since all polymonad constructors are fully applied (ground),
-        -- we can safely pick.
-        (instWithArgs : _) -> eitherToMaybe <$> uncurry (produceEvidenceFor givenCts) instWithArgs
-        _ -> return Nothing
+      return $ listToMaybe $ catMaybes $ instMatches
     else return Nothing
 
--- ================================================================================================
-
-isInstanceOf :: [GivenCt] -> [Type] -> ClsInst -> TcPluginM Bool
-isInstanceOf givenCts instArgs inst = do
-  eEvTerm <- produceEvidenceFor givenCts inst instArgs
-  case eEvTerm of
-    Left _err -> return False
-    Right _ev -> return True
+-- Match up a list of instance type arguments against the variables in the 
+-- in the head of an instance. Returns a list of types that needs to be assigned
+-- to the variables (in that order) for the instance to be applied to the given 
+-- arguments. 
+matchInstanceTyVars :: ClsInst -> [Type] -> Maybe [Type]
+matchInstanceTyVars inst instArgs = do
+  let (instVars, _cts, _cls, tyArgs) = instanceSig inst
+  let ctVars = filter (not . isAmbiguousTyVar) $ S.toList $ S.unions $ fmap collectTyVars instArgs
+  subst <- tcUnifyTys (skolemVarsBindFun ctVars) tyArgs instArgs
+  return $ substTy subst . mkTyVarTy <$> instVars
 
 -- -----------------------------------------------------------------------------
 -- Detection
@@ -213,24 +211,6 @@ tyVarAndInSet t tvs = do
 -- -----------------------------------------------------------------------------
 -- Evidence Production
 -- -----------------------------------------------------------------------------
-
--- | Trys to see if the given arguments match the class instance
---   arguments by unification. This only works if the number of arguments
---   given is equal to the arguments taken by the class the instance is of.
---   If the given arguments match the class arguments, a list with a type for
---   each free variable in the instance is returned. This list is in the same
---   order as the list of free variables that can be retrieved from the instance.
---
---   This function is meant for use in conjunction with 'isInstanceOf' and 'produceEvidenceFor'.
-matchInstanceTyVars :: ClsInst -> [Type] -> Maybe [Type]
-matchInstanceTyVars inst instArgs = do
-  let (instVars, _cts, _cls, tyArgs) = instanceSig inst
-  -- Old Version:
-  -- let instVarSet = printObjTrace $ mkVarSet instVars
-  -- subst <- printObjTrace $ tcMatchTys instVarSet tyArgs instArgs
-  let ctVars = filter (not . isAmbiguousTyVar) $ S.toList $ S.unions $ fmap collectTyVars instArgs
-  subst <- tcUnifyTys (skolemVarsBindFun ctVars) tyArgs instArgs
-  return $ substTy subst . mkTyVarTy <$> instVars
 
 -- | Apply the given instance dictionary to the given type arguments
 --   and try to produce evidence for the application.
