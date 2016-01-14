@@ -14,7 +14,6 @@ executable core-error
   build-depends:  base             == 4.8.1.0,
                   safe         >=0.3 && <0.4,
                   effect-monad     == 0.6.1,
-                  polymonad-plugin == 0.1,
                   ghc          >=7.9 && <7.12,
                   containers   >=0.5 && <0.6,
                   fgl          >=5.5.2 && <5.6,
