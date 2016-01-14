@@ -84,7 +84,6 @@ polymonadSolve _s given derived wanted = do
   case (mIdTyCon, mPmCls) of
     (Just idTyCon, Just pmCls) -> do
       let pmInsts = classInstances instEnvs pmCls
-      let pmGivenCts = filter (isClassConstraint pmCls) givenCts
       let pmWantedCts = filter (isClassConstraint pmCls) wanted
       printMsg "Invoke polymonad plugin..."
       
@@ -97,7 +96,7 @@ polymonadSolve _s given derived wanted = do
       
       -- Solve overlapping instances
       solvedOverlaps <- fmap catMaybes $ forM pmAppliedWantedCts $ \wCt -> do
-          mEv <- pickInstance (pmInsts, pmGivenCts) givenCts wCt
+          mEv <- pickInstance pmInsts givenCts wCt
           return $ (\ev -> (ev, wCt)) <$> mEv
       
       printObj wanted
@@ -112,8 +111,8 @@ polymonadSolve _s given derived wanted = do
 -- ===========================================================================================================================
 
 -- Pick an instance 
-pickInstance :: ([ClsInst], [GivenCt]) -> [GivenCt] -> WantedCt -> TcPluginM (Maybe EvTerm)
-pickInstance (pmInsts, pmCts) givenCts ct = do
+pickInstance :: [ClsInst] -> [GivenCt] -> WantedCt -> TcPluginM (Maybe EvTerm)
+pickInstance pmInsts givenCts ct = do
   let ctTyArgs = constraintClassArgs ct
   -- Only select an instance if all arguments of the constraint don't contain variables
   if all S.null (collectTyVars <$> ctTyArgs)
@@ -181,7 +180,7 @@ tcTyThingToTyCon _ = Nothing
 
 matchAssign :: [WantedCt] -> Set TyVar -> (Set TyVar -> (Type, Type, Type) -> Maybe (TyVar, Type)) -> Maybe (TyVar, (Ct, Type))
 matchAssign pmWantedCts tvs matchRule =
-  case find (\(ct, m1, m2, m3) -> isJust $ matchRule tvs (m1, m2, m3)) (constraintPolymonadTyArgs' pmWantedCts) of
+  case find (\(_ct, m1, m2, m3) -> isJust $ matchRule tvs (m1, m2, m3)) (constraintPolymonadTyArgs' pmWantedCts) of
     Just (ct, m1, m2, m3) -> (\(tv, t) -> (tv, (ct, t))) <$> matchRule tvs (m1, m2, m3)
     Nothing -> Nothing
 
@@ -486,7 +485,7 @@ fromRight (Left _) = error "fromRight: Applied to 'Left'"
 fromRight (Right b) = b
 
 eitherToMaybe :: Either a b -> Maybe b
-eitherToMaybe (Left  a) = Nothing
+eitherToMaybe (Left  _) = Nothing
 eitherToMaybe (Right b) = Just b
 
 -- -----------------------------------------------------------------------------
