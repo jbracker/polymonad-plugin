@@ -126,7 +126,7 @@ pickInstance (pmInsts, pmCts) givenCts ct = do
       case catMaybes instMatches of
         -- Since all polymonad constructors are fully applied (ground),
         -- we can safely pick.
-        (instWithArgs : _) -> uncurry (produceEvidenceForPM givenCts) instWithArgs
+        (instWithArgs : _) -> eitherToMaybe <$> uncurry (produceEvidenceFor givenCts) instWithArgs
         _ -> return Nothing
     else return Nothing
 
@@ -134,17 +134,10 @@ pickInstance (pmInsts, pmCts) givenCts ct = do
 
 isInstanceOf :: [GivenCt] -> [Type] -> ClsInst -> TcPluginM Bool
 isInstanceOf givenCts instArgs inst = do
-  res <- isInstantiatedBy givenCts inst instArgs
-  case res of
-    Left err -> return False
-    Right b -> return b
-
-produceEvidenceForPM :: [GivenCt] -> ClsInst -> [Type] -> TcPluginM (Maybe EvTerm)
-produceEvidenceForPM givenCts inst args = do
-  eEvTerm <- produceEvidenceFor givenCts inst args
-  return $ case eEvTerm of
-    Left _err -> Nothing
-    Right evTerm -> Just evTerm
+  eEvTerm <- produceEvidenceFor givenCts inst instArgs
+  case eEvTerm of
+    Left _err -> return False
+    Right _ev -> return True
 
 -- -----------------------------------------------------------------------------
 -- Detection
@@ -228,8 +221,7 @@ tyVarAndInSet t tvs = do
 --   each free variable in the instance is returned. This list is in the same
 --   order as the list of free variables that can be retrieved from the instance.
 --
---   This function is meant for use in conjunction with 'isInstanceOf',
---   'isInstantiatedBy' and 'produceEvidenceFor'.
+--   This function is meant for use in conjunction with 'isInstanceOf' and 'produceEvidenceFor'.
 matchInstanceTyVars :: ClsInst -> [Type] -> Maybe [Type]
 matchInstanceTyVars inst instArgs = do
   let (instVars, _cts, _cls, tyArgs) = instanceSig inst
@@ -239,26 +231,6 @@ matchInstanceTyVars inst instArgs = do
   let ctVars = filter (not . isAmbiguousTyVar) $ S.toList $ S.unions $ fmap collectTyVars instArgs
   subst <- tcUnifyTys (skolemVarsBindFun ctVars) tyArgs instArgs
   return $ substTy subst . mkTyVarTy <$> instVars
-
--- | Checks if the given arguments types to the free variables in the
---   class instance actually form a valid instantiation of that instance.
---   The given arguments need to match up with the list of free type variables
---   given for the class instance ('is_tvs').
---
---   The instance argument types can be created using 'matchInstanceTyVars'.
---
---   The list of given constraints that can be used to check of they
---   fulfill the instance constraints, in case there are no instances
---   that can fulfill them.
---
---   For details on the accepted arguments and support of type extensions,
---   see 'produceEvidenceFor'.
-isInstantiatedBy :: [GivenCt] -> ClsInst -> [Type] -> TcPluginM (Either String Bool)
-isInstantiatedBy givenCts inst instArgs = do
-  eEvTerm <- produceEvidenceFor givenCts inst instArgs
-  case eEvTerm of
-    Left _err -> return $ Right False
-    Right _ev -> return $ Right True
 
 -- | Apply the given instance dictionary to the given type arguments
 --   and try to produce evidence for the application.
@@ -532,6 +504,10 @@ fromLeft (Right _) = error "fromLeft: Applied to 'Right'"
 fromRight :: Either a b -> b
 fromRight (Left _) = error "fromRight: Applied to 'Left'"
 fromRight (Right b) = b
+
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe (Left  a) = Nothing
+eitherToMaybe (Right b) = Just b
 
 -- -----------------------------------------------------------------------------
 -- Printing plugin output
