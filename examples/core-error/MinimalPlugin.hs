@@ -92,7 +92,7 @@ polymonadSolve _s given derived wanted = do
       -- Assign ambiguous variables
       let ambTvs = S.unions $ constraintTopAmbiguousTyVars <$> pmUnappliedWantedCts
       assignements <- assignAmbiguousTyVars idTyCon pmUnappliedWantedCts ambTvs
-      let assignemtnCts = assignementsToConstraints assignements
+      let assignemtnCts = (\(tv, (ct, t)) -> mkDerivedTypeEqCt ct tv t) <$> assignements
       
       -- Solve overlapping instances
       solvedOverlaps <- fmap catMaybes $ forM pmAppliedWantedCts $ \wCt -> do
@@ -438,7 +438,7 @@ constraintTopAmbiguousTyVars ct = ambTvs
         ambTvs = S.fromList $ filter isAmbiguousTyVar tvArgs
 
 -- | Check if the given constraint is a class constraint and that its arguments
---   do not contain type variables.
+--   do not contain any type variables.
 isFullyAppliedClassConstraint :: Ct -> Bool
 isFullyAppliedClassConstraint ct = all (S.null . collectTyVars) $ constraintClassArgs ct
 
@@ -467,12 +467,6 @@ skolemVarsBindFun :: [TyVar] -> TyVar -> BindFlag
 skolemVarsBindFun tvs var = case find (var ==) tvs of
   Just _ -> Skolem
   Nothing -> instanceBindFun var
-
--- | Converts the associations of type variables to their simplifications to
---   derived type equality constraints that are located at the position of the
---   constraints that led to the simplification.
-assignementsToConstraints :: [(TyVar, (Ct, Type))] -> [Ct]
-assignementsToConstraints tvs = (\(tv, (ct, t)) -> mkDerivedTypeEqCt ct tv t) <$> tvs
 
 -- | Return the 'Left' value. If no 'Left' value is given, an error is raised.
 fromLeft :: Either a b -> a
