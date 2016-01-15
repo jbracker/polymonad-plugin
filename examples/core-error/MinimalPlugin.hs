@@ -50,8 +50,10 @@ import TcPluginM
   , tcPluginIO, tcLookup
   , getEnvs, getInstEnvs
   , getFamInstEnvs )
-import TcEvidence ( EvTerm(..), TcCoercion(..) )
-import Coercion ( Coercion )
+import TcEvidence 
+  ( TcCoercion(..)
+  , EvTerm(..), EvTypeable(..), EvCallStack(..) )
+import Coercion ( Coercion(..) )
 import Outputable 
   ( Outputable(..), SDoc
   , ($$), showSDocUnsafe )
@@ -121,6 +123,18 @@ polymonadSolve _s given derived wanted = do
       printMsg "Selected instances for solved overlaps:"
       printObj $ fmap snd solvedOverlaps
       printSep
+      
+      -- [Check for 'Nth' constructor]
+      if not (null solvedOverlaps) 
+        then do
+          printMsg "Evidence contains 'Nth' constructor:"
+          printObj $ fmap (checkEvidenceForNth . fst) solvedOverlaps
+          printSep
+          -- Include the following code if you want an actual printout of the evidence.
+          --printMsg "Evidence produced:"
+          --printObj $ fmap fst solvedOverlaps
+          --printSep
+        else return ()
       
       return $ TcPluginOk solvedOverlaps assignmentCts
       -- Comment this in to see the original ambiguity error we are trying to solve:
@@ -534,6 +548,76 @@ fromRight (Right b) = b
 eitherToMaybe :: Either a b -> Maybe b
 eitherToMaybe (Left  _) = Nothing
 eitherToMaybe (Right b) = Just b
+
+-- -----------------------------------------------------------------------------
+-- Checking evidence for patterns
+-- -----------------------------------------------------------------------------
+
+checkEvidenceForNth = hasEvTermPattern
+
+hasEvTermPattern :: EvTerm -> Bool
+hasEvTermPattern term = case term of
+  (EvId _id) -> False
+  (EvCoercion tc) -> hasTcCoercionPattern tc
+  (EvCast et tc) -> hasTcCoercionPattern tc || hasEvTermPattern et
+  (EvDFunApp _dfid _ts ets) -> any hasEvTermPattern ets
+  (EvTupleSel et _i) -> hasEvTermPattern et
+  (EvTupleMk ets) -> any hasEvTermPattern ets
+  (EvDelayedError _t _fs) -> False
+  (EvSuperClass et _i) -> hasEvTermPattern et
+  (EvLit _lit) -> False
+  (EvTypeable evty) -> hasEvTypeablePattern evty
+  (EvCallStack evcs) -> hasEvCallStackPattern evcs
+
+hasCoercionPattern :: Coercion -> Bool
+hasCoercionPattern coer = case coer of
+  (Refl _r _t) -> False
+  (TyConAppCo _r _tc cs) -> any hasCoercionPattern cs
+  (AppCo ca cb) -> hasCoercionPattern ca || hasCoercionPattern cb
+  (ForAllCo _tv c) -> hasCoercionPattern c
+  (CoVarCo _cv) -> False
+  (AxiomInstCo _ca _bi cs) -> any hasCoercionPattern cs
+  (UnivCo _fs _r _ta _tb) -> False
+  (SymCo c) -> hasCoercionPattern c
+  (TransCo ca cb) -> hasCoercionPattern ca || hasCoercionPattern cb
+  (AxiomRuleCo _car _ts cs) -> any hasCoercionPattern cs
+  (LRCo _lor c) -> hasCoercionPattern c
+  (InstCo c _t) -> hasCoercionPattern c
+  (SubCo c) -> hasCoercionPattern c
+  --(NthCo 0 (NthCo 2 _c)) -> True
+  (NthCo _i c) -> True --hasCoercionPattern c
+
+hasTcCoercionPattern :: TcCoercion -> Bool
+hasTcCoercionPattern coer = case coer of
+  (TcRefl _r _t) -> False
+  (TcTyConAppCo _r _tc tcs) -> any hasTcCoercionPattern tcs
+  (TcAppCo tca tcb) -> hasTcCoercionPattern tca || hasTcCoercionPattern tcb
+  (TcForAllCo _tv tc) -> hasTcCoercionPattern tc
+  (TcCoVarCo _ev) -> False
+  (TcAxiomInstCo _cab _i tcs) -> any hasTcCoercionPattern tcs
+  (TcAxiomRuleCo _car _ts tcs) -> any hasTcCoercionPattern tcs
+  (TcPhantomCo _ta _tb) -> False
+  (TcSymCo tc) -> hasTcCoercionPattern tc
+  (TcTransCo tca tcb) -> hasTcCoercionPattern tca || hasTcCoercionPattern tcb
+  (TcLRCo _lor tc) -> hasTcCoercionPattern tc
+  (TcSubCo tc) -> hasTcCoercionPattern tc
+  (TcCastCo tca tcb) -> hasTcCoercionPattern tca || hasTcCoercionPattern tcb
+  (TcLetCo _eb tc) -> hasTcCoercionPattern tc
+  (TcCoercion c) -> hasCoercionPattern c
+  --(TcNthCo 0 (TcNthCo 2 _c)) -> True
+  (TcNthCo _t tc) -> True --hasTcCoercionPattern tc
+
+hasEvTypeablePattern :: EvTypeable -> Bool
+hasEvTypeablePattern evTy = case evTy of
+  (EvTypeableTyCon _tc _ks) -> False
+  (EvTypeableTyApp (eta, _ta) (etb, _tb)) -> hasEvTermPattern eta || hasEvTermPattern etb
+  (EvTypeableTyLit _t) -> False
+
+hasEvCallStackPattern :: EvCallStack -> Bool
+hasEvCallStackPattern evcs = case evcs of
+  (EvCsEmpty) -> False
+  (EvCsPushCall _n _rss et) -> hasEvTermPattern et
+  (EvCsTop _fs _rss et) -> hasEvTermPattern et
 
 -- -----------------------------------------------------------------------------
 -- Printing plugin output
